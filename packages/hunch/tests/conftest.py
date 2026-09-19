@@ -1,5 +1,6 @@
 import pytest
 
+from hunch.config import EngineConfig, Thresholds
 from hunch.model import Area, Entity, Floor, HomeModel
 from hunch.vocabulary import DEFAULT_VOCABULARY, Vocabulary
 
@@ -65,3 +66,13 @@ def home() -> HomeModel:
 @pytest.fixture
 def vocab() -> Vocabulary:
     return DEFAULT_VOCABULARY
+
+
+@pytest.fixture
+def thresholds() -> Thresholds:
+    return Thresholds()
+
+
+@pytest.fixture
+def config() -> EngineConfig:
+    return EngineConfig(model="jev-1.13.0")
