@@ -403,10 +403,15 @@ attached to the chat log regardless of outcome.
    prompt's Round 1 state so the reply can be judged as a *modification*; or
    hand the whole confirmation turn to the fallback LLM agent, which handles
    this well. Decide after golden-prompt data exists.
-2. **Question count per request.** No documented cap beyond 64k tokens. Round
-   1 is bounded at ~100 questions so this is not load-bearing for the default
-   path, but the exception fan-out and any future large-scope Noul use should
-   be checked against the real API early (spike, needs `TYPESAFE_API_KEY`).
+2. **Question count per request.** Measured (`spikes/question_count.py`,
+   `spikes/RESULTS.md`): every rung from n=10 to n=800 flat per-candidate
+   `Noul` questions succeeded with no 422/413, at 289 ms (n=50) and 414 ms
+   (n=200) — well inside budget — so raw request capacity is not the
+   constraint. Answer separation between the correct candidate and the rest
+   is clear at n=10 (Δ≈0.28) but collapses to noise (and sometimes inverts)
+   by n=25 and stays collapsed through n=800, confirming context rot bites
+   well before any token or latency limit, which is why scoping candidates
+   first (§6 Step 3) before Round 2's exclusion Nouls is load-bearing.
 3. **Threshold defaults.** The values in §5.3 are starting points; they are
    tuned from the golden corpus, not reasoned from first principles.
 4. **Compound requests.** TypeSafe's own [smart-home demo](https://docs.typesafe.ai/demos/smart-home)
