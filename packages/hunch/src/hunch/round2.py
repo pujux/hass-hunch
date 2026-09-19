@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from hunch.config import Thresholds
 from hunch.model import Entity, HomeModel
+from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
 from hunch.round1 import Shape
 from hunch.scope import device_label
@@ -160,19 +161,19 @@ def build_round2_state(prompt: str, plan: Round2Plan, home: HomeModel) -> JSON:
     }
 
 
-def build_round2_questions(shape: Shape, plan: Round2Plan, home: HomeModel) -> dict[str, Question]:
+def build_round2_questions(
+    shape: Shape, plan: Round2Plan, home: HomeModel, pb: Phrasebook = EN
+) -> dict[str, Question]:
     qs: dict[str, Question] = {}
     for verb_name, ents in plan.exclude.items():
         for e in ents:
             qs[f"exclude:{verb_name}:{e.entity_id}"] = NoulQ(
-                f"The request in `request` names an exception — something that must NOT be "
-                f"affected. Is the candidate named '{e.name}' in area '{_area_name(home, e)}' "
-                f"that exception?"
+                pb.exclusion_question.format(name=e.name, area=_area_name(home, e))
             )
     for verb_name, opts in plan.singular.items():
         verb = next(v for v in shape.fired_verbs if v.name == verb_name)
         qs[f"target:{verb_name}"] = ChoiceQ(
-            f"Which single device does the request want to {verb.phrasing}?",
+            pb.target_question.format(phrasing=pb.phrasing_for(verb.name, verb.phrasing)),
             tuple(o.label for o in opts) + (NO_MATCH,),
         )
     for verb_name in plan.params:
@@ -180,19 +181,20 @@ def build_round2_questions(shape: Shape, plan: Round2Plan, home: HomeModel) -> d
         spec = verb.param
         if isinstance(spec, ScoreSpec):
             qs[f"param:{verb_name}"] = ScoreQ(
-                f"What {spec.name.replace('_', ' ')} does the request ask for?", spec.levels
+                pb.param_question.format(param=pb.param_label(spec.name)),
+                pb.levels_for(spec.name, spec.levels),
             )
         elif isinstance(spec, ChoiceSpec):
             qs[f"param:{verb_name}"] = ChoiceQ(
-                f"Which {spec.name.replace('_', ' ')} does the request ask for?", spec.options
+                pb.param_question.format(param=pb.param_label(spec.name)), spec.options
             )
     if plan.condition_candidates and shape.condition_domain:
         qs["cond_subject"] = ChoiceQ(
-            "Which device is the request's condition about?",
+            pb.cond_subject_question,
             tuple(o.label for o in target_options(plan.condition_candidates)) + (NO_MATCH,),
         )
         qs["cond_state"] = ChoiceQ(
-            "Which state must that device be in for the request's condition to hold?",
+            pb.cond_state_question,
             DOMAIN_STATES.get(shape.condition_domain, ("on", "off")),
         )
     return qs

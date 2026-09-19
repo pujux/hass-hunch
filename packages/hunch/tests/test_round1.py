@@ -8,7 +8,11 @@ def test_state_is_small_and_names_only(home):
     assert state["request"] == "turn off the downstairs lights"
     assert state["floors"] == ["Downstairs", "Upstairs"]
     assert state["areas"] == [
-        "Kitchen", "Living room (lounge)", "Hallway", "Bedroom", "Office (study)",
+        "Kitchen",
+        "Living room (lounge)",
+        "Hallway",
+        "Bedroom",
+        "Office (study)",
     ]
     assert state["domains"] == ["climate", "cover", "light", "lock", "switch"]
     assert state["scenes"] == ["Movie night", "Goodnight"]
@@ -71,12 +75,16 @@ def _answers(home, vocab, **overrides):
 
 
 def test_interpret_floor_expands_to_areas_and_fires_verb(home, vocab, thresholds):
-    ans = _answers(home, vocab, **{
-        "verb:turn_off": NoulA(0.95),
-        "floor:downstairs": NoulA(0.9),
-        "domain:light": NoulA(0.9),
-        "flag:collective": NoulA(0.9),
-    })
+    ans = _answers(
+        home,
+        vocab,
+        **{
+            "verb:turn_off": NoulA(0.95),
+            "floor:downstairs": NoulA(0.9),
+            "domain:light": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+        },
+    )
     shape = interpret_round1(home, vocab, ans, thresholds, Trace())
     assert [v.name for v in shape.fired_verbs] == ["turn_off"]
     assert set(shape.scope_areas) == {"kitchen", "living", "hallway"}
@@ -88,28 +96,38 @@ def test_interpret_floor_expands_to_areas_and_fires_verb(home, vocab, thresholds
 def test_interpret_keeps_probabilities_for_ranked_widening(home, vocab, thresholds):
     ans = _answers(home, vocab, **{"verb:turn_on": NoulA(0.9), "area:living": NoulA(0.45)})
     shape = interpret_round1(home, vocab, ans, thresholds, Trace())
-    assert shape.scope_areas == ()             # 0.45 < scope_fire
+    assert shape.scope_areas == ()  # 0.45 < scope_fire
     assert shape.area_probs["living"] == 0.45  # but retained
 
 
 def test_interpret_scene_and_condition_domain(home, vocab, thresholds):
-    ans = _answers(home, vocab, **{
-        "verb:activate": NoulA(0.9),
-        "scene": ChoiceA(
-            "Movie night", 0.85, {"Movie night": 0.85, "Goodnight": 0.1, "none": 0.05}
-        ),
-        "flag:has_condition": NoulA(0.8),
-        "condition_domain": ChoiceA("lock", 0.8, {"lock": 0.8, "none": 0.2}),
-    })
+    ans = _answers(
+        home,
+        vocab,
+        **{
+            "verb:activate": NoulA(0.9),
+            "scene": ChoiceA(
+                "Movie night", 0.85, {"Movie night": 0.85, "Goodnight": 0.1, "none": 0.05}
+            ),
+            "flag:has_condition": NoulA(0.8),
+            "condition_domain": ChoiceA("lock", 0.8, {"lock": 0.8, "none": 0.2}),
+        },
+    )
     shape = interpret_round1(home, vocab, ans, thresholds, Trace())
     assert shape.scene is not None and shape.scene.entity_id == "scene.movie_night"
     assert shape.condition_domain == "lock"
 
 
 def test_interpret_ignores_scene_below_confidence(home, vocab, thresholds):
-    ans = _answers(home, vocab, **{
-        "scene": ChoiceA("Movie night", 0.4, {"Movie night": 0.4, "Goodnight": 0.35, "none": 0.25}),
-    })
+    ans = _answers(
+        home,
+        vocab,
+        **{
+            "scene": ChoiceA(
+                "Movie night", 0.4, {"Movie night": 0.4, "Goodnight": 0.35, "none": 0.25}
+            ),
+        },
+    )
     assert interpret_round1(home, vocab, ans, thresholds, Trace()).scene is None
 
 

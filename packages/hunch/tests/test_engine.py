@@ -1,4 +1,3 @@
-
 from hunch.client import DecisionBackendError, FakeDecisionClient
 from hunch.config import EngineConfig
 from hunch.engine import Engine
@@ -36,15 +35,22 @@ def _scripted(round1: dict, round2: dict | None = None, device: dict | None = No
 
 
 async def test_collective_downstairs_resolves_in_one_round(home, vocab, config):
-    client, calls = _scripted({
-        "verb:turn_off": NoulA(0.95), "floor:downstairs": NoulA(0.9),
-        "domain:light": NoulA(0.9), "flag:collective": NoulA(0.9),
-    })
+    client, calls = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "floor:downstairs": NoulA(0.9),
+            "domain:light": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+        }
+    )
     r = await Engine(client, vocab, config).decide(home, "turn off the downstairs lights")
     assert isinstance(r, Resolved)
     assert {e.entity_id for e in r.actions[0].targets} == {
-        "light.kitchen_ceiling", "light.kitchen_counter", "light.living_main",
-        "light.reading_lamp", "light.hallway",
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+        "light.living_main",
+        "light.reading_lamp",
+        "light.hallway",
     }
     assert calls["n"] == 1
 
@@ -52,8 +58,10 @@ async def test_collective_downstairs_resolves_in_one_round(home, vocab, config):
 async def test_exception_uses_second_round(home, vocab, config):
     client, calls = _scripted(
         {
-            "verb:turn_off": NoulA(0.95), "area:kitchen": NoulA(0.9),
-            "flag:collective": NoulA(0.9), "flag:has_exception": NoulA(0.85),
+            "verb:turn_off": NoulA(0.95),
+            "area:kitchen": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+            "flag:has_exception": NoulA(0.85),
         },
         {"exclude:turn_off:switch.fridge": NoulA(0.93)},
     )
@@ -62,7 +70,8 @@ async def test_exception_uses_second_round(home, vocab, config):
     )
     assert isinstance(r, Resolved)
     assert {e.entity_id for e in r.actions[0].targets} == {
-        "light.kitchen_ceiling", "light.kitchen_counter",
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
     }
     assert calls["n"] == 2
     assert "entities" not in client.calls[0][0] and "candidates" in client.calls[1][0]
@@ -71,8 +80,10 @@ async def test_exception_uses_second_round(home, vocab, config):
 async def test_singular_uses_choice(home, vocab, config):
     client, _ = _scripted(
         {
-            "verb:turn_on": NoulA(0.9), "area:living": NoulA(0.85),
-            "domain:light": NoulA(0.8), "flag:collective": NoulA(0.1),
+            "verb:turn_on": NoulA(0.9),
+            "area:living": NoulA(0.85),
+            "domain:light": NoulA(0.8),
+            "flag:collective": NoulA(0.1),
         },
         {"target:turn_on": ChoiceA("Reading lamp", 0.9, {})},
     )
@@ -94,10 +105,14 @@ async def test_no_intent_escalates(home, vocab, config):
 
 
 async def test_scene_short_circuits(home, vocab, config):
-    client, calls = _scripted({
-        "verb:activate": NoulA(0.9),
-        "scene": ChoiceA("Movie night", 0.9, {"Movie night": 0.9, "Goodnight": 0.05, "none": 0.05}),
-    })
+    client, calls = _scripted(
+        {
+            "verb:activate": NoulA(0.9),
+            "scene": ChoiceA(
+                "Movie night", 0.9, {"Movie night": 0.9, "Goodnight": 0.05, "none": 0.05}
+            ),
+        }
+    )
     r = await Engine(client, vocab, config).decide(home, "movie night please")
     assert isinstance(r, Resolved) and r.actions[0].targets[0].entity_id == "scene.movie_night"
     assert calls["n"] == 1
@@ -105,9 +120,13 @@ async def test_scene_short_circuits(home, vocab, config):
 
 async def test_clarify_when_scope_too_wide(home, vocab):
     cfg = EngineConfig(model="jev-1.13.0", scope_cap=2, device_round=False)
-    client, _ = _scripted({
-        "verb:turn_on": NoulA(0.9), "flag:collective": NoulA(0.1), "domain:light": NoulA(0.3),
-    })
+    client, _ = _scripted(
+        {
+            "verb:turn_on": NoulA(0.9),
+            "flag:collective": NoulA(0.1),
+            "domain:light": NoulA(0.3),
+        }
+    )
     r = await Engine(client, vocab, cfg).decide(home, "turn on the light")
     assert isinstance(r, NeedsClarification) and r.question_key == "which_area"
 
@@ -134,7 +153,8 @@ async def test_device_round_offers_devices_not_entities(home, vocab):
     r = await Engine(client, vocab, cfg).decide(home, "turn on both bedside lamps")
     assert isinstance(r, Resolved)
     assert {e.entity_id for e in r.actions[0].targets} == {
-        "light.bedroom_left", "light.bedroom_right",
+        "light.bedroom_left",
+        "light.bedroom_right",
     }
     options = client.calls[1][1]["device_round"].options
     assert options.count("Bedside lamps") == 1
@@ -155,10 +175,14 @@ async def test_device_round_no_match_escalates(home, vocab):
 
 async def test_verb_with_no_candidates_is_dropped_not_fatal(home, vocab, config):
     # The home has no alarm panel, so verb:arm can never apply; turn_off still resolves.
-    client, _ = _scripted({
-        "verb:turn_off": NoulA(0.95), "verb:arm": NoulA(0.9),
-        "area:hallway": NoulA(0.9), "flag:collective": NoulA(0.9),
-    })
+    client, _ = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "verb:arm": NoulA(0.9),
+            "area:hallway": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+        }
+    )
     r = await Engine(client, vocab, config).decide(home, "turn off the hallway and arm the alarm")
     assert isinstance(r, Resolved)
     assert [a.verb.name for a in r.actions] == ["turn_off"]
@@ -174,10 +198,14 @@ async def test_scope_escalates_only_when_every_verb_is_dropped(home, vocab, conf
 
 async def test_round_budget_escalates_when_round2_does_not_fit(home, vocab):
     cfg = EngineConfig(model="jev-1.13.0", max_rounds=1)
-    client, calls = _scripted({
-        "verb:turn_on": NoulA(0.9), "area:living": NoulA(0.85),
-        "domain:light": NoulA(0.8), "flag:collective": NoulA(0.1),
-    })
+    client, calls = _scripted(
+        {
+            "verb:turn_on": NoulA(0.9),
+            "area:living": NoulA(0.85),
+            "domain:light": NoulA(0.8),
+            "flag:collective": NoulA(0.1),
+        }
+    )
     r = await Engine(client, vocab, cfg).decide(home, "turn on the lamp in the lounge")
     assert isinstance(r, Escalate) and r.reason == "round_budget"
     assert calls["n"] == 1
@@ -185,11 +213,15 @@ async def test_round_budget_escalates_when_round2_does_not_fit(home, vocab):
 
 async def test_unresolvable_condition_is_noted(home, vocab, config):
     # The condition is about an alarm panel; the home has none, so nothing can express it.
-    client, _ = _scripted({
-        "verb:turn_off": NoulA(0.95), "area:hallway": NoulA(0.9), "flag:collective": NoulA(0.9),
-        "flag:has_condition": NoulA(0.9),
-        "condition_domain": ChoiceA("none", 0.9, {}),
-    })
+    client, _ = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "area:hallway": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+            "flag:has_condition": NoulA(0.9),
+            "condition_domain": ChoiceA("none", 0.9, {}),
+        }
+    )
     r = await Engine(client, vocab, config).decide(home, "turn the hallway off if nobody is home")
     assert "condition:unresolvable" in r.trace.notes
 
@@ -198,6 +230,7 @@ async def test_backend_error_escalates(home, vocab, config):
     class Boom:
         async def ask(self, state, questions):
             raise DecisionBackendError("decision_backend_unavailable")
+
     r = await Engine(Boom(), vocab, config).decide(home, "turn off the lights")
     assert isinstance(r, Escalate) and r.reason == "decision_backend_unavailable"
 
@@ -223,9 +256,13 @@ async def test_prompt_prechecks(home, vocab, config):
 
 
 async def test_trace_travels_with_result(home, vocab, config):
-    client, _ = _scripted({
-        "verb:turn_off": NoulA(0.95), "area:hallway": NoulA(0.9), "flag:collective": NoulA(0.9),
-    })
+    client, _ = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "area:hallway": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+        }
+    )
     r = await Engine(client, vocab, config).decide(home, "hallway off")
     assert r.trace.models == ["fake"]
     assert any(e.question_id == "verb:turn_off" for e in r.trace.entries)
@@ -233,11 +270,16 @@ async def test_trace_travels_with_result(home, vocab, config):
 
 # --- end-to-end paths through the whole pipeline -------------------------------------------
 
+
 async def test_confirm_tier_verb_ends_in_needs_confirmation(home, vocab, config):
-    client, calls = _scripted({
-        "verb:lock": NoulA(0.95), "area:hallway": NoulA(0.9), "domain:lock": NoulA(0.9),
-        "flag:collective": NoulA(0.9),
-    })
+    client, calls = _scripted(
+        {
+            "verb:lock": NoulA(0.95),
+            "area:hallway": NoulA(0.9),
+            "domain:lock": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+        }
+    )
     r = await Engine(client, vocab, config).decide(home, "lock the front door")
     assert isinstance(r, NeedsConfirmation) and r.reason == "risk:confirm"
     assert [e.entity_id for e in r.actions[0].targets] == ["lock.front_door"]
@@ -246,10 +288,14 @@ async def test_confirm_tier_verb_ends_in_needs_confirmation(home, vocab, config)
 
 async def test_blast_radius_ends_in_needs_confirmation(home, vocab):
     cfg = EngineConfig(model="jev-1.13.0", max_silent_targets=2)
-    client, _ = _scripted({
-        "verb:turn_off": NoulA(0.95), "floor:downstairs": NoulA(0.9),
-        "domain:light": NoulA(0.9), "flag:collective": NoulA(0.95),
-    })
+    client, _ = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "floor:downstairs": NoulA(0.9),
+            "domain:light": NoulA(0.9),
+            "flag:collective": NoulA(0.95),
+        }
+    )
     r = await Engine(client, vocab, cfg).decide(home, "turn everything off")
     assert isinstance(r, NeedsConfirmation) and r.reason == "blast_radius"
     assert len(r.actions[0].targets) > 2
@@ -258,8 +304,10 @@ async def test_blast_radius_ends_in_needs_confirmation(home, vocab):
 async def test_param_verb_resolves_with_params_populated(home, vocab, config):
     client, calls = _scripted(
         {
-            "verb:set_brightness": NoulA(0.9), "area:office": NoulA(0.9),
-            "domain:light": NoulA(0.9), "flag:collective": NoulA(0.1),
+            "verb:set_brightness": NoulA(0.9),
+            "area:office": NoulA(0.9),
+            "domain:light": NoulA(0.9),
+            "flag:collective": NoulA(0.1),
         },
         {"param:set_brightness": ScoreA(3.0, 0.9, {})},
     )
@@ -273,7 +321,8 @@ async def test_param_verb_resolves_with_params_populated(home, vocab, config):
 async def test_condition_rides_along_on_the_result(home, vocab, config):
     client, _ = _scripted(
         {
-            "verb:lock": NoulA(0.95), "domain:lock": NoulA(0.9),
+            "verb:lock": NoulA(0.95),
+            "domain:lock": NoulA(0.9),
             "flag:has_condition": NoulA(0.9),
             "condition_domain": ChoiceA("cover", 0.9, {"cover": 0.9}),
         },
@@ -292,21 +341,29 @@ async def test_condition_rides_along_on_the_result(home, vocab, config):
 
 
 async def test_destructive_flag_escalates(home, vocab, config):
-    client, _ = _scripted({
-        "verb:turn_off": NoulA(0.9), "area:hallway": NoulA(0.9),
-        "flag:is_destructive": NoulA(0.85),
-    })
+    client, _ = _scripted(
+        {
+            "verb:turn_off": NoulA(0.9),
+            "area:hallway": NoulA(0.9),
+            "flag:is_destructive": NoulA(0.85),
+        }
+    )
     r = await Engine(client, vocab, config).decide(home, "disable the smoke alarm")
     assert isinstance(r, Escalate) and r.reason == "destructive" and r.partial == ()
 
 
 async def test_multi_verb_request_yields_one_action_per_verb(home, vocab, config):
-    client, _ = _scripted({
-        "verb:turn_off": NoulA(0.95), "verb:close": NoulA(0.95),
-        "area:kitchen": NoulA(0.9), "area:living": NoulA(0.9),
-        "domain:light": NoulA(0.9), "domain:cover": NoulA(0.9),
-        "flag:collective": NoulA(0.9),
-    })
+    client, _ = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "verb:close": NoulA(0.95),
+            "area:kitchen": NoulA(0.9),
+            "area:living": NoulA(0.9),
+            "domain:light": NoulA(0.9),
+            "domain:cover": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+        }
+    )
     r = await Engine(client, vocab, config).decide(
         home, "turn off the kitchen lights and close the blinds"
     )

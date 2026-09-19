@@ -9,13 +9,15 @@ from hunch.vocabulary import DEFAULT_VOCABULARY as V
 
 def _shape(verbs, flags=None, verb_probs=None, condition_domain=None):
     flag_names = (
-        "collective", "has_exception", "has_condition", "has_timing", "is_destructive",
+        "collective",
+        "has_exception",
+        "has_condition",
+        "has_timing",
+        "is_destructive",
     )
     f = {k: 0.05 for k in flag_names}
     f.update(flags or {})
-    shape = Shape(
-        tuple(V.by_name(v) for v in verbs), (), (), {}, {}, f, None, condition_domain
-    )
+    shape = Shape(tuple(V.by_name(v) for v in verbs), (), (), {}, {}, f, None, condition_domain)
     return shape, (verb_probs or {})
 
 
@@ -53,10 +55,14 @@ def test_exceptions_drop_excluded_entities(home, config):
     shape, vp = _shape(["turn_off"], {"collective": 0.9, "has_exception": 0.85}, {"turn_off": 0.95})
     cands = _ents(home, "light.kitchen_ceiling", "switch.fridge")
     plan = plan_round2(home, shape, {"turn_off": cands}, config.thresholds, 60)
-    r2 = Answers("m", {
-        "exclude:turn_off:light.kitchen_ceiling": NoulA(0.05),
-        "exclude:turn_off:switch.fridge": NoulA(0.92),
-    }, None)
+    r2 = Answers(
+        "m",
+        {
+            "exclude:turn_off:light.kitchen_ceiling": NoulA(0.05),
+            "exclude:turn_off:switch.fridge": NoulA(0.92),
+        },
+        None,
+    )
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
     assert [e.entity_id for e in r.actions[0].targets] == ["light.kitchen_ceiling"]
@@ -68,9 +74,7 @@ def test_singular_picks_choice_target(home, config):
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
     plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds, 60)
-    choice = ChoiceA(
-        "Reading lamp", 0.88, {"Reading lamp": 0.88, "Living room main": 0.12}
-    )
+    choice = ChoiceA("Reading lamp", 0.88, {"Reading lamp": 0.88, "Living room main": 0.12})
     r2 = Answers("m", {"target:turn_on": choice}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
@@ -119,9 +123,7 @@ def test_low_confidence_escalates_with_partial(home, config):
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
     plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds, 60)
-    choice = ChoiceA(
-        "Reading lamp", 0.4, {"Reading lamp": 0.4, "Living room main": 0.35}
-    )
+    choice = ChoiceA("Reading lamp", 0.4, {"Reading lamp": 0.4, "Living room main": 0.35})
     r2 = Answers("m", {"target:turn_on": choice}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Escalate) and r.reason == "low_confidence"
@@ -140,15 +142,21 @@ def test_destructive_flag_escalates_before_anything(home, config):
 def test_condition_is_attached_not_evaluated(home, config):
     # "if the blinds are closed, lock the front door"
     shape, vp = _shape(
-        ["lock"], {"collective": 0.9, "has_condition": 0.8}, {"lock": 0.9},
+        ["lock"],
+        {"collective": 0.9, "has_condition": 0.8},
+        {"lock": 0.9},
         condition_domain="cover",
     )
     cands = {"lock": _ents(home, "lock.front_door")}
     plan = plan_round2(home, shape, cands, config.thresholds, 60)
-    r2 = Answers("m", {
-        "cond_subject": ChoiceA("Blinds", 0.9, {"Blinds": 0.9}),
-        "cond_state": ChoiceA("closed", 0.85, {"closed": 0.85, "open": 0.15}),
-    }, None)
+    r2 = Answers(
+        "m",
+        {
+            "cond_subject": ChoiceA("Blinds", 0.9, {"Blinds": 0.9}),
+            "cond_state": ChoiceA("closed", 0.85, {"closed": 0.85, "open": 0.15}),
+        },
+        None,
+    )
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     # lock is CONFIRM tier, so we get NeedsConfirmation, but the condition rides along
     assert isinstance(r, NeedsConfirmation) and r.reason == "risk:confirm"
@@ -192,8 +200,11 @@ def test_dead_verb_does_not_drag_down_other_verbs_confidence(home, config):
 def test_verb_prob_fails_closed_when_round1_decision_is_missing(home, config):
     shape, _ = _shape(["turn_off"], {"collective": 0.9})
     plan = plan_round2(
-        home, shape, {"turn_off": _ents(home, "light.hallway")},
-        config.thresholds, config.scope_cap,
+        home,
+        shape,
+        {"turn_off": _ents(home, "light.hallway")},
+        config.thresholds,
+        config.scope_cap,
     )
     r = resolve(shape, plan, None, config, Trace())  # no verb decision recorded
     assert isinstance(r, Escalate) and r.reason == "low_confidence"

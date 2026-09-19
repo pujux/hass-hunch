@@ -69,11 +69,19 @@ def _answer_dict(a: Answer) -> JSON:
     if isinstance(a, NoulA):
         return {"type": "noul", "probability": a.probability}
     if isinstance(a, ChoiceA):
-        return {"type": "choice", "choice": a.choice, "confidence": a.confidence,
-                "probabilities": dict(a.probabilities)}
+        return {
+            "type": "choice",
+            "choice": a.choice,
+            "confidence": a.confidence,
+            "probabilities": dict(a.probabilities),
+        }
     if isinstance(a, ScoreA):
-        return {"type": "score", "score": a.score, "confidence": a.confidence,
-                "probabilities": {str(k): v for k, v in a.probabilities.items()}}
+        return {
+            "type": "score",
+            "score": a.score,
+            "confidence": a.confidence,
+            "probabilities": {str(k): v for k, v in a.probabilities.items()},
+        }
     raise TypeError(type(a))
 
 
@@ -108,7 +116,7 @@ class NeedsConfirmation:
 
 @dataclass(frozen=True)
 class NeedsClarification:
-    question_key: str            # "which_area" | "which_device"
+    question_key: str  # "which_area" | "which_device"
     candidates: tuple[Entity, ...]
     trace: Trace
 

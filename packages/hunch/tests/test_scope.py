@@ -17,6 +17,7 @@ def _shape(
     home, verbs=("turn_off",), areas=(), domains=(), area_probs=None, domain_probs=None, vocab=None
 ):
     from hunch.vocabulary import DEFAULT_VOCABULARY
+
     vocab = vocab or DEFAULT_VOCABULARY
     ap = {a.area_id: 0.05 for a in home.areas}
     ap.update(area_probs or {})
@@ -29,8 +30,13 @@ def _shape(
         area_probs=ap,
         domain_probs=dp,
         flags={
-            f: 0.05 for f in (
-                "collective", "has_exception", "has_condition", "has_timing", "is_destructive"
+            f: 0.05
+            for f in (
+                "collective",
+                "has_exception",
+                "has_condition",
+                "has_timing",
+                "is_destructive",
             )
         },
         scene=None,
@@ -41,8 +47,13 @@ def _shape(
 def test_strict_intersects_verb_area_domain(home, vocab):
     shape = _shape(home, areas=("kitchen", "living", "hallway"), domains=("light",))
     ids = {e.entity_id for e in strict_candidates(home, vocab.by_name("turn_off"), shape)}
-    assert ids == {"light.kitchen_ceiling", "light.kitchen_counter", "light.living_main",
-                   "light.reading_lamp", "light.hallway"}
+    assert ids == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+        "light.living_main",
+        "light.reading_lamp",
+        "light.hallway",
+    }
 
 
 def test_strict_respects_verb_applicability(home, vocab):

@@ -53,7 +53,8 @@ def _filter(
     entities: tuple[Entity, ...], areas: tuple[str, ...], domains: tuple[str, ...]
 ) -> tuple[Entity, ...]:
     return tuple(
-        e for e in entities
+        e
+        for e in entities
         if (not areas or e.area_id in areas) and (not domains or e.domain in domains)
     )
 

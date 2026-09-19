@@ -64,7 +64,10 @@ def test_trace_records_answers_decisions_and_models():
         "answer": {"type": "noul", "probability": 0.93},
     }
     assert d["decisions"][1] == {
-        "name": "flag:collective", "value": 0.4, "threshold": 0.65, "passed": False,
+        "name": "flag:collective",
+        "value": 0.4,
+        "threshold": 0.65,
+        "passed": False,
     }
     assert d["input_tokens"] == [300]
     json.dumps(d)  # must be JSON-serialisable
@@ -80,8 +83,17 @@ def test_public_api_exports_the_documented_names():
     import hunch
 
     expected = {
-        "verbs_for_domain", "Answers", "NoulA", "ChoiceA", "ScoreA",
-        "NoulQ", "ChoiceQ", "ScoreQ", "Question", "Answer", "JSON",
+        "verbs_for_domain",
+        "Answers",
+        "NoulA",
+        "ChoiceA",
+        "ScoreA",
+        "NoulQ",
+        "ChoiceQ",
+        "ScoreQ",
+        "Question",
+        "Answer",
+        "JSON",
     }
     assert expected <= set(hunch.__all__)
     for name in hunch.__all__:

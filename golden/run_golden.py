@@ -95,6 +95,7 @@ async def main() -> int:
         help="golden/homes/<name>.json export; default: the test fixture home",
     )
     ap.add_argument("--corpus", default=None, help="corpus YAML; default golden/corpus.yaml")
+    ap.add_argument("--phrasebook", default="en", choices=("en", "de"), help="question language")
     ap.add_argument("--verbose", action="store_true", help="dump r.trace.to_dict() for FAIL rows")
     args = ap.parse_args()
 
@@ -113,7 +114,11 @@ async def main() -> int:
     else:
         home = load_home()
     client = TypeSafeDecisionClient(model=args.model, timeout_ms=5000)
-    engine = Engine(client, DEFAULT_VOCABULARY, EngineConfig(model=args.model))
+    from hunch import PHRASEBOOKS
+
+    engine = Engine(
+        client, DEFAULT_VOCABULARY, EngineConfig(model=args.model), PHRASEBOOKS[args.phrasebook]
+    )
 
     ok, latencies, tokens = 0, [], 0
     try:

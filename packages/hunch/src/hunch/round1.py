@@ -7,37 +7,12 @@ from dataclasses import dataclass
 
 from hunch.config import Thresholds
 from hunch.model import Area, Entity, HomeModel
+from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
 from hunch.resolution import Trace
 from hunch.vocabulary import Verb, Vocabulary
 
 FLAGS = ("collective", "has_exception", "has_condition", "has_timing", "is_destructive")
-
-_FLAG_INSTRUCTIONS = {
-    "collective": (
-        "Does the request target every matching device in its scope for at least one of its "
-        "actions — signaled by a plain plural (e.g. 'the kitchen lights'), or a word like "
-        "'all', 'both' or 'every' — rather than exactly one specific device?"
-    ),
-    "has_exception": (
-        "Does the request exclude something, e.g. 'except', 'but not', 'apart from', 'other than'?"
-    ),
-    "has_condition": (
-        "Does the request make the action depend on a condition, "
-        "e.g. 'if', 'when', 'unless', 'only if'?"
-    ),
-    "has_timing": (
-        "Does the request ask to delay, schedule, sequence or time a device action, "
-        "e.g. 'in ten minutes', 'after', 'later', 'then' — as opposed to merely mentioning "
-        "a future time in a request that is not about controlling a device (such as asking "
-        "about tomorrow's weather)?"
-    ),
-    "is_destructive": (
-        "Would fulfilling the request cause irreversible, unsafe or security-relevant effects "
-        "beyond an ordinary lock, unlock, arm or disarm action (which are handled separately) — "
-        "for example, disabling safety equipment, or leaving the home open to unauthorized entry?"
-    ),
-}
 
 
 def _label(area: Area) -> str:
@@ -54,28 +29,30 @@ def build_round1_state(home: HomeModel, prompt: str) -> JSON:
     }
 
 
-def build_round1_questions(home: HomeModel, vocab: Vocabulary) -> dict[str, Question]:
+def build_round1_questions(
+    home: HomeModel, vocab: Vocabulary, pb: Phrasebook = EN
+) -> dict[str, Question]:
     qs: dict[str, Question] = {}
     for v in vocab.verbs:
-        qs[f"verb:{v.name}"] = NoulQ(f"Does the request ask to {v.phrasing}?")
-    for f in home.floors:
-        qs[f"floor:{f.floor_id}"] = NoulQ(
-            f"Does the request refer to the floor '{f.name}' or to all of it?"
+        qs[f"verb:{v.name}"] = NoulQ(
+            pb.verb_question.format(phrasing=pb.phrasing_for(v.name, v.phrasing))
         )
+    for f in home.floors:
+        qs[f"floor:{f.floor_id}"] = NoulQ(pb.floor_question.format(name=f.name))
     for a in home.areas:
-        qs[f"area:{a.area_id}"] = NoulQ(f"Does the request refer to the area '{_label(a)}'?")
+        qs[f"area:{a.area_id}"] = NoulQ(pb.area_question.format(label=_label(a)))
     for d in home.domains:
-        qs[f"domain:{d}"] = NoulQ(f"Does the request involve devices of type '{d}'?")
+        qs[f"domain:{d}"] = NoulQ(pb.domain_question.format(domain=pb.domain_label(d)))
     for flag in FLAGS:
-        qs[f"flag:{flag}"] = NoulQ(_FLAG_INSTRUCTIONS[flag])
+        qs[f"flag:{flag}"] = NoulQ(pb.flags[flag])
     if home.scenes:
         qs["scene"] = ChoiceQ(
-            "Which scene or script does the request name, if any?",
+            pb.scene_question,
             tuple(s.name for s in home.scenes) + ("none",),
         )
     if home.domains:
         qs["condition_domain"] = ChoiceQ(
-            "If the request contains a condition, which device type is the condition about?",
+            pb.condition_domain_question,
             tuple(home.domains) + ("none",),
         )
     return qs
@@ -102,7 +79,8 @@ def interpret_round1(
     trace.record(1, answers)
 
     fired_verbs = tuple(
-        v for v in vocab.verbs
+        v
+        for v in vocab.verbs
         if trace.decide(f"verb:{v.name}", answers.noul(f"verb:{v.name}"), thresholds.verb_fire)
     )
 
@@ -123,7 +101,8 @@ def interpret_round1(
 
     domain_probs = {d: answers.noul(f"domain:{d}") for d in home.domains}
     scope_domains = tuple(
-        d for d in home.domains
+        d
+        for d in home.domains
         if trace.decide(f"domain:{d}", domain_probs[d], thresholds.scope_fire)
     )
 

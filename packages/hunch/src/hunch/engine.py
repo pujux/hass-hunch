@@ -5,6 +5,7 @@ from __future__ import annotations
 from hunch.client import DecisionBackendError, DecisionClient
 from hunch.config import EngineConfig
 from hunch.model import Entity, HomeModel
+from hunch.phrasing import EN, Phrasebook
 from hunch.questions import ChoiceQ, Question
 from hunch.resolution import Escalate, NeedsClarification, Resolution, Trace
 from hunch.resolver import resolve
@@ -22,11 +23,16 @@ from hunch.vocabulary import Vocabulary
 
 class Engine:
     def __init__(
-        self, client: DecisionClient, vocabulary: Vocabulary, config: EngineConfig
+        self,
+        client: DecisionClient,
+        vocabulary: Vocabulary,
+        config: EngineConfig,
+        phrasebook: Phrasebook = EN,
     ) -> None:
         self._client = client
         self._vocab = vocabulary
         self._config = config
+        self._pb = phrasebook
 
     async def decide(self, home: HomeModel, prompt: str) -> Resolution:
         """Decide what `prompt` asks of `home`. Never executes, never raises on backend trouble.
@@ -76,7 +82,7 @@ class Engine:
         rounds = 0
 
         answers = await self._client.ask(
-            build_round1_state(home, prompt), build_round1_questions(home, self._vocab)
+            build_round1_state(home, prompt), build_round1_questions(home, self._vocab, self._pb)
         )
         rounds += 1
         shape = interpret_round1(home, self._vocab, answers, th, trace)
@@ -102,8 +108,11 @@ class Engine:
                 trace.note(f"dropped:{verb.name}:scope")
             elif isinstance(result, DeviceRound):
                 if rounds >= self._config.max_rounds:
-                    return NeedsClarification("which_device", result.entities, trace) \
-                        if self._config.supports_clarification else Escalate("scope", (), trace)
+                    return (
+                        NeedsClarification("which_device", result.entities, trace)
+                        if self._config.supports_clarification
+                        else Escalate("scope", (), trace)
+                    )
                 chosen = await self._device_round(prompt, result.entities, trace)
                 rounds += 1
                 if chosen:
@@ -117,7 +126,7 @@ class Engine:
         if shape.flag("has_condition") >= th.flag and not plan.condition_candidates:
             # The request carried a condition but nothing in scope can express it.
             trace.note("condition:unresolvable")
-        questions: dict[str, Question] = build_round2_questions(shape, plan, home)
+        questions: dict[str, Question] = build_round2_questions(shape, plan, home, self._pb)
         round2 = None
         if questions:
             if rounds >= self._config.max_rounds:
@@ -132,7 +141,7 @@ class Engine:
     ) -> tuple[Entity, ...]:
         opts = device_options(entities)
         q = ChoiceQ(
-            "Which device does the request refer to?",
+            self._pb.device_question,
             tuple(o.label for o in opts) + (NO_MATCH,),
         )
         answers = await self._client.ask(

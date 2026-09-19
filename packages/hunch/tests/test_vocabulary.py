@@ -12,8 +12,18 @@ from hunch.vocabulary import (
 
 def test_default_vocabulary_has_expected_core_verbs():
     names = set(DEFAULT_VOCABULARY.names)
-    assert {"turn_on", "turn_off", "set_brightness", "open", "close", "lock", "unlock",
-            "set_temperature", "activate", "query_state"} <= names
+    assert {
+        "turn_on",
+        "turn_off",
+        "set_brightness",
+        "open",
+        "close",
+        "lock",
+        "unlock",
+        "set_temperature",
+        "activate",
+        "query_state",
+    } <= names
 
 
 def test_lock_and_unlock_are_confirm_tier():
@@ -52,8 +62,14 @@ def test_by_name_raises_on_unknown():
 
 
 def test_vocabulary_extension_keeps_frozen_semantics():
-    extra = Verb("party", frozenset({"light"}), ChoiceSpec("mode", ("disco", "chill")),
-                 Risk.SAFE, "script.party", "start a party mode")
+    extra = Verb(
+        "party",
+        frozenset({"light"}),
+        ChoiceSpec("mode", ("disco", "chill")),
+        Risk.SAFE,
+        "script.party",
+        "start a party mode",
+    )
     v2 = Vocabulary(DEFAULT_VOCABULARY.verbs + (extra,))
     assert v2.by_name("party").intent == "script.party"
     assert "party" not in DEFAULT_VOCABULARY.names

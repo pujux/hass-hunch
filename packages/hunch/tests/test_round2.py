@@ -147,8 +147,11 @@ def test_device_options_dedupe_labels(home):
 
 def test_condition_candidates_are_scoped_to_the_fired_areas(home, thresholds):
     shape = _shape(
-        home, ["arm"], {"collective": 0.9, "has_condition": 0.8},
-        condition_domain="light", areas=("kitchen",),
+        home,
+        ["arm"],
+        {"collective": 0.9, "has_condition": 0.8},
+        condition_domain="light",
+        areas=("kitchen",),
     )
     plan = plan_round2(home, shape, {"arm": ()}, thresholds, 60)
     qs = build_round2_questions(shape, plan, home)
