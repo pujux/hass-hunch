@@ -21,6 +21,7 @@ from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec
 
 def score_to_value(spec: ScoreSpec, score: float) -> float:
     idx = score - 1.0  # Jev scores are 1-based over the rubric levels
+    idx = max(0.0, min(float(len(spec.values) - 1), idx))  # saturate both ends
     lo = max(0, min(len(spec.values) - 1, int(idx)))
     hi = min(len(spec.values) - 1, lo + 1)
     frac = idx - lo

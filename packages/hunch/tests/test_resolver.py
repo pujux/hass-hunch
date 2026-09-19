@@ -36,6 +36,8 @@ def test_score_to_value_interpolates():
     assert score_to_value(spec, 1.0) == 0
     assert score_to_value(spec, 6.0) == 100
     assert score_to_value(spec, 3.5) == 37.5
+    assert score_to_value(spec, 0.5) == 0
+    assert score_to_value(spec, 7.0) == 100
 
 
 def test_collective_resolves_without_round2(home, config):
