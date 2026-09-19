@@ -183,31 +183,42 @@ class Condition:
 @dataclass(frozen=True)
 class Thresholds:
     verb_fire: float = 0.7
-    scope_fire: float = 0.6        # area / floor / domain Nouls
-    collective: float = 0.65
+    scope_fire: float = 0.7        # floor / area / domain Nouls
+    collective: float = 0.5
     target_choice_conf: float = 0.7
     auto_execute: float = 0.75
     confirm_band: float = 0.5      # [confirm_band, auto_execute) → NeedsConfirmation
+    flag: float = 0.6              # has_exception / has_condition / has_timing / is_destructive
 
 @dataclass(frozen=True)
 class EngineConfig:
     model: str                     # pinned Jev model id, e.g. "jev-1.13.0"
     thresholds: Thresholds = Thresholds()
-    max_rounds: int = 2
-    latency_budget_ms: int = 600
-    request_timeout_ms: int = 1500
+    max_rounds: int = 2            # device_round requires >= 3
     max_silent_targets: int = 20
     scope_cap: int = 60
     device_round: bool = False
     supports_clarification: bool = True
+    max_prompt_chars: int = 500    # longer prompts → Escalate("prompt_invalid")
 ```
+
+`scope_fire`, `collective` and `flag` carry the values from the 2026-09-19
+tuning pass (`golden/README.md`), not the first-principles guesses this spec
+originally listed.
+
+The engine has no timeout or latency setting of its own. The per-request
+timeout belongs to the client — `TypeSafeDecisionClient(timeout_ms=…)`,
+default 1500 — and latency is *measured* by the golden runner, not enforced by
+the engine in v1.
 
 `Resolution` is a union:
 
 - `Resolved(actions, condition, confidence, trace)`
 - `NeedsConfirmation(actions, condition, reason, trace)`
 - `NeedsClarification(question_key, candidates, trace)`
-- `Escalate(reason, partial, trace)`
+- `Escalate(reason, partial, trace)` — `reason` is one of `prompt_invalid`,
+  `timing`, `no_intent`, `destructive`, `low_confidence`, `scope`,
+  `round_budget`, `decision_backend_unavailable`
 
 **Confidence rule:** the overall confidence of an action is the **minimum** of
 the probabilities/confidences that contributed to it. No averaging; a confident
@@ -249,7 +260,6 @@ Questions, all in one `ask()`:
 | `collective` — "targets all matching devices rather than one specific one?" | Noul | 1 |
 | `has_exception` — "excludes something (except / but not / apart from)?" | Noul | 1 |
 | `has_condition` — "makes the action depend on a condition?" | Noul | 1 |
-| `is_query` — "asks about state rather than requesting a change?" | Noul | 1 |
 | `has_timing` — "involves a delay, schedule or sequence?" | Noul | 1 |
 | `is_destructive` — "would cause irreversible or unsafe effects?" | Noul | 1 |
 | Which scene/script? | Choice over scenes + `none` | 1 |
@@ -261,7 +271,8 @@ past ~100 questions.
 ### Step 2 — Interpret shape (code)
 
 - `has_timing` ≥ threshold → `Escalate("timing")`.
-- No verb fires and `is_query` low → `Escalate("no_intent")`.
+- No verb fires → `Escalate("no_intent")`. (`query_state` is an ordinary
+  verb with its own Noul; a state question fires it like any other.)
 - Scene Choice confident and a scene verb fired → targets = that scene; skip
   scoping and Round 2 for that verb.
 - Fired floors expand to their areas. `scope_areas` = fired areas ∪ expanded
@@ -321,9 +332,11 @@ only. Per fired verb:
 
 All Round 2 questions for all verbs go in **one** `ask()` call.
 
-`max_rounds` defaults to 2. The pipeline is structured as a list of rounds so
-additional rounds (e.g. the device round) are additions, not rewrites. The
-binding constraint is `latency_budget_ms`, not the round count.
+`max_rounds` defaults to 2, and a device round counts against it (so
+`device_round` requires `max_rounds >= 3`). The pipeline is structured as a
+list of rounds so additional rounds are additions, not rewrites. When Round 2
+is needed but the budget is spent, the turn ends in
+`Escalate("round_budget")`.
 
 ### Step 5 — Resolve
 

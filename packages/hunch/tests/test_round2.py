@@ -14,7 +14,6 @@ _FLAG_NAMES = (
     "collective",
     "has_exception",
     "has_condition",
-    "is_query",
     "has_timing",
     "is_destructive",
 )

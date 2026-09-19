@@ -30,8 +30,7 @@ def _shape(
         domain_probs=dp,
         flags={
             f: 0.05 for f in (
-                "collective", "has_exception", "has_condition", "is_query",
-                "has_timing", "is_destructive"
+                "collective", "has_exception", "has_condition", "has_timing", "is_destructive"
             )
         },
         scene=None,

@@ -16,7 +16,7 @@ class Thresholds:
     target_choice_conf: float = 0.7
     auto_execute: float = 0.75
     confirm_band: float = 0.5       # [confirm_band, auto_execute) -> NeedsConfirmation
-    flag: float = 0.6               # has_exception/condition/is_query/has_timing/is_destructive
+    flag: float = 0.6               # has_exception/has_condition/has_timing/is_destructive
 
 
 @dataclass(frozen=True)
@@ -24,8 +24,6 @@ class EngineConfig:
     model: str                      # pinned Jev model id, e.g. "jev-1.13.0"
     thresholds: Thresholds = field(default_factory=Thresholds)
     max_rounds: int = 2
-    latency_budget_ms: int = 600
-    request_timeout_ms: int = 1500
     max_silent_targets: int = 20
     scope_cap: int = 60
     device_round: bool = False

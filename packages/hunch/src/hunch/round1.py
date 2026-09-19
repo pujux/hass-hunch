@@ -11,7 +11,7 @@ from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
 from hunch.resolution import Trace
 from hunch.vocabulary import Verb, Vocabulary
 
-FLAGS = ("collective", "has_exception", "has_condition", "is_query", "has_timing", "is_destructive")
+FLAGS = ("collective", "has_exception", "has_condition", "has_timing", "is_destructive")
 
 _FLAG_INSTRUCTIONS = {
     "collective": (
@@ -25,10 +25,6 @@ _FLAG_INSTRUCTIONS = {
     "has_condition": (
         "Does the request make the action depend on a condition, "
         "e.g. 'if', 'when', 'unless', 'only if'?"
-    ),
-    "is_query": (
-        "Is the request asking about the current state of something, "
-        "rather than asking to change it?"
     ),
     "has_timing": (
         "Does the request ask to delay, schedule, sequence or time a device action, "

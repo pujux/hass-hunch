@@ -9,8 +9,7 @@ from hunch.vocabulary import DEFAULT_VOCABULARY as V
 
 def _shape(verbs, flags=None, verb_probs=None, condition_domain=None):
     flag_names = (
-        "collective", "has_exception", "has_condition",
-        "is_query", "has_timing", "is_destructive",
+        "collective", "has_exception", "has_condition", "has_timing", "is_destructive",
     )
     f = {k: 0.05 for k in flag_names}
     f.update(flags or {})
