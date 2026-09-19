@@ -95,10 +95,10 @@ def plan_round2(
     params: list[str] = []
     for verb in shape.fired_verbs:
         cands = per_verb.get(verb.name, ())
-        if verb.param is not None:
-            params.append(verb.name)
         if not cands:
             continue
+        if verb.param is not None:
+            params.append(verb.name)
         if collective and not has_exception:
             coll[verb.name] = cands
         elif collective:

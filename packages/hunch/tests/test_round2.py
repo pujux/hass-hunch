@@ -94,6 +94,13 @@ def test_param_question_uses_verb_spec(home, thresholds):
     assert qs["param:set_brightness"].levels == V.by_name("set_brightness").param.levels
 
 
+def test_param_verb_without_candidates_asks_no_param_question(home, thresholds):
+    shape = _shape(home, ["set_brightness"], {"collective": 0.9})
+    plan = plan_round2(home, shape, {"set_brightness": ()}, thresholds)
+    assert build_round2_questions(shape, plan, home) == {}
+    assert plan.params == ()
+
+
 def test_condition_questions_when_condition_domain_set(home, thresholds):
     shape = _shape(
         home, ["arm"], {"collective": 0.9, "has_condition": 0.8}, condition_domain="lock"
@@ -113,3 +120,4 @@ def test_round2_state_lists_only_relevant_candidates(home, thresholds):
     names = {c["name"] for c in state["candidates"]}
     assert names == {"Living room main", "Reading lamp"}
     assert {"aliases", "area", "device"} <= set(state["candidates"][0])
+    assert {c["area"] for c in state["candidates"]} == {"Living room"}
