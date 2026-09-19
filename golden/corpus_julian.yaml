@@ -1,0 +1,39 @@
+# German corpus for the "julian" export (golden/homes/julian.json). Expectations use real entity ids.
+- prompt: Mach das Licht im Arbeitszimmer aus
+  expect: {kind: resolved, verb: turn_off, targets: [light.arbeitszimmer_lichtschalter]}
+- prompt: Schalte alle Lichter unten aus
+  expect: {kind: resolved, verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+- prompt: Fahr die Rollos im Schlafzimmer runter
+  expect: {kind: resolved, verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}
+- prompt: Mach das Rollo in der Küche auf
+  expect: {kind: resolved, verb: open, targets: [cover.kuche_fenster_rollo]}
+- prompt: Rollos im Badezimmer oben halb runter
+  expect: {kind: resolved, verb: set_position, targets: [cover.badezimmer_oben_fenster_rollo_links, cover.badezimmer_oben_fenster_rollo_mitte, cover.badezimmer_oben_fenster_rollo_rechts]}
+- prompt: Mach die Spots in der Küche an
+  expect: {kind: resolved, verb: turn_on, targets: [light.kuche_spots]}
+- prompt: Deckenlampe im Wohnzimmer an
+  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_deckenlampe]}
+- prompt: Schalte den Fernseher im Wohnzimmer aus
+  expect: {kind: resolved, verb: turn_off, targets: [media_player.wohnzimmer_fernseher]}
+- prompt: Lüfter im Badezimmer unten einschalten
+  expect: {kind: resolved, verb: turn_on, targets: [fan.badezimmer_unten_lufter]}
+- prompt: Schalte die Beetbewässerung ein
+  expect: {kind: resolved, verb: turn_on, targets: [switch.balkon_beetbewasserung]}
+- prompt: Fernseher im Schlafzimmer leiser
+  expect: {kind: resolved, verb: set_volume, targets: [media_player.schlafzimmer_fernseher]}
+- prompt: Stell die Klimaanlage auf 22 Grad
+  expect: {kind: resolved, verb: set_temperature}
+- prompt: Wie warm ist es im Schlafzimmer?
+  expect: {kind: resolved, verb: query_state}
+- prompt: Ist das Fenster im Esszimmer offen?
+  expect: {kind: resolved, verb: query_state}
+- prompt: Mach alles aus außer dem Mini Kühlschrank
+  expect: {kind: confirm, verb: turn_off, reason: blast_radius}
+- prompt: Dachterrasse Rollo zu
+  expect: {kind: resolved, verb: close}
+- prompt: Starte Peter
+  expect: {kind: escalate, reason: no_intent}
+- prompt: Mach das Licht in zehn Minuten aus
+  expect: {kind: escalate, reason: timing}
+- prompt: Wie spät ist es?
+  expect: {kind: escalate, reason: no_intent}

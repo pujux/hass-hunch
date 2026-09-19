@@ -26,20 +26,35 @@ def test_call_refuses_anything_not_allowlisted():
 
     sock = Sock()
     hass = eh.HassWS(sock)
-    for forbidden in ("call_service", "config/entity_registry/update", "execute_script", "subscribe_events"):
+    for forbidden in (
+        "call_service",
+        "config/entity_registry/update",
+        "execute_script",
+        "subscribe_events",
+    ):
         with pytest.raises(eh.ReadOnlyViolation):
             asyncio.run(hass.call(forbidden))
     assert sock.sent == []
 
 
 def test_source_never_mentions_write_apis():
-    for needle in ("call_service", "/update", "/create", "/delete", "execute_script", "fire_event", "/api/services"):
+    for needle in (
+        "call_service",
+        "/update",
+        "/create",
+        "/delete",
+        "execute_script",
+        "fire_event",
+        "/api/services",
+    ):
         # allowed only inside the allowlist comment that names them as refused
         hits = [m.start() for m in re.finditer(re.escape(needle), SRC)]
         for h in hits:
-            line = SRC[: h].count("\n") + 1
+            line = SRC[:h].count("\n") + 1
             text = SRC.splitlines()[line - 1]
-            assert text.lstrip().startswith("#"), f"{needle!r} appears in code at line {line}: {text!r}"
+            assert text.lstrip().startswith("#"), (
+                f"{needle!r} appears in code at line {line}: {text!r}"
+            )
 
 
 def test_engine_package_never_touches_home_assistant():

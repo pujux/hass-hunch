@@ -76,8 +76,11 @@ def check(row, r) -> list[str]:
             problems.append(f"param {key}={vals} not in [{lo}, {hi}]")
     if "condition" in exp:
         c = getattr(r, "condition", None)
-        if c is None or c.subject.entity_id != exp["condition"]["subject"] \
-                or c.expected_state != exp["condition"]["state"]:
+        if (
+            c is None
+            or c.subject.entity_id != exp["condition"]["subject"]
+            or c.expected_state != exp["condition"]["state"]
+        ):
             problems.append(f"condition {c} != {exp['condition']}")
     return problems
 
@@ -86,6 +89,12 @@ async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="jev-1.13.0")
     ap.add_argument("--only", default=None)
+    ap.add_argument(
+        "--home",
+        default=None,
+        help="golden/homes/<name>.json export; default: the test fixture home",
+    )
+    ap.add_argument("--corpus", default=None, help="corpus YAML; default golden/corpus.yaml")
     ap.add_argument("--verbose", action="store_true", help="dump r.trace.to_dict() for FAIL rows")
     args = ap.parse_args()
 
@@ -94,10 +103,15 @@ async def main() -> int:
         print("TYPESAFE_API_KEY not set — create .env first", file=sys.stderr)
         return 2
 
-    rows = yaml.safe_load((ROOT / "golden/corpus.yaml").read_text())
+    rows = yaml.safe_load(pathlib.Path(args.corpus or ROOT / "golden/corpus.yaml").read_text())
     if args.only:
         rows = [r for r in rows if args.only in r["prompt"]]
-    home = load_home()
+    if args.home:
+        from hunch import home_from_export
+
+        home = home_from_export(json.loads(pathlib.Path(args.home).read_text()))
+    else:
+        home = load_home()
     client = TypeSafeDecisionClient(model=args.model, timeout_ms=5000)
     engine = Engine(client, DEFAULT_VOCABULARY, EngineConfig(model=args.model))
 

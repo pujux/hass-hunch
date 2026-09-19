@@ -91,6 +91,35 @@ def test_names_and_device_names_prefer_user_values():
     assert home.entity_by_id("sensor.yaml_temp").name == "Außentemperatur"
 
 
+def test_nameless_entity_falls_back_to_device_name_then_entity_id():
+    export = {
+        "devices": [{"id": "d", "name": "Stiegenlampe 1", "name_by_user": None, "area_id": None}],
+        "entities": [
+            {
+                "entity_id": "light.x_1",
+                "name": None,
+                "original_name": None,
+                "aliases": [],
+                "area_id": None,
+                "device_id": "d",
+            },
+            {
+                "entity_id": "light.x_2",
+                "name": None,
+                "original_name": None,
+                "aliases": [],
+                "area_id": None,
+                "device_id": None,
+            },
+        ],
+        "exposed": ["light.x_1", "light.x_2"],
+        "states": {},
+    }
+    home = home_from_export(export)
+    assert home.entity_by_id("light.x_1").name == "Stiegenlampe 1"
+    assert home.entity_by_id("light.x_2").name == "light.x_2"
+
+
 def test_verbs_state_and_scenes():
     home = home_from_export(EXPORT)
     assert {"turn_on", "turn_off", "set_brightness", "query_state"} <= home.entity_by_id(

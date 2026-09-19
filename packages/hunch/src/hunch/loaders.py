@@ -49,10 +49,16 @@ def home_from_export(
         st = states.get(entity_id, {})
         device = devices.get(reg.get("device_id") or "")
         domain = entity_id.split(".", 1)[0]
-        name = reg.get("name") or reg.get("original_name") or st.get("friendly_name") or entity_id
         device_name = None
         if device is not None:
             device_name = device.get("name_by_user") or device.get("name")
+        name = (
+            reg.get("name")
+            or reg.get("original_name")
+            or st.get("friendly_name")
+            or device_name
+            or entity_id
+        )
         entity = Entity(
             entity_id=entity_id,
             domain=domain,
