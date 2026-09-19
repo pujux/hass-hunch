@@ -124,7 +124,8 @@ class NeedsClarification:
 @dataclass(frozen=True)
 class Escalate:
     # reason: "timing" | "no_intent" | "destructive" | "low_confidence" | "scope"
-    #       | "round_budget" | "decision_backend_unavailable" | "prompt_invalid"
+    #       | "round_budget" | "condition" | "exception"
+    #       | "decision_backend_unavailable" | "prompt_invalid"
     reason: str
     partial: tuple[Action, ...]
     trace: Trace

@@ -87,7 +87,7 @@ async def test_singular_uses_choice(home, vocab, config):
         },
         {"target:turn_on": ChoiceA("Reading lamp", 0.9, {})},
     )
-    r = await Engine(client, vocab, config).decide(home, "turn on the lamp in the lounge")
+    r = await Engine(client, vocab, config).decide(home, "turn on the light in the lounge")
     assert isinstance(r, Resolved)
     assert [e.entity_id for e in r.actions[0].targets] == ["light.reading_lamp"]
 
@@ -138,7 +138,7 @@ async def test_device_round_when_enabled(home, vocab):
         {"target:turn_on": ChoiceA("Christmas tree", 0.9, {})},
         {"device_round": ChoiceA("Christmas tree", 0.9, {})},
     )
-    r = await Engine(client, vocab, cfg).decide(home, "turn on the christmas tree")
+    r = await Engine(client, vocab, cfg).decide(home, "turn on the festive thing")
     assert isinstance(r, Resolved) and r.actions[0].targets[0].entity_id == "light.christmas_tree"
     assert calls["n"] == 2  # round 1 + device round; single-option target needs no round 2
 
@@ -150,7 +150,7 @@ async def test_device_round_offers_devices_not_entities(home, vocab):
         None,
         {"device_round": ChoiceA("Bedside lamps", 0.9, {})},
     )
-    r = await Engine(client, vocab, cfg).decide(home, "turn on both bedside lamps")
+    r = await Engine(client, vocab, cfg).decide(home, "turn on both of them by the bed")
     assert isinstance(r, Resolved)
     assert {e.entity_id for e in r.actions[0].targets} == {
         "light.bedroom_left",
@@ -206,7 +206,7 @@ async def test_round_budget_escalates_when_round2_does_not_fit(home, vocab):
             "flag:collective": NoulA(0.1),
         }
     )
-    r = await Engine(client, vocab, cfg).decide(home, "turn on the lamp in the lounge")
+    r = await Engine(client, vocab, cfg).decide(home, "turn on the light in the lounge")
     assert isinstance(r, Escalate) and r.reason == "round_budget"
     assert calls["n"] == 1
 
@@ -373,3 +373,21 @@ async def test_multi_verb_request_yields_one_action_per_verb(home, vocab, config
     assert by_verb["close"] == {"cover.living_blinds"}
     assert "light.kitchen_ceiling" in by_verb["turn_off"]
     assert "switch.fridge" not in by_verb["turn_off"]
+
+
+async def test_scope_clarify_for_one_verb_does_not_abort_when_another_resolves(home, vocab):
+    # "Mach das Rollo in der Küche auf": `open` has one kitchen cover; a co-firing `turn_on` has
+    # nothing in scope, widens past the cap and would ask "which area?" — it must just be dropped.
+    cfg = EngineConfig(model="jev-1.13.0", scope_cap=2)
+    client, _ = _scripted(
+        {
+            "verb:open": NoulA(0.93),
+            "verb:turn_on": NoulA(0.73),
+            "area:living": NoulA(0.99),
+            "domain:cover": NoulA(0.96),
+        },
+    )
+    r = await Engine(client, vocab, cfg).decide(home, "open the blinds in the living room")
+    assert isinstance(r, Resolved)
+    assert [a.verb.name for a in r.actions] == ["open"]
+    assert "dropped:turn_on:scope" in r.trace.notes

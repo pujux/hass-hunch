@@ -10,7 +10,7 @@ from hunch.model import Area, Entity, HomeModel
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
 from hunch.resolution import Trace
-from hunch.vocabulary import Verb, Vocabulary
+from hunch.vocabulary import EXCLUSIVE_GROUPS, Verb, Vocabulary
 
 FLAGS = (
     "collective",
@@ -85,11 +85,20 @@ def interpret_round1(
 ) -> Shape:
     trace.record(1, answers)
 
-    fired_verbs = tuple(
+    fired = [
         v
         for v in vocab.verbs
         if trace.decide(f"verb:{v.name}", answers.noul(f"verb:{v.name}"), thresholds.verb_fire)
-    )
+    ]
+    for group in EXCLUSIVE_GROUPS:
+        rivals = [v for v in fired if v.name in group]
+        if len(rivals) > 1:
+            winner = max(rivals, key=lambda v: answers.noul(f"verb:{v.name}"))
+            for v in rivals:
+                if v is not winner:
+                    trace.note(f"verb_conflict:{v.name}<{winner.name}")
+                    fired.remove(v)
+    fired_verbs = tuple(fired)
 
     area_probs: dict[str, float] = {
         a.area_id: answers.noul(f"area:{a.area_id}") for a in home.areas

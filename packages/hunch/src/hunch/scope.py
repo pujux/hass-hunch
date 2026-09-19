@@ -5,6 +5,7 @@ Widens, never narrows, never hard-fails.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from hunch.config import EngineConfig
@@ -39,6 +40,47 @@ class ScopeEscalate:
 ScopeResult = Candidates | DeviceRound | Clarify | ScopeEscalate
 
 _WIDEN_FLOOR = 0.1  # probabilities at or below this are noise; never widen on them
+
+
+def _words(text: str) -> str:
+    return " " + re.sub(r"[^\w]+", " ", text.casefold()) + " "
+
+
+def verbatim_matches(entities: tuple[Entity, ...], prompt: str) -> tuple[Entity, ...]:
+    """Code calculates: entities whose name, alias or device name appears whole-word in the
+    prompt. Deterministic and language-agnostic; Jev is never asked what code can look up."""
+    if not prompt:
+        return ()
+    text = _words(prompt)
+    hits: list[Entity] = []
+    for e in entities:
+        for label in (e.name, e.device_name, *e.aliases):
+            if label and _words(label) in text:
+                hits.append(e)
+                break
+    return tuple(hits)
+
+
+def verbatim_areas(home: HomeModel, prompt: str) -> tuple[str, ...]:
+    """Areas the prompt names outright. Only if none is named in full, a stem shared by several
+    areas counts: "Badezimmer" scopes both "Badezimmer Oben" and "Badezimmer Unten", but
+    "Badezimmer unten" scopes just the one."""
+    if not prompt:
+        return ()
+    text = _words(prompt)
+    full = tuple(
+        a.area_id
+        for a in home.areas
+        if any(_words(lbl) in text for lbl in (a.name, *a.aliases) if lbl)
+    )
+    if full:
+        return full
+    stems: list[str] = []
+    for a in home.areas:
+        parts = a.name.split()
+        if len(parts) > 1 and len(parts[0]) >= 4 and _words(parts[0]) in text:
+            stems.append(a.area_id)
+    return tuple(stems)
 
 
 def device_label(e: Entity) -> str:
@@ -101,7 +143,12 @@ def ranked_widen(home: HomeModel, verb: Verb, shape: Shape, trace: Trace) -> tup
 
 
 def scope_candidates(
-    home: HomeModel, verb: Verb, shape: Shape, config: EngineConfig, trace: Trace
+    home: HomeModel,
+    verb: Verb,
+    shape: Shape,
+    config: EngineConfig,
+    trace: Trace,
+    prompt: str = "",
 ) -> ScopeResult:
     found = strict_candidates(home, verb, shape)
     widened = not found
@@ -112,6 +159,13 @@ def scope_candidates(
 
     # The cap guards against context rot in the Round 2 Choice, which an oversized *strict*
     # set causes just as surely as an oversized widened one.
+    named = verbatim_matches(found, prompt)
+    has_exception = shape.flag("has_exception") >= config.thresholds.flag
+    if named and len(named) < len(found) and not has_exception:
+        # The prompt names some of the candidates outright: those are the candidates.
+        # (Not when it names an exception — then the named thing is what to leave alone.)
+        trace.note(f"name_scope:{verb.name}:{len(named)}")
+        found = named
     if len(found) <= config.scope_cap:
         return Candidates(found, widened=widened)
 

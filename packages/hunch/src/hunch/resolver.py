@@ -16,7 +16,7 @@ from hunch.resolution import (
     Trace,
 )
 from hunch.round1 import Shape
-from hunch.round2 import NO_MATCH, Round2Plan, target_options
+from hunch.round2 import NO_MATCH, Round2Plan
 from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec
 
 
@@ -27,6 +27,15 @@ def score_to_value(spec: ScoreSpec, score: float) -> float:
     hi = min(len(spec.values) - 1, lo + 1)
     frac = idx - lo
     return spec.values[lo] + (spec.values[hi] - spec.values[lo]) * frac
+
+
+def _scope_strength(shape: Shape, trace: Trace) -> float:
+    """The strongest Round 1 signal that put areas into scope: an area or a floor probability."""
+    best = max((shape.area_probs.get(a, 0.0) for a in shape.scope_areas), default=0.0)
+    for d in trace.decisions:
+        if d.name.startswith("floor:") and d.passed:
+            best = max(best, d.value)
+    return best
 
 
 def _verb_prob(trace: Trace, verb_name: str) -> float:
@@ -55,6 +64,7 @@ def resolve(
     contributions: list[float] = []
     reasons: list[str] = []
     pending_clarify: tuple[Entity, ...] | None = None  # only used if no verb yields an action
+    exception_unresolved = False
 
     for verb in shape.fired_verbs:
         # Per-verb contributions stay local until the verb actually yields targets: a verb
@@ -77,14 +87,26 @@ def resolve(
                 if not excluded:
                     kept.append(e)
             targets = tuple(kept)
+            if len(kept) == len(plan.exclude[verb.name]):
+                # 'except X' named something we could not find: never sweep past it silently.
+                trace.note(f"exception_unresolved:{verb.name}")
+                exception_unresolved = True
         elif verb.name in plan.singular and round2 is not None:
             c = round2.choice(f"target:{verb.name}")
-            local.append(c.confidence)
             trace.decide(f"target:{verb.name}", c.confidence, th.target_choice_conf)
             options = plan.singular[verb.name]
+            ranked = sorted(
+                (o for o in options if o.label != NO_MATCH),
+                key=lambda o: -c.probabilities.get(o.label, 0.0),
+            )
             if c.choice == NO_MATCH:
                 trace.note(f"no_match:target:{verb.name}")
-                if trace.decide(
+                if verb.name in plan.scoped_sweep_ok:
+                    # Whole area/floor named, no device named: all of them, on the scope's word.
+                    trace.note(f"scoped_sweep:{verb.name}")
+                    targets = tuple(e for o in options for e in o.entities)
+                    local.append(_scope_strength(shape, trace))
+                elif verb.name in plan.domain_sweep_ok or trace.decide(
                     f"collective_fallback:{verb.name}",
                     shape.flag("collective"),
                     th.collective_fallback,
@@ -92,25 +114,46 @@ def resolve(
                     # Plural hint under threshold but present: the user meant all of them. Ask.
                     trace.note(f"collective_fallback:{verb.name}")
                     targets = tuple(e for o in options for e in o.entities)
+                    local.append(c.confidence)
                     reasons.append("collective_fallback")
                 elif c.confidence < th.no_match_clarify:
                     # Mass spread across real options: ask which one, don't give up.
-                    ranked = sorted(
-                        (o for o in options if o.label != NO_MATCH),
-                        key=lambda o: -c.probabilities.get(o.label, 0.0),
-                    )
                     candidates = tuple(e for o in ranked for e in o.entities)
                     trace.note(f"clarify:target:{verb.name}")
                     if pending_clarify is None:
                         pending_clarify = candidates[: config.clarify_max_candidates]
+                else:
+                    local.append(c.confidence)
             else:
                 opt = next((o for o in options if o.label == c.choice), None)
-                targets = opt.entities if opt else ()
+                weak = c.confidence < th.confirm_band and len(ranked) > 1
+                if opt is not None and weak and verb.name in plan.scoped_sweep_ok:
+                    # A weak pick inside a named area/floor: the user meant all of them.
+                    trace.note(f"scoped_sweep:{verb.name}")
+                    targets = tuple(e for o in options for e in o.entities)
+                    local.append(_scope_strength(shape, trace))
+                elif opt is not None and (weak or verb.name in plan.ambiguous_by_area):
+                    if not weak:
+                        trace.note(f"clarify:ambiguous_by_area:{verb.name}")
+                    # A weak pick among real alternatives, or same-named devices in different
+                    # rooms with no room said: asking beats guessing or giving up.
+                    ordered = [opt, *(o for o in ranked if o is not opt)]
+                    candidates = tuple(e for o in ordered for e in o.entities)
+                    trace.note(f"clarify:weak_pick:{verb.name}")
+                    if pending_clarify is None:
+                        pending_clarify = candidates[: config.clarify_max_candidates]
+                else:
+                    targets = opt.entities if opt else ()
+                    local.append(c.confidence)
         elif shape.scene is not None and verb.name == "activate":
             targets = (shape.scene,)
 
-        params: dict[str, float | str] = {}
-        if verb.param is not None and round2 is not None and f"param:{verb.name}" in round2.answers:
+        params: dict[str, float | str] = dict(plan.explicit.get(verb.name, {}))
+        if params:
+            trace.note(f"param:explicit:{verb.name}")
+        elif (
+            verb.param is not None and round2 is not None and f"param:{verb.name}" in round2.answers
+        ):
             if isinstance(verb.param, ScoreSpec):
                 s = round2.score(f"param:{verb.name}")
                 params[verb.param.name] = score_to_value(verb.param, s.score)
@@ -138,12 +181,19 @@ def resolve(
         if subj.choice == NO_MATCH:
             trace.note("no_match:cond_subject")
         else:
-            opt = next(
-                (o for o in target_options(plan.condition_candidates) if o.label == subj.choice),
-                None,
-            )
+            opt = next((o for o in plan.condition_options if o.label == subj.choice), None)
             if opt:
                 condition = Condition(opt.entities[0], state.choice)
+
+    if exception_unresolved:
+        return Escalate("exception", tuple(actions), trace)
+    if condition is None and trace.decide(
+        "flag:has_condition", shape.flag("has_condition"), th.flag
+    ):
+        # The request depends on something we could not turn into a Condition. Executing it
+        # unconditionally would be wrong; the fallback agent can handle the 'if'.
+        trace.note("condition_unresolved")
+        return Escalate("condition", tuple(actions), trace)
 
     if not actions:
         if pending_clarify:

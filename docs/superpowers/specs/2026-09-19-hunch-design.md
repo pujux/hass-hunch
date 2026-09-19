@@ -356,6 +356,24 @@ name, even a grammatically plural one like 'the Spots'?") overrides `collective`
 Round 2 planning when both fire, so a plural-looking device name selects that device
 instead of sweeping its scope.
 
+**Rules from the first set of real prompts (2026-09-20).**
+
+- *Explicit numbers are read by code.* If the prompt contains exactly one number with a
+  unit matching the verb's `ScoreSpec.kind` (`percent`, `degrees`, `fraction`), that value
+  is the parameter and the Score question is not asked ("Rollos auf 15%" → position 15).
+- *Scoped sweep.* When an area or floor is in scope, no candidate's name appears verbatim
+  in the prompt, and the singular Choice returns `none of these`, the request meant every
+  candidate in that scope ("Licht im Untergeschoss an"). Resolves without confirmation; the
+  scope signal replaces the Choice confidence in the min. Not applied to query verbs.
+- *Weak pick.* A chosen target with confidence below `confirm_band` and at least one real
+  alternative returns `NeedsClarification` (chosen first), not `Escalate`.
+- *Unresolved condition or exception blocks execution.* `has_condition` fired but no
+  `Condition` could be built → `Escalate("condition")`; `has_exception` fired but no
+  candidate was excluded → `Escalate("exception")`. Both carry the would-be actions as
+  `partial` for the fallback agent.
+- *Collective queries over the cap* ("Welche Fenster sind offen?") escalate instead of
+  asking "which area?" — summarising state is the fallback agent's strength.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

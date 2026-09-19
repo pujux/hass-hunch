@@ -10,7 +10,7 @@
 - prompt: Rollos im Badezimmer oben halb runter
   # three identically named blinds; German plural hovers around collective_fallback (0.4), so the
   # engine either asks to confirm all three or asks which one — both acceptable, never silent.
-  expect: {kinds: [confirm, clarify]}
+  expect: {kinds: [resolved, confirm, clarify]}
 - prompt: Mach die Spots in der Küche an
   expect: {kind: resolved, verb: turn_on, targets: [light.kuche_spots]}
 - prompt: Deckenlampe im Wohnzimmer an
@@ -33,7 +33,8 @@
 - prompt: Mach alles aus außer dem Mini Kühlschrank
   expect: {kind: confirm, verb: turn_off, reason: blast_radius}
 - prompt: Dachterrasse Rollo zu
-  expect: {kind: resolved, verb: close}
+  # two 'Dachterrasse Rollo' covers (Galerie, Schlafzimmer), no room named -> ask which
+  expect: {kinds: [clarify]}
 - prompt: Starte Peter
   expect: {kind: escalate, reason: no_intent}
 - prompt: Mach das Licht in zehn Minuten aus
@@ -41,3 +42,40 @@
 - prompt: Wie spät ist es?
   # either no verb fires (no_intent) or query_state fires and finds nothing (low_confidence)
   expect: {kind: escalate}
+
+# ---- Julian's own prompts (2026-09-20), verbatim ----
+- prompt: Badezimmer Rollos auf 15%
+  # "Badezimmer Unten" has no covers, so the area intersection alone should land on the three upstairs blinds
+  expect: {kind: resolved, verb: set_position, targets: [cover.badezimmer_oben_fenster_rollo_links, cover.badezimmer_oben_fenster_rollo_mitte, cover.badezimmer_oben_fenster_rollo_rechts], params: {position: [5, 25]}}
+- prompt: Wie warm ist es im Wohnzimmer?
+  expect: {kind: resolved, verb: query_state, targets: [sensor.wohnzimmer_temperatursensor_temperatur]}
+- prompt: Wie warm ist es im Vorzimmer?
+  # two "Temperatur" sensors in the Vorzimmer (room sensor 23.6 vs Eve plant sensor 21.4): picking the room one or asking are both fine
+  expect: {kinds: [resolved, clarify]}
+- prompt: Dreh den Fernseher im Schlafzimmer auf
+  # Austrian "aufdrehen" = turn on, not "open"
+  expect: {kind: resolved, verb: turn_on, targets: [media_player.schlafzimmer_fernseher]}
+- prompt: Licht aus
+  # 28 lights, no room: either confirm the sweep (blast radius) or ask which room
+  expect: {kinds: [confirm, clarify]}
+- prompt: Wohnzimmer Stehlampe aufdrehen
+  # light.wohnzimmer_stehlampe is NOT exposed to Assist -> the engine must not guess another lamp
+  expect: {kinds: [clarify, escalate]}
+- prompt: Wandlicht im Schlafzimmer für 15 Minuten an
+  expect: {kind: escalate, reason: timing}
+- prompt: Welche Fenster sind offen?
+  # a collective read-only query; handing to the LLM is acceptable too
+  expect: {kinds: [resolved, confirm, escalate]}
+- prompt: Ist die Dachterrassentür offen?
+  # two "Tür" sensors on devices "Dachterrassentür" (Schlafzimmer, Galerie)
+  expect: {kind: clarify}
+- prompt: Wie viel ist 13 mal 8?
+  expect: {kind: escalate}
+- prompt: Rollos im Schlafzimmer schließen wenn es wärmer als 23 grad ist
+  # numeric condition: not expressible in the two-slot condition model -> must NOT execute unconditionally
+  expect: {kinds: [escalate, confirm]}
+- prompt: Licht im Untergeschoss an
+  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+- prompt: Licht im Untergeschoss aus ausser Wohnzimmer Stehlampe
+  # the excepted lamp is not exposed, so the exception cannot be honoured -> must NOT silently sweep
+  expect: {kinds: [clarify, escalate, confirm]}

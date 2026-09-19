@@ -18,6 +18,8 @@ class ScoreSpec:
     name: str  # parameter key in Action.params
     levels: tuple[str, ...]  # 2..10 ordered descriptions; index maps to a value via `values`
     values: tuple[float, ...]  # same length as levels; the number each level stands for
+    # "percent" | "degrees" | "fraction" | "level": how an explicit number in the prompt maps
+    kind: str = "level"
 
 
 @dataclass(frozen=True)
@@ -60,26 +62,40 @@ def verbs_for_domain(domain: str, vocabulary: Vocabulary) -> frozenset[str]:
     return frozenset(v.name for v in vocabulary.verbs if domain in v.domains or v.is_query)
 
 
+# Verbs that contradict each other on one request. When several fire in Round 1, only the
+# strongest survives — "Rollo auf" is open, not open AND turn_on.
+EXCLUSIVE_GROUPS: tuple[frozenset[str], ...] = (
+    frozenset({"open", "close", "set_position"}),
+    frozenset({"turn_on", "turn_off"}),
+    frozenset({"lock", "unlock"}),
+    frozenset({"arm", "disarm"}),
+    frozenset({"media_play", "media_pause"}),
+)
+
 _ON_OFF = frozenset({"light", "switch", "fan", "media_player", "climate"})
 _BRIGHTNESS = ScoreSpec(
     "brightness_pct",
     ("off", "very dim", "dim", "medium", "bright", "full"),
     (0, 10, 25, 50, 75, 100),
+    kind="percent",
 )
 _POSITION = ScoreSpec(
     "position",
     ("fully closed", "mostly closed", "half open", "mostly open", "fully open"),
     (0, 25, 50, 75, 100),
+    kind="percent",
 )
 _TEMPERATURE = ScoreSpec(
     "temperature",
     ("cold (16°C)", "cool (18°C)", "mild (20°C)", "warm (22°C)", "hot (24°C)"),
     (16, 18, 20, 22, 24),
+    kind="degrees",
 )
 _VOLUME = ScoreSpec(
     "volume_level",
     ("mute", "quiet", "medium", "loud", "max"),
     (0.0, 0.2, 0.5, 0.8, 1.0),
+    kind="fraction",
 )
 
 DEFAULT_VOCABULARY = Vocabulary(

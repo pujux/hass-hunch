@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from hunch.client import DecisionBackendError, DecisionClient
 from hunch.config import EngineConfig
 from hunch.model import Entity, HomeModel
@@ -17,7 +19,14 @@ from hunch.round2 import (
     device_options,
     plan_round2,
 )
-from hunch.scope import Candidates, Clarify, DeviceRound, ScopeEscalate, scope_candidates
+from hunch.scope import (
+    Candidates,
+    Clarify,
+    DeviceRound,
+    ScopeEscalate,
+    scope_candidates,
+    verbatim_areas,
+)
 from hunch.vocabulary import Vocabulary
 
 
@@ -92,16 +101,34 @@ class Engine:
         if not shape.fired_verbs:
             return Escalate("no_intent", (), trace)
 
+        named_areas = tuple(a for a in verbatim_areas(home, prompt) if a not in shape.scope_areas)
+        if named_areas:
+            # The prompt names these areas outright; Jev's hedging on a shared stem
+            # ("Badezimmer" for two bathrooms) must not lose them.
+            trace.note("area_match:" + ",".join(named_areas))
+            shape = dataclasses.replace(shape, scope_areas=shape.scope_areas + named_areas)
+
         per_verb: dict[str, tuple[Entity, ...]] = {}
+        widened: set[str] = set()
+        pending_clarify: Clarify | None = None
         for verb in shape.fired_verbs:
             if shape.scene is not None and verb.name == "activate":
                 per_verb[verb.name] = (shape.scene,)
                 continue
-            result = scope_candidates(home, verb, shape, self._config, trace)
+            result = scope_candidates(home, verb, shape, self._config, trace, prompt)
             if isinstance(result, Candidates):
                 per_verb[verb.name] = result.entities
+                if result.widened:
+                    widened.add(verb.name)
             elif isinstance(result, Clarify):
-                return NeedsClarification(result.question_key, result.candidates, trace)
+                if verb.is_query:
+                    # "Which windows are open?" over the whole home: summarising state is the
+                    # fallback agent's strength, and "which area?" is the wrong question.
+                    trace.note(f"dropped:{verb.name}:query_over_cap")
+                    continue
+                # Ask only if no other verb has anything to act on; a co-firing verb that had
+                # to widen past the cap is noise next to one that found its targets in scope.
+                pending_clarify = pending_clarify or result
             elif isinstance(result, ScopeEscalate):
                 # One verb with nothing to apply to does not abort the turn; the others may
                 # still resolve. Only an empty result set overall escalates.
@@ -113,16 +140,26 @@ class Engine:
                         if self._config.supports_clarification
                         else Escalate("scope", (), trace)
                     )
-                chosen = await self._device_round(prompt, result.entities, trace)
+                chosen = await self._device_round(home, prompt, result.entities, trace)
                 rounds += 1
                 if chosen:
                     per_verb[verb.name] = chosen
                 else:
                     trace.note(f"dropped:{verb.name}:scope")
         if not per_verb:
+            if pending_clarify is not None:
+                return NeedsClarification(
+                    pending_clarify.question_key, pending_clarify.candidates, trace
+                )
             return Escalate("scope", (), trace)
+        if pending_clarify is not None:
+            for v in shape.fired_verbs:
+                if v.name not in per_verb and f"dropped:{v.name}:scope" not in trace.notes:
+                    trace.note(f"dropped:{v.name}:scope")
 
-        plan = plan_round2(home, shape, per_verb, th, self._config.scope_cap, prompt)
+        plan = plan_round2(
+            home, shape, per_verb, th, self._config.scope_cap, prompt, frozenset(widened)
+        )
         for v in plan.name_matched:
             trace.note(f"name_match:{v}")
         if shape.flag("has_condition") >= th.flag and not plan.condition_candidates:
@@ -139,9 +176,9 @@ class Engine:
         return resolve(shape, plan, round2, self._config, trace)
 
     async def _device_round(
-        self, prompt: str, entities: tuple[Entity, ...], trace: Trace
+        self, home: HomeModel, prompt: str, entities: tuple[Entity, ...], trace: Trace
     ) -> tuple[Entity, ...]:
-        opts = device_options(entities)
+        opts = device_options(entities, {a.area_id: a.name for a in home.areas})
         q = ChoiceQ(
             self._pb.device_question,
             tuple(o.label for o in opts) + (NO_MATCH,),

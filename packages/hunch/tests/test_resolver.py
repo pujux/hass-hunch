@@ -1,6 +1,6 @@
 from hunch.config import EngineConfig
 from hunch.questions import Answers, ChoiceA, NoulA, ScoreA
-from hunch.resolution import Escalate, NeedsConfirmation, Resolved, Trace
+from hunch.resolution import Escalate, NeedsClarification, NeedsConfirmation, Resolved, Trace
 from hunch.resolver import resolve, score_to_value
 from hunch.round1 import Shape
 from hunch.round2 import NO_MATCH, plan_round2
@@ -119,15 +119,24 @@ def test_mid_confidence_needs_confirmation(home, config):
     assert isinstance(r, NeedsConfirmation) and r.reason == "confidence"
 
 
-def test_low_confidence_escalates_with_partial(home, config):
+def test_weak_pick_among_alternatives_clarifies(home, config):
+    # Rule B (2026-09-20): a chosen target below confirm_band with real alternatives asks
+    # which one, instead of escalating with a guess as `partial`.
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
     plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds, 60)
-    choice = ChoiceA("Reading lamp", 0.4, {"Reading lamp": 0.4, "Living room main": 0.35})
-    r2 = Answers("m", {"target:turn_on": choice}, None)
+    r2 = Answers(
+        "m",
+        {
+            "target:turn_on": ChoiceA(
+                "Reading lamp", 0.4, {"Reading lamp": 0.4, "Living room main": 0.35}
+            )
+        },
+        None,
+    )
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
-    assert isinstance(r, Escalate) and r.reason == "low_confidence"
-    assert r.partial[0].verb.name == "turn_on"
+    assert isinstance(r, NeedsClarification)
+    assert [e.entity_id for e in r.candidates] == ["light.reading_lamp", "light.living_main"]
 
 
 def test_destructive_flag_escalates_before_anything(home, config):

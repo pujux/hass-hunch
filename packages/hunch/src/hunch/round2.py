@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -10,7 +11,7 @@ from hunch.model import Entity, HomeModel
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
 from hunch.round1 import Shape
-from hunch.scope import device_label
+from hunch.scope import device_label, verbatim_matches
 from hunch.vocabulary import ChoiceSpec, ScoreSpec
 
 # Sentinel option appended to every Round 2 Choice so the model can say nothing fits,
@@ -51,17 +52,35 @@ def _group_by_device(candidates: tuple[Entity, ...]) -> list[list[Entity]]:
     return list(by_device.values())
 
 
-def _dedupe(raw: list[TargetOption]) -> tuple[TargetOption, ...]:
+def _dedupe(
+    raw: list[TargetOption], area_names: Mapping[str, str] | None = None
+) -> tuple[TargetOption, ...]:
+    """Identical labels get the area in brackets when the duplicates sit in different areas
+    ("Dachterrassentür (Galerie)"), so the model has something real to choose on; otherwise #n."""
+    counts: dict[str, int] = {}
+    for opt in raw:
+        counts[opt.label] = counts.get(opt.label, 0) + 1
     seen: dict[str, int] = {}
     out: list[TargetOption] = []
     for opt in raw:
-        n = seen.get(opt.label, 0) + 1
-        seen[opt.label] = n
-        out.append(opt if n == 1 else TargetOption(f"{opt.label} #{n}", opt.entities))
+        if counts[opt.label] == 1:
+            out.append(opt)
+            continue
+        area_id = opt.entities[0].area_id if opt.entities else None
+        area = (area_names or {}).get(area_id or "", None)
+        dups_share_area = len({o.entities[0].area_id for o in raw if o.label == opt.label}) == 1
+        if area and not dups_share_area:
+            out.append(TargetOption(f"{opt.label} ({area})", opt.entities))
+        else:
+            n = seen.get(opt.label, 0) + 1
+            seen[opt.label] = n
+            out.append(opt if n == 1 else TargetOption(f"{opt.label} #{n}", opt.entities))
     return tuple(out)
 
 
-def target_options(candidates: tuple[Entity, ...]) -> tuple[TargetOption, ...]:
+def target_options(
+    candidates: tuple[Entity, ...], area_names: Mapping[str, str] | None = None
+) -> tuple[TargetOption, ...]:
     """One option per *entity*: a multi-entity device is expanded into its entities."""
     raw: list[TargetOption] = []
     for group in _group_by_device(candidates):
@@ -69,17 +88,20 @@ def target_options(candidates: tuple[Entity, ...]) -> tuple[TargetOption, ...]:
             raw.append(TargetOption(device_label(group[0]), (group[0],)))
         else:
             raw.extend(TargetOption(f"{device_label(e)} — {e.name}", (e,)) for e in group)
-    return _dedupe(raw)
+    return _dedupe(raw, area_names)
 
 
-def device_options(candidates: tuple[Entity, ...]) -> tuple[TargetOption, ...]:
+def device_options(
+    candidates: tuple[Entity, ...], area_names: Mapping[str, str] | None = None
+) -> tuple[TargetOption, ...]:
     """One option per *device*: choosing it selects all of that device's candidate entities.
 
     People name devices, not entities, so the narrowing device round offers device names
     only; the per-entity split, if it is still needed, happens in Round 2.
     """
     return _dedupe(
-        [TargetOption(device_label(g[0]), tuple(g)) for g in _group_by_device(candidates)]
+        [TargetOption(device_label(g[0]), tuple(g)) for g in _group_by_device(candidates)],
+        area_names,
     )
 
 
@@ -90,9 +112,18 @@ class Round2Plan:
     collective: dict[str, tuple[Entity, ...]] = field(default_factory=dict)
     params: tuple[str, ...] = ()
     condition_candidates: tuple[Entity, ...] = ()
-    name_matched: tuple[
-        str, ...
-    ] = ()  # verbs whose collective sweep was narrowed by a verbatim name
+    # verbs whose collective sweep was narrowed by a verbatim device name in the prompt
+    name_matched: tuple[str, ...] = ()
+    # verb -> {param: value} read verbatim from the prompt (an explicit number beats a rubric)
+    explicit: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    # singular verbs where a no-match may sweep the named area/floor
+    scoped_sweep_ok: tuple[str, ...] = ()
+    # singular verbs with no area and no name: a no-match may sweep the domain, with confirmation
+    domain_sweep_ok: tuple[str, ...] = ()
+    # options offered for the condition subject (labels must match the question exactly)
+    condition_options: tuple[TargetOption, ...] = ()
+    # singular verbs whose options differ only by area while the prompt names no area: ask
+    ambiguous_by_area: tuple[str, ...] = ()
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
@@ -106,18 +137,28 @@ class Round2Plan:
         return tuple(seen.values())
 
 
+_PERCENT = re.compile(r"(?<![\d.,])(\d{1,3})\s*(?:%|prozent\b|percent\b)", re.I)
+_DEGREES = re.compile(r"(?<![\d.,])(\d{1,2}(?:[.,]\d)?)\s*(?:°|grad\b|degrees?\b|celsius\b)", re.I)
+
+
+def extract_explicit(spec: ScoreSpec, prompt: str) -> float | None:
+    """Code calculates: an explicit number with a unit in the prompt beats a rubric judgement.
+    Exactly one match is required; several numbers are ambiguous and fall back to the Score."""
+    if spec.kind == "percent":
+        hits = _PERCENT.findall(prompt)
+        return min(100.0, float(hits[0])) if len(hits) == 1 else None
+    if spec.kind == "fraction":
+        hits = _PERCENT.findall(prompt)
+        return min(1.0, float(hits[0]) / 100.0) if len(hits) == 1 else None
+    if spec.kind == "degrees":
+        hits = _DEGREES.findall(prompt)
+        return float(hits[0].replace(",", ".")) if len(hits) == 1 else None
+    return None
+
+
 def _verbatim_named(cands: tuple[Entity, ...], prompt: str) -> Entity | None:
-    """Code calculates: if exactly one candidate's name or alias appears verbatim in the prompt
-    (case-insensitive, whole word), the plural-looking request meant that one device."""
-    if not prompt:
-        return None
-    text = f" {prompt.casefold()} "
-    hits: list[Entity] = []
-    for e in cands:
-        for label in (e.name, *e.aliases):
-            if label and f" {label.casefold()} " in text.replace(",", " ").replace(".", " "):
-                hits.append(e)
-                break
+    """Exactly one candidate named verbatim in the prompt, else None (see scope.verbatim_matches)."""
+    hits = verbatim_matches(cands, prompt)
     return hits[0] if len(hits) == 1 else None
 
 
@@ -128,22 +169,34 @@ def plan_round2(
     thresholds: Thresholds,
     scope_cap: int,
     prompt: str = "",
+    widened: frozenset[str] = frozenset(),
 ) -> Round2Plan:
     collective = shape.flag("collective") >= thresholds.collective
     if collective and shape.flag("names_specific") >= thresholds.specific_device:
         collective = False  # a plural-looking name of one device: pick it, don't sweep the scope
     has_exception = shape.flag("has_exception") >= thresholds.flag
+    area_names = {a.area_id: a.name for a in home.areas}
     exclude: dict[str, tuple[Entity, ...]] = {}
     singular: dict[str, tuple[TargetOption, ...]] = {}
     coll: dict[str, tuple[Entity, ...]] = {}
     params: list[str] = []
     name_matched: list[str] = []
+    explicit: dict[str, dict[str, float]] = {}
+    scoped_sweep_ok: list[str] = []
+    domain_sweep_ok: list[str] = []
+    ambiguous_by_area: list[str] = []
     for verb in shape.fired_verbs:
         cands = per_verb.get(verb.name, ())
         if not cands:
             continue
         if verb.param is not None:
-            params.append(verb.name)
+            value = (
+                extract_explicit(verb.param, prompt) if isinstance(verb.param, ScoreSpec) else None
+            )
+            if value is not None:
+                explicit[verb.name] = {verb.param.name: value}
+            else:
+                params.append(verb.name)
         if collective and not has_exception:
             named = _verbatim_named(cands, prompt)
             if named is not None:
@@ -153,11 +206,27 @@ def plan_round2(
         elif collective:
             exclude[verb.name] = cands
         else:
-            opts = target_options(cands)
+            opts = target_options(cands, area_names)
             if len(opts) == 1:
                 coll[verb.name] = cands
             else:
                 singular[verb.name] = opts
+                bases = {re.sub(r" \([^)]*\)$", "", o.label) for o in opts}
+                if len(bases) == 1 and not shape.scope_areas:
+                    # 'Dachterrasse Rollo' in Galerie and Schlafzimmer, no room said: nothing
+                    # in the request can tell them apart, whatever the model claims.
+                    ambiguous_by_area.append(verb.name)
+                # A whole area or floor was named and no device was: if Jev then finds no
+                # single target, the user meant every candidate in that scope.
+                if (
+                    not verb.is_query
+                    and verb.name not in widened
+                    and not verbatim_matches(cands, prompt)
+                ):
+                    if shape.scope_areas:
+                        scoped_sweep_ok.append(verb.name)
+                    elif shape.scope_domains:
+                        domain_sweep_ok.append(verb.name)
     cond: tuple[Entity, ...] = ()
     if shape.condition_domain and shape.flag("has_condition") >= thresholds.flag:
         cond = tuple(e for e in home.entities if e.domain == shape.condition_domain)
@@ -167,7 +236,19 @@ def plan_round2(
             # Truncating would silently hide the right answer; ask nothing instead and let
             # the engine record that the condition could not be resolved.
             cond = ()
-    return Round2Plan(exclude, singular, coll, tuple(params), cond, tuple(name_matched))
+    return Round2Plan(
+        exclude,
+        singular,
+        coll,
+        tuple(params),
+        cond,
+        tuple(name_matched),
+        explicit,
+        tuple(scoped_sweep_ok),
+        tuple(domain_sweep_ok),
+        target_options(cond, area_names) if cond else (),
+        tuple(ambiguous_by_area),
+    )
 
 
 def build_round2_state(prompt: str, plan: Round2Plan, home: HomeModel) -> JSON:
@@ -217,7 +298,7 @@ def build_round2_questions(
     if plan.condition_candidates and shape.condition_domain:
         qs["cond_subject"] = ChoiceQ(
             pb.cond_subject_question,
-            tuple(o.label for o in target_options(plan.condition_candidates)) + (NO_MATCH,),
+            tuple(o.label for o in plan.condition_options) + (NO_MATCH,),
         )
         qs["cond_state"] = ChoiceQ(
             pb.cond_state_question,
