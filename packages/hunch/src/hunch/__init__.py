@@ -9,6 +9,18 @@ from hunch.client import (
 from hunch.config import EngineConfig, Thresholds
 from hunch.engine import Engine
 from hunch.model import Area, Entity, Floor, HomeModel
+from hunch.questions import (
+    JSON,
+    Answer,
+    Answers,
+    ChoiceA,
+    ChoiceQ,
+    NoulA,
+    NoulQ,
+    Question,
+    ScoreA,
+    ScoreQ,
+)
 from hunch.resolution import (
     Action,
     Condition,
@@ -19,13 +31,23 @@ from hunch.resolution import (
     Resolved,
     Trace,
 )
-from hunch.vocabulary import DEFAULT_VOCABULARY, ChoiceSpec, Risk, ScoreSpec, Verb, Vocabulary
+from hunch.vocabulary import (
+    DEFAULT_VOCABULARY,
+    ChoiceSpec,
+    Risk,
+    ScoreSpec,
+    Verb,
+    Vocabulary,
+    verbs_for_domain,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "Action", "Area", "ChoiceSpec", "Condition", "DEFAULT_VOCABULARY", "DecisionBackendError",
-    "DecisionClient", "Engine", "EngineConfig", "Entity", "Escalate", "FakeDecisionClient", "Floor",
-    "HomeModel", "NeedsClarification", "NeedsConfirmation", "Resolution", "Resolved", "Risk",
-    "ScoreSpec", "Thresholds", "Trace", "TypeSafeDecisionClient", "Verb", "Vocabulary",
+    "JSON", "Action", "Answer", "Answers", "Area", "ChoiceA", "ChoiceQ", "ChoiceSpec",
+    "Condition", "DEFAULT_VOCABULARY", "DecisionBackendError", "DecisionClient", "Engine",
+    "EngineConfig", "Entity", "Escalate", "FakeDecisionClient", "Floor", "HomeModel",
+    "NeedsClarification", "NeedsConfirmation", "NoulA", "NoulQ", "Question", "Resolution",
+    "Resolved", "Risk", "ScoreA", "ScoreQ", "ScoreSpec", "Thresholds", "Trace",
+    "TypeSafeDecisionClient", "Verb", "Vocabulary", "verbs_for_domain",
 ]

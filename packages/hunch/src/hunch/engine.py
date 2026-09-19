@@ -29,6 +29,35 @@ class Engine:
         self._config = config
 
     async def decide(self, home: HomeModel, prompt: str) -> Resolution:
+        """Decide what `prompt` asks of `home`. Never executes, never raises on backend trouble.
+
+        Returns one of four `Resolution` variants:
+
+        - `Resolved(actions, condition, confidence, trace)` — execute as-is.
+        - `NeedsConfirmation(actions, condition, reason, trace)` — ask the user first.
+          `reason` is `"risk:confirm"`, `"blast_radius"` or `"confidence"`.
+        - `NeedsClarification(question_key, candidates, trace)` — ask which one.
+          `question_key` is `"which_area"` or `"which_device"`.
+        - `Escalate(reason, partial, trace)` — hand the unchanged prompt to the fallback
+          agent. `reason` is drawn from a closed set:
+
+          | reason | meaning |
+          |---|---|
+          | `prompt_invalid` | empty prompt, or longer than `max_prompt_chars` |
+          | `timing` | the request schedules, delays or sequences something |
+          | `no_intent` | no verb fired |
+          | `destructive` | a `DESTRUCTIVE` verb fired, or `is_destructive` did |
+          | `low_confidence` | actions were built but confidence is below `confirm_band` |
+          | `scope` | every fired verb resolved to no candidates |
+          | `round_budget` | Round 2 was needed but `max_rounds` was already spent |
+          | `decision_backend_unavailable` | backend error, timeout, wrong model id, bad answers |
+
+        Every variant carries the same `Trace`. `Trace` is **mutable and shared** with the
+        result: it is the live object the engine wrote to, not a copy, so callers must treat
+        it as read-only (or snapshot it with `trace.to_dict()`). `trace.input_tokens` holds
+        one entry per round in round order — the backend's reported input-token count, or
+        `None` when that response carried no usage information.
+        """
         trace = Trace()
         prompt = prompt.strip()
         if not prompt or len(prompt) > self._config.max_prompt_chars:

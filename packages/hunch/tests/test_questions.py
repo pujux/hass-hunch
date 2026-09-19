@@ -73,3 +73,15 @@ def test_device_round_requires_a_third_round():
     with pytest.raises(ValueError, match="device_round requires max_rounds >= 3"):
         EngineConfig(model="jev-1.13.0", device_round=True)
     assert EngineConfig(model="jev-1.13.0", device_round=True, max_rounds=3).device_round
+
+
+def test_public_api_exports_the_documented_names():
+    import hunch
+
+    expected = {
+        "verbs_for_domain", "Answers", "NoulA", "ChoiceA", "ScoreA",
+        "NoulQ", "ChoiceQ", "ScoreQ", "Question", "Answer", "JSON",
+    }
+    assert expected <= set(hunch.__all__)
+    for name in hunch.__all__:
+        assert getattr(hunch, name, None) is not None, name
