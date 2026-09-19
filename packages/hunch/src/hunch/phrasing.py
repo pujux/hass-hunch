@@ -61,6 +61,12 @@ EN = Phrasebook(
             "actions — signaled by a plain plural (e.g. 'the kitchen lights'), or a word like "
             "'all', 'both' or 'every' — rather than exactly one specific device?"
         ),
+        "names_specific": (
+            "Does the request name ONE specific device by its own name — a name that could be "
+            "grammatically plural, like 'the Spots' or 'the bedside lamps' if that is a single "
+            "device's name — rather than referring to devices by their kind, their room, or a "
+            "word like 'all'?"
+        ),
         "has_exception": (
             "Does the request exclude something, e.g. 'except', 'but not', 'apart from', "
             "'other than'?"
@@ -111,6 +117,11 @@ DE = Phrasebook(
             "ihrem Bereich ab — erkennbar an einem einfachen Plural (z. B. 'die Lichter in der "
             "Küche') oder an Wörtern wie 'alle', 'beide' oder 'jedes' — statt auf genau ein "
             "bestimmtes Gerät?"
+        ),
+        "names_specific": (
+            "Nennt die Anfrage EIN bestimmtes Gerät mit seinem eigenen Namen — auch wenn dieser "
+            "Name grammatikalisch ein Plural ist, wie 'die Spots' — statt Geräte über ihre Art, "
+            "ihren Raum oder ein Wort wie 'alle' zu bezeichnen?"
         ),
         "has_exception": (
             "Schließt die Anfrage etwas aus, z. B. mit 'außer', 'aber nicht', 'abgesehen von', "

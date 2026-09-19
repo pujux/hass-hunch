@@ -258,6 +258,7 @@ Questions, all in one `ask()`:
 | Per area: "Does the request refer to `{area}`?" | Noul | per home |
 | Per domain: "Does the request involve `{domain}`?" | Noul | ~10 |
 | `collective` — "targets all matching devices rather than one specific one?" | Noul | 1 |
+| `names_specific` — "names ONE specific device by its own name, even if plural-looking?" | Noul | 1 |
 | `has_exception` — "excludes something (except / but not / apart from)?" | Noul | 1 |
 | `has_condition` — "makes the action depend on a condition?" | Noul | 1 |
 | `has_timing` — "involves a delay, schedule or sequence?" | Noul | 1 |
@@ -337,6 +338,23 @@ All Round 2 questions for all verbs go in **one** `ask()` call.
 list of rounds so additional rounds are additions, not rewrites. When Round 2
 is needed but the budget is spent, the turn ends in
 `Escalate("round_budget")`.
+
+**No-match handling (added 2026-09-20 after the first real-home run).** When the
+singular `target:<verb>` Choice returns `none of these`:
+
+1. If the Round 1 `collective` flag is ≥ `collective_fallback` (0.4) — a plural the model
+   under-detected, e.g. German "Rollos" — treat the request as collective over the scoped
+   candidates and return `NeedsConfirmation("collective_fallback")`.
+2. Else if the no-match confidence is < `no_match_clarify` (0.6) — the probability mass is
+   spread across real options — return `NeedsClarification("which_device", top candidates
+   by probability, capped at `clarify_max_candidates`)`, unless another verb in the same
+   request resolved, in which case the ambiguous verb is dropped with a trace note.
+3. Else drop the verb (confident no-match: the device genuinely isn't there).
+
+A Round 1 flag `names_specific` ("does the request name ONE specific device by its own
+name, even a grammatically plural one like 'the Spots'?") overrides `collective` in
+Round 2 planning when both fire, so a plural-looking device name selects that device
+instead of sweeping its scope.
 
 ### Step 5 — Resolve
 

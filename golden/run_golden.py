@@ -52,8 +52,9 @@ def kind_of(r) -> str:
 
 def check(row, r) -> list[str]:
     exp, problems = row["expect"], []
-    if kind_of(r) != exp["kind"]:
-        problems.append(f"kind {kind_of(r)} != {exp['kind']}")
+    allowed = exp.get("kinds") or [exp["kind"]]
+    if kind_of(r) not in allowed:
+        problems.append(f"kind {kind_of(r)} not in {allowed}")
         return problems
     actions = getattr(r, "actions", ())
     names = {a.verb.name for a in actions}

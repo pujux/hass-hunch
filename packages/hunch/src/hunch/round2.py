@@ -90,6 +90,9 @@ class Round2Plan:
     collective: dict[str, tuple[Entity, ...]] = field(default_factory=dict)
     params: tuple[str, ...] = ()
     condition_candidates: tuple[Entity, ...] = ()
+    name_matched: tuple[
+        str, ...
+    ] = ()  # verbs whose collective sweep was narrowed by a verbatim name
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
@@ -103,19 +106,38 @@ class Round2Plan:
         return tuple(seen.values())
 
 
+def _verbatim_named(cands: tuple[Entity, ...], prompt: str) -> Entity | None:
+    """Code calculates: if exactly one candidate's name or alias appears verbatim in the prompt
+    (case-insensitive, whole word), the plural-looking request meant that one device."""
+    if not prompt:
+        return None
+    text = f" {prompt.casefold()} "
+    hits: list[Entity] = []
+    for e in cands:
+        for label in (e.name, *e.aliases):
+            if label and f" {label.casefold()} " in text.replace(",", " ").replace(".", " "):
+                hits.append(e)
+                break
+    return hits[0] if len(hits) == 1 else None
+
+
 def plan_round2(
     home: HomeModel,
     shape: Shape,
     per_verb: Mapping[str, tuple[Entity, ...]],
     thresholds: Thresholds,
     scope_cap: int,
+    prompt: str = "",
 ) -> Round2Plan:
     collective = shape.flag("collective") >= thresholds.collective
+    if collective and shape.flag("names_specific") >= thresholds.specific_device:
+        collective = False  # a plural-looking name of one device: pick it, don't sweep the scope
     has_exception = shape.flag("has_exception") >= thresholds.flag
     exclude: dict[str, tuple[Entity, ...]] = {}
     singular: dict[str, tuple[TargetOption, ...]] = {}
     coll: dict[str, tuple[Entity, ...]] = {}
     params: list[str] = []
+    name_matched: list[str] = []
     for verb in shape.fired_verbs:
         cands = per_verb.get(verb.name, ())
         if not cands:
@@ -123,6 +145,10 @@ def plan_round2(
         if verb.param is not None:
             params.append(verb.name)
         if collective and not has_exception:
+            named = _verbatim_named(cands, prompt)
+            if named is not None:
+                cands = (named,)
+                name_matched.append(verb.name)
             coll[verb.name] = cands
         elif collective:
             exclude[verb.name] = cands
@@ -141,7 +167,7 @@ def plan_round2(
             # Truncating would silently hide the right answer; ask nothing instead and let
             # the engine record that the condition could not be resolved.
             cond = ()
-    return Round2Plan(exclude, singular, coll, tuple(params), cond)
+    return Round2Plan(exclude, singular, coll, tuple(params), cond, tuple(name_matched))
 
 
 def build_round2_state(prompt: str, plan: Round2Plan, home: HomeModel) -> JSON:

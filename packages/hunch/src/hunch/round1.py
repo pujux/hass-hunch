@@ -12,7 +12,14 @@ from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
 from hunch.resolution import Trace
 from hunch.vocabulary import Verb, Vocabulary
 
-FLAGS = ("collective", "has_exception", "has_condition", "has_timing", "is_destructive")
+FLAGS = (
+    "collective",
+    "names_specific",
+    "has_exception",
+    "has_condition",
+    "has_timing",
+    "is_destructive",
+)
 
 
 def _label(area: Area) -> str:
@@ -70,7 +77,7 @@ class Shape:
     condition_domain: str | None
 
     def flag(self, name: str) -> float:
-        return self.flags[name]
+        return self.flags.get(name, 0.0)
 
 
 def interpret_round1(

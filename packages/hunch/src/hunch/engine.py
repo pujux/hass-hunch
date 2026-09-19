@@ -122,7 +122,9 @@ class Engine:
         if not per_verb:
             return Escalate("scope", (), trace)
 
-        plan = plan_round2(home, shape, per_verb, th, self._config.scope_cap)
+        plan = plan_round2(home, shape, per_verb, th, self._config.scope_cap, prompt)
+        for v in plan.name_matched:
+            trace.note(f"name_match:{v}")
         if shape.flag("has_condition") >= th.flag and not plan.condition_candidates:
             # The request carried a condition but nothing in scope can express it.
             trace.note("condition:unresolvable")

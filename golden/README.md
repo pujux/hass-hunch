@@ -64,6 +64,27 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-20 — first real home (German, 187 exposed entities) and the rules it forced
+
+Export of a real HA 2026.9.2 installation via `tools/export_home.py` (gitignored), corpus
+`golden/corpus_julian.yaml` (19 German prompts), run with `--home golden/homes/julian.json`.
+
+- Baseline, English questions, no changes: **13/19 (68%)**.
+- Same prompts with German questions (`--phrasebook de`), same session: **12/19** vs EN 15/19 —
+  the failures were identical, so language was ruled out; wording stays English by default.
+- Rules added (spec §6 "No-match handling"): singular no-match + `collective` ≥ 0.4 →
+  collective with confirmation ("Rollos … halb runter"); singular no-match with confidence < 0.6 →
+  `NeedsClarification` with ranked candidates ("Ist das Fenster im Esszimmer offen?"); a
+  `names_specific` Round 1 flag (weak on its own: 0.49 for "die Spots"); and a deterministic
+  verbatim-name override — if exactly one scoped candidate's name appears in the prompt, a
+  collective sweep narrows to it ("Mach die Spots in der Küche an" → only `light.kuche_spots`).
+- Result: **17/19 (89%)**, p50 ≈ 650 ms (two rounds are the norm on this home), $0.002/run.
+  Fixture corpus unchanged at 22/24.
+- Still failing: "Fahr die Rollos im Schlafzimmer runter" resolves correctly but at 0.71
+  confidence (`auto_execute` 0.75) → asks; "Mach alles aus außer dem Mini Kühlschrank" has
+  `turn_off` hovering 0.67–0.75 around `verb_fire` 0.7 → sometimes `no_intent`. Both are
+  threshold questions, deliberately left until more real prompts exist.
+
 Entries below are dated, one per change, in the order applied. Each records what changed, which
 corpus rows it affected, and the agreement rate before → after a full run.
 

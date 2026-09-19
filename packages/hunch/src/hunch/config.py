@@ -16,7 +16,12 @@ class Thresholds:
     target_choice_conf: float = 0.7
     auto_execute: float = 0.75
     confirm_band: float = 0.5  # [confirm_band, auto_execute) -> NeedsConfirmation
-    flag: float = 0.6  # has_exception/has_condition/has_timing/is_destructive
+    flag: float = 0.6
+    specific_device: float = 0.7  # names_specific flag: plural-looking name of ONE device
+    collective_fallback: float = (
+        0.4  # no-match target + collective >= this: all candidates, confirm
+    )
+    no_match_clarify: float = 0.6  # no-match target below this confidence: clarify, not escalate
 
 
 @dataclass(frozen=True)
@@ -40,6 +45,7 @@ class EngineConfig:
     # Whether the caller can hold the turn open to ask a follow-up question. When false,
     # what would have been a NeedsClarification escalates instead.
     supports_clarification: bool = True
+    clarify_max_candidates: int = 5  # candidates offered in a NeedsClarification
     # Prompts longer than this escalate unread as "prompt_invalid".
     max_prompt_chars: int = 500
 

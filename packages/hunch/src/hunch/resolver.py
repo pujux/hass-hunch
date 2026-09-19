@@ -9,6 +9,7 @@ from hunch.resolution import (
     Action,
     Condition,
     Escalate,
+    NeedsClarification,
     NeedsConfirmation,
     Resolution,
     Resolved,
@@ -53,6 +54,7 @@ def resolve(
     actions: list[Action] = []
     contributions: list[float] = []
     reasons: list[str] = []
+    pending_clarify: tuple[Entity, ...] | None = None  # only used if no verb yields an action
 
     for verb in shape.fired_verbs:
         # Per-verb contributions stay local until the verb actually yields targets: a verb
@@ -79,11 +81,30 @@ def resolve(
             c = round2.choice(f"target:{verb.name}")
             local.append(c.confidence)
             trace.decide(f"target:{verb.name}", c.confidence, th.target_choice_conf)
+            options = plan.singular[verb.name]
             if c.choice == NO_MATCH:
                 trace.note(f"no_match:target:{verb.name}")
-                targets = ()
+                if trace.decide(
+                    f"collective_fallback:{verb.name}",
+                    shape.flag("collective"),
+                    th.collective_fallback,
+                ):
+                    # Plural hint under threshold but present: the user meant all of them. Ask.
+                    trace.note(f"collective_fallback:{verb.name}")
+                    targets = tuple(e for o in options for e in o.entities)
+                    reasons.append("collective_fallback")
+                elif c.confidence < th.no_match_clarify:
+                    # Mass spread across real options: ask which one, don't give up.
+                    ranked = sorted(
+                        (o for o in options if o.label != NO_MATCH),
+                        key=lambda o: -c.probabilities.get(o.label, 0.0),
+                    )
+                    candidates = tuple(e for o in ranked for e in o.entities)
+                    trace.note(f"clarify:target:{verb.name}")
+                    if pending_clarify is None:
+                        pending_clarify = candidates[: config.clarify_max_candidates]
             else:
-                opt = next((o for o in plan.singular[verb.name] if o.label == c.choice), None)
+                opt = next((o for o in options if o.label == c.choice), None)
                 targets = opt.entities if opt else ()
         elif shape.scene is not None and verb.name == "activate":
             targets = (shape.scene,)
@@ -125,7 +146,12 @@ def resolve(
                 condition = Condition(opt.entities[0], state.choice)
 
     if not actions:
+        if pending_clarify:
+            # Nothing resolved and one target Choice spread its mass over real options: ask.
+            return NeedsClarification("which_device", pending_clarify, trace)
         return Escalate("low_confidence", (), trace)
+    if pending_clarify:
+        trace.note("clarify_suppressed:other_verbs_resolved")
 
     confidence = min(contributions) if contributions else 0.0
     trace.decide("confidence", confidence, th.auto_execute)
