@@ -27,15 +27,20 @@ class ThresholdDecision:
 
 @dataclass
 class Trace:
-    """Mutable builder; the only non-frozen type in the package. Frozen when embedded via to_dict."""
+    """Mutable builder; the only non-frozen type in the package.
+
+    Frozen when embedded via to_dict.
+    """
 
     entries: list[TraceEntry] = field(default_factory=list)
     decisions: list[ThresholdDecision] = field(default_factory=list)
     models: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    input_tokens: list[int | None] = field(default_factory=list)
 
     def record(self, round: int, answers: Answers) -> None:
         self.models.append(answers.model)
+        self.input_tokens.append(answers.input_tokens)
         for qid, ans in answers.answers.items():
             self.entries.append(TraceEntry(round, qid, ans))
 
@@ -109,7 +114,9 @@ class NeedsClarification:
 
 @dataclass(frozen=True)
 class Escalate:
-    reason: str                  # "timing" | "no_intent" | "destructive" | "low_confidence" | "scope" | "decision_backend_unavailable" | "prompt_invalid"
+    # reason: "timing" | "no_intent" | "destructive" | "low_confidence" | "scope"
+    #       | "decision_backend_unavailable" | "prompt_invalid"
+    reason: str
     partial: tuple[Action, ...]
     trace: Trace
 

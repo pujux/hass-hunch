@@ -1,4 +1,7 @@
-"""Tunable thresholds and engine settings. Defaults are starting points, tuned from the golden corpus."""
+"""Tunable thresholds and engine settings.
+
+Defaults are starting points, tuned from the golden corpus.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ class Thresholds:
     target_choice_conf: float = 0.7
     auto_execute: float = 0.75
     confirm_band: float = 0.5       # [confirm_band, auto_execute) -> NeedsConfirmation
-    flag: float = 0.6               # has_exception / has_condition / is_query / has_timing / is_destructive
+    flag: float = 0.6               # has_exception/condition/is_query/has_timing/is_destructive
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,48 @@
+- prompt: turn off the downstairs lights
+  expect: {kind: resolved, verb: turn_off, targets: [light.kitchen_ceiling, light.kitchen_counter, light.living_main, light.reading_lamp, light.hallway]}
+- prompt: turn off everything in the kitchen except the fridge
+  expect: {kind: resolved, verb: turn_off, targets: [light.kitchen_ceiling, light.kitchen_counter]}
+- prompt: switch on the lamp in the lounge
+  expect: {kind: resolved, verb: turn_on, targets: [light.reading_lamp]}
+- prompt: turn on the reading lamp
+  expect: {kind: resolved, verb: turn_on, targets: [light.reading_lamp]}
+- prompt: dim the office light to about half
+  expect: {kind: resolved, verb: set_brightness, targets: [light.office_desk], params: {brightness_pct: [40, 60]}}
+- prompt: close the living room blinds
+  expect: {kind: resolved, verb: close, targets: [cover.living_blinds]}
+- prompt: open the blinds halfway
+  expect: {kind: resolved, verb: set_position, targets: [cover.living_blinds]}
+- prompt: lock the front door
+  expect: {kind: confirm, verb: lock, targets: [lock.front_door], reason: "risk:confirm"}
+- prompt: unlock the front door
+  expect: {kind: confirm, verb: unlock, targets: [lock.front_door], reason: "risk:confirm"}
+- prompt: movie night
+  expect: {kind: resolved, verb: activate, targets: [scene.movie_night]}
+- prompt: run the goodnight script
+  expect: {kind: resolved, verb: activate, targets: [script.goodnight]}
+- prompt: turn everything off
+  expect: {kind: confirm, verb: turn_off, reason: blast_radius}
+- prompt: set the bedroom to 22 degrees
+  expect: {kind: resolved, verb: set_temperature, targets: [climate.bedroom], params: {temperature: [21, 23]}}
+- prompt: make the bedroom warmer
+  expect: {kind: resolved, verb: set_temperature, targets: [climate.bedroom]}
+- prompt: turn on the christmas tree
+  expect: {kind: resolved, verb: turn_on, targets: [light.christmas_tree]}
+- prompt: turn on both bedside lamps
+  expect: {kind: resolved, verb: turn_on, targets: [light.bedroom_left, light.bedroom_right]}
+- prompt: is the front door locked
+  expect: {kind: resolved, verb: query_state, targets: [lock.front_door]}
+- prompt: are the blinds open
+  expect: {kind: resolved, verb: query_state, targets: [cover.living_blinds]}
+- prompt: turn off the lights in ten minutes
+  expect: {kind: escalate, reason: timing}
+- prompt: turn off the lights after the movie finishes
+  expect: {kind: escalate, reason: timing}
+- prompt: tell me a joke
+  expect: {kind: escalate, reason: no_intent}
+- prompt: what's the weather like tomorrow
+  expect: {kind: escalate, reason: no_intent}
+- prompt: if the blinds are closed lock the front door
+  expect: {kind: confirm, verb: lock, targets: [lock.front_door], condition: {subject: cover.living_blinds, state: closed}}
+- prompt: turn off the kitchen lights and close the blinds
+  expect: {kind: resolved, verbs: [turn_off, close]}

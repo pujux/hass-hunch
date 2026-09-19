@@ -1,5 +1,4 @@
 import pytest
-
 from hunch.vocabulary import (
     DEFAULT_VOCABULARY,
     ChoiceSpec,
@@ -41,7 +40,9 @@ def test_verbs_for_domain():
     assert verbs_for_domain("light", DEFAULT_VOCABULARY) == frozenset(
         {"turn_on", "turn_off", "set_brightness", "query_state"}
     )
-    assert verbs_for_domain("lock", DEFAULT_VOCABULARY) == frozenset({"lock", "unlock", "query_state"})
+    assert verbs_for_domain("lock", DEFAULT_VOCABULARY) == frozenset(
+        {"lock", "unlock", "query_state"}
+    )
     assert verbs_for_domain("unknown_domain", DEFAULT_VOCABULARY) == frozenset({"query_state"})
 
 

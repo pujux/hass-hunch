@@ -2,7 +2,6 @@ import dataclasses
 import json
 
 import pytest
-
 from hunch.config import EngineConfig, Thresholds
 from hunch.questions import Answers, ChoiceA, ChoiceQ, NoulA, NoulQ, ScoreA, ScoreQ
 from hunch.resolution import Trace
@@ -56,8 +55,15 @@ def test_trace_records_answers_decisions_and_models():
     t.record(1, Answers("jev-1.13.0", {"verb:turn_off": NoulA(0.93)}, 300))
     assert t.decide("verb:turn_off", 0.93, 0.7) is True
     assert t.decide("flag:collective", 0.4, 0.65) is False
+    assert t.input_tokens == [300]
     d = t.to_dict()
     assert d["models"] == ["jev-1.13.0"]
-    assert d["entries"][0] == {"round": 1, "question_id": "verb:turn_off", "answer": {"type": "noul", "probability": 0.93}}
-    assert d["decisions"][1] == {"name": "flag:collective", "value": 0.4, "threshold": 0.65, "passed": False}
+    assert d["entries"][0] == {
+        "round": 1,
+        "question_id": "verb:turn_off",
+        "answer": {"type": "noul", "probability": 0.93},
+    }
+    assert d["decisions"][1] == {
+        "name": "flag:collective", "value": 0.4, "threshold": 0.65, "passed": False,
+    }
     json.dumps(d)  # must be JSON-serialisable

@@ -1,7 +1,6 @@
 import dataclasses
 
 import pytest
-
 from hunch.model import Entity, HomeModel
 
 

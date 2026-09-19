@@ -1,5 +1,4 @@
 import pytest
-
 from hunch.config import EngineConfig, Thresholds
 from hunch.model import Area, Entity, Floor, HomeModel
 from hunch.vocabulary import DEFAULT_VOCABULARY, Vocabulary
@@ -46,13 +45,21 @@ def home() -> HomeModel:
             _e("light.kitchen_counter", "Counter strip", "kitchen", "Counter strip"),
             _e("switch.fridge", "Fridge", "kitchen", "Fridge", SWITCH_VERBS, "on"),
             _e("light.living_main", "Living room main", "living", "Living room main"),
-            _e("light.reading_lamp", "Reading lamp", "living", "Reading lamp", aliases=("lamp",)),
-            _e("cover.living_blinds", "Living room blinds", "living", "Blinds", COVER_VERBS, "open"),
+            _e(
+                "light.reading_lamp", "Reading lamp", "living", "Reading lamp", aliases=("lamp",)
+            ),
+            _e(
+                "cover.living_blinds", "Living room blinds", "living", "Blinds",
+                COVER_VERBS, "open",
+            ),
             _e("light.hallway", "Hallway light", "hallway", "Hallway light"),
             _e("lock.front_door", "Front door", "hallway", "Front door", LOCK_VERBS, "locked"),
             _e("light.bedroom_left", "Bedside left", "bedroom", "Bedside lamps"),
             _e("light.bedroom_right", "Bedside right", "bedroom", "Bedside lamps"),
-            _e("climate.bedroom", "Bedroom thermostat", "bedroom", "Thermostat", CLIMATE_VERBS, "heat"),
+            _e(
+                "climate.bedroom", "Bedroom thermostat", "bedroom", "Thermostat",
+                CLIMATE_VERBS, "heat",
+            ),
             _e("light.office_desk", "Desk lamp", "office", "Desk lamp"),
             _e("light.christmas_tree", "Christmas tree", None, None),
         ),
