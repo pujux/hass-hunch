@@ -32,7 +32,10 @@ def _verb_prob(trace: Trace, verb_name: str) -> float:
     for d in reversed(trace.decisions):
         if d.name == f"verb:{verb_name}":
             return d.value
-    return 1.0
+    # Invariant: Round 1 asks a Noul for every verb in the vocabulary and records the
+    # decision, so a fired verb always has one. If it somehow does not, fail closed —
+    # an unverified verb must never be treated as certain.
+    return 0.0
 
 
 def resolve(
@@ -52,27 +55,29 @@ def resolve(
     reasons: list[str] = []
 
     for verb in shape.fired_verbs:
-        contributions.append(_verb_prob(trace, verb.name))
+        # Per-verb contributions stay local until the verb actually yields targets: a verb
+        # that resolves to nothing must not drag down the confidence of the ones that did.
+        local: list[float] = [_verb_prob(trace, verb.name)]
         targets: tuple[Entity, ...] = ()
 
         if verb.name in plan.collective:
             targets = plan.collective[verb.name]
             if len(targets) > 1:  # a single candidate never relied on the collective flag
-                contributions.append(shape.flag("collective"))
+                local.append(shape.flag("collective"))
         elif verb.name in plan.exclude and round2 is not None:
             kept: list[Entity] = []
-            contributions.append(shape.flag("collective"))
-            contributions.append(shape.flag("has_exception"))
+            local.append(shape.flag("collective"))
+            local.append(shape.flag("has_exception"))
             for e in plan.exclude[verb.name]:
                 p = round2.noul(f"exclude:{verb.name}:{e.entity_id}")
                 excluded = trace.decide(f"exclude:{verb.name}:{e.entity_id}", p, 0.5)
-                contributions.append(p if excluded else 1.0 - p)
+                local.append(p if excluded else 1.0 - p)
                 if not excluded:
                     kept.append(e)
             targets = tuple(kept)
         elif verb.name in plan.singular and round2 is not None:
             c = round2.choice(f"target:{verb.name}")
-            contributions.append(c.confidence)
+            local.append(c.confidence)
             trace.decide(f"target:{verb.name}", c.confidence, th.target_choice_conf)
             if c.choice == NO_MATCH:
                 trace.note(f"no_match:target:{verb.name}")
@@ -88,14 +93,16 @@ def resolve(
             if isinstance(verb.param, ScoreSpec):
                 s = round2.score(f"param:{verb.name}")
                 params[verb.param.name] = score_to_value(verb.param, s.score)
-                contributions.append(s.confidence)
+                local.append(s.confidence)
             elif isinstance(verb.param, ChoiceSpec):
                 c = round2.choice(f"param:{verb.name}")
                 params[verb.param.name] = c.choice
-                contributions.append(c.confidence)
+                local.append(c.confidence)
 
         if not targets:
+            trace.note(f"dropped:{verb.name}")
             continue
+        contributions.extend(local)
         actions.append(Action(verb, targets, params))
         if verb.risk is Risk.CONFIRM:
             reasons.append("risk:confirm")

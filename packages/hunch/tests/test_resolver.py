@@ -158,3 +158,35 @@ def test_no_match_target_yields_no_action(home, config):
     r2 = Answers("m", {"target:turn_on": ChoiceA(NO_MATCH, 0.9, {NO_MATCH: 0.9})}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Escalate) and r.reason == "low_confidence" and r.partial == ()
+
+
+def test_dead_verb_does_not_drag_down_other_verbs_confidence(home, config):
+    # turn_off resolves deterministically at 0.95; turn_on's Choice says nothing fits at 0.3.
+    shape, vp = _shape(
+        ["turn_on", "turn_off"], {"collective": 0.1}, {"turn_on": 0.8, "turn_off": 0.95}
+    )
+    plan = plan_round2(
+        home,
+        shape,
+        {
+            "turn_off": _ents(home, "light.hallway"),
+            "turn_on": _ents(home, "light.living_main", "light.reading_lamp"),
+        },
+        config.thresholds,
+    )
+    r2 = Answers("m", {"target:turn_on": ChoiceA(NO_MATCH, 0.3, {NO_MATCH: 0.3})}, None)
+    trace = _trace_with_verbs(vp)
+    r = resolve(shape, plan, r2, config, trace)
+    assert isinstance(r, Resolved)
+    assert [a.verb.name for a in r.actions] == ["turn_off"]
+    assert r.confidence == 0.95
+    assert "dropped:turn_on" in trace.notes
+
+
+def test_verb_prob_fails_closed_when_round1_decision_is_missing(home, config):
+    shape, _ = _shape(["turn_off"], {"collective": 0.9})
+    plan = plan_round2(
+        home, shape, {"turn_off": _ents(home, "light.hallway")}, config.thresholds,
+    )
+    r = resolve(shape, plan, None, config, Trace())  # no verb decision recorded
+    assert isinstance(r, Escalate) and r.reason == "low_confidence"
