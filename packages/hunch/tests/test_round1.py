@@ -43,6 +43,21 @@ def test_no_scene_question_when_home_has_no_scenes(home, vocab):
     assert "scene" not in build_round1_questions(bare, vocab)
 
 
+def test_entity_less_home_asks_no_condition_domain_question(home, vocab):
+    bare = type(home)(home.floors, home.areas, (), ())
+    qs = build_round1_questions(bare, vocab)
+    assert "condition_domain" not in qs and "scene" not in qs
+
+
+def test_interpret_tolerates_a_missing_condition_domain_answer(home, vocab, thresholds):
+    bare = type(home)(home.floors, home.areas, (), ())
+    qs = build_round1_questions(bare, vocab)
+    base = {qid: NoulA(0.05) for qid in qs}
+    base["flag:has_condition"] = NoulA(0.9)
+    shape = interpret_round1(bare, vocab, Answers("m", base, None), thresholds, Trace())
+    assert shape.condition_domain is None
+
+
 def _answers(home, vocab, **overrides):
     qs = build_round1_questions(home, vocab)
     base = {}

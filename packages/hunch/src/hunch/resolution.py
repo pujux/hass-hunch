@@ -61,6 +61,7 @@ class Trace:
             ],
             "decisions": [asdict(d) for d in self.decisions],
             "notes": list(self.notes),
+            "input_tokens": list(self.input_tokens),
         }
 
 

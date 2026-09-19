@@ -73,10 +73,11 @@ def build_round1_questions(home: HomeModel, vocab: Vocabulary) -> dict[str, Ques
             "Which scene or script does the request name, if any?",
             tuple(s.name for s in home.scenes) + ("none",),
         )
-    qs["condition_domain"] = ChoiceQ(
-        "If the request contains a condition, which device type is the condition about?",
-        tuple(home.domains) + ("none",),
-    )
+    if home.domains:
+        qs["condition_domain"] = ChoiceQ(
+            "If the request contains a condition, which device type is the condition about?",
+            tuple(home.domains) + ("none",),
+        )
     return qs
 
 
@@ -137,7 +138,10 @@ def interpret_round1(
             scene = next((s for s in home.scenes if s.name == c.choice), None)
 
     condition_domain: str | None = None
-    if trace.decide("flag:has_condition", flags["has_condition"], thresholds.flag):
+    if (
+        trace.decide("flag:has_condition", flags["has_condition"], thresholds.flag)
+        and "condition_domain" in answers.answers
+    ):
         c = answers.choice("condition_domain")
         if c.choice != "none" and trace.decide(
             "condition_domain", c.confidence, thresholds.target_choice_conf

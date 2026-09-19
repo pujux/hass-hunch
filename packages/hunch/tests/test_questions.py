@@ -66,6 +66,7 @@ def test_trace_records_answers_decisions_and_models():
     assert d["decisions"][1] == {
         "name": "flag:collective", "value": 0.4, "threshold": 0.65, "passed": False,
     }
+    assert d["input_tokens"] == [300]
     json.dumps(d)  # must be JSON-serialisable
 
 

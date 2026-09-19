@@ -436,7 +436,12 @@ attached to the chat log regardless of outcome.
    well before any token or latency limit, which is why scoping candidates
    first (§6 Step 3) before Round 2's exclusion Nouls is load-bearing.
 3. **Threshold defaults.** The values in §5.3 are starting points; they are
-   tuned from the golden corpus, not reasoned from first principles.
+   tuned from the golden corpus, not reasoned from first principles. A first
+   tuning pass ran on 2026-09-19 and moved `scope_fire` 0.6 → 0.7 and
+   `collective` 0.65 → 0.5 (alongside several question rewordings). Every
+   change, the corpus rows it affected and the before → after agreement rate
+   are logged in `golden/README.md`; that log is where later passes belong
+   too.
 4. **Compound requests.** TypeSafe's own [smart-home demo](https://docs.typesafe.ai/demos/smart-home)
    detects compound requests with a Noul and then uses an LLM to split them
    into atomic commands before evaluating each. Hunch instead relies on
