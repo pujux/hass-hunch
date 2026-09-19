@@ -8,6 +8,7 @@ from hunch.client import (
 )
 from hunch.config import EngineConfig, Thresholds
 from hunch.engine import Engine
+from hunch.loaders import home_from_export
 from hunch.model import Area, Entity, Floor, HomeModel
 from hunch.questions import (
     JSON,
@@ -49,5 +50,5 @@ __all__ = [
     "EngineConfig", "Entity", "Escalate", "FakeDecisionClient", "Floor", "HomeModel",
     "NeedsClarification", "NeedsConfirmation", "NoulA", "NoulQ", "Question", "Resolution",
     "Resolved", "Risk", "ScoreA", "ScoreQ", "ScoreSpec", "Thresholds", "Trace",
-    "TypeSafeDecisionClient", "Verb", "Vocabulary", "verbs_for_domain",
+    "TypeSafeDecisionClient", "Verb", "Vocabulary", "home_from_export", "verbs_for_domain",
 ]
