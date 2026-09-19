@@ -56,12 +56,16 @@ def check(row, r) -> list[str]:
         problems.append(f"kind {kind_of(r)} != {exp['kind']}")
         return problems
     actions = getattr(r, "actions", ())
-    if "verb" in exp and not any(a.verb.name == exp["verb"] for a in actions):
-        problems.append(f"verb {[a.verb.name for a in actions]} lacks {exp['verb']}")
-    if "verbs" in exp and {a.verb.name for a in actions} != set(exp["verbs"]):
-        problems.append(f"verbs {[a.verb.name for a in actions]} != {exp['verbs']}")
+    names = {a.verb.name for a in actions}
+    # `verb` means exactly that verb and no other: a spurious extra action is a failure,
+    # not a pass. `verbs` (plural) is the same check over a set.
+    if "verb" in exp and names != {exp["verb"]}:
+        problems.append(f"verbs {sorted(names)} != {{{exp['verb']!r}}}")
+    if "verbs" in exp and names != set(exp["verbs"]):
+        problems.append(f"verbs {sorted(names)} != {exp['verbs']}")
     if "targets" in exp:
-        got = {e.entity_id for a in actions if a.verb.name == exp.get("verb") for e in a.targets}
+        wanted = [a for a in actions if "verbs" in exp or a.verb.name == exp.get("verb")]
+        got = {e.entity_id for a in wanted for e in a.targets}
         if got != set(exp["targets"]):
             problems.append(f"targets {sorted(got)} != {sorted(exp['targets'])}")
     if "reason" in exp and getattr(r, "reason", None) != exp["reason"]:
@@ -98,23 +102,25 @@ async def main() -> int:
     engine = Engine(client, DEFAULT_VOCABULARY, EngineConfig(model=args.model))
 
     ok, latencies, tokens = 0, [], 0
-    for row in rows:
-        t0 = time.perf_counter()
-        r = await engine.decide(home, row["prompt"])
-        ms = (time.perf_counter() - t0) * 1000
-        latencies.append(ms)
-        toks = sum(t or 0 for t in r.trace.input_tokens)
-        tokens += toks
-        problems = check(row, r)
-        ok += not problems
-        mark = "PASS" if not problems else "FAIL"
-        rounds = len(r.trace.models)
-        print(f"{mark}  {ms:6.0f} ms  rounds={rounds}  {row['prompt']!r}")
-        for pr in problems:
-            print(f"        - {pr}")
-        if problems and args.verbose:
-            print(json.dumps(r.trace.to_dict(), indent=1))
-    await client.aclose()
+    try:
+        for row in rows:
+            t0 = time.perf_counter()
+            r = await engine.decide(home, row["prompt"])
+            ms = (time.perf_counter() - t0) * 1000
+            latencies.append(ms)
+            toks = sum(t or 0 for t in r.trace.input_tokens)
+            tokens += toks
+            problems = check(row, r)
+            ok += not problems
+            mark = "PASS" if not problems else "FAIL"
+            rounds = len(r.trace.models)
+            print(f"{mark}  {ms:6.0f} ms  rounds={rounds}  {row['prompt']!r}")
+            for pr in problems:
+                print(f"        - {pr}")
+            if problems and args.verbose:
+                print(json.dumps(r.trace.to_dict(), indent=1))
+    finally:
+        await client.aclose()
 
     agreement = ok / max(len(rows), 1)
     p50 = statistics.median(latencies)
