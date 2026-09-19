@@ -1,6 +1,7 @@
 import pytest
 
 from hunch.model import Area, Entity, Floor, HomeModel
+from hunch.vocabulary import DEFAULT_VOCABULARY, Vocabulary
 
 LIGHT_VERBS = frozenset({"turn_on", "turn_off", "set_brightness", "query_state"})
 COVER_VERBS = frozenset({"open", "close", "set_position", "query_state"})
@@ -59,3 +60,8 @@ def home() -> HomeModel:
             _e("script.goodnight", "Goodnight", None, None, SCENE_VERBS, None),
         ),
     )
+
+
+@pytest.fixture
+def vocab() -> Vocabulary:
+    return DEFAULT_VOCABULARY
