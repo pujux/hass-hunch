@@ -102,19 +102,21 @@ def ranked_widen(home: HomeModel, verb: Verb, shape: Shape, trace: Trace) -> tup
 def scope_candidates(
     home: HomeModel, verb: Verb, shape: Shape, config: EngineConfig, trace: Trace
 ) -> ScopeResult:
-    strict = strict_candidates(home, verb, shape)
-    if strict:
-        return Candidates(strict, widened=False)
+    found = strict_candidates(home, verb, shape)
+    widened = not found
+    if widened:
+        found = ranked_widen(home, verb, shape, trace)
+        if not found:
+            return ScopeEscalate("scope")
 
-    widened = ranked_widen(home, verb, shape, trace)
-    if not widened:
-        return ScopeEscalate("scope")
-    if len(widened) <= config.scope_cap:
-        return Candidates(widened, widened=True)
+    # The cap guards against context rot in the Round 2 Choice, which an oversized *strict*
+    # set causes just as surely as an oversized widened one.
+    if len(found) <= config.scope_cap:
+        return Candidates(found, widened=widened)
 
-    trace.note(f"scope_cap:{verb.name}:{len(widened)}>{config.scope_cap}")
+    trace.note(f"scope_cap:{verb.name}:{len(found)}>{config.scope_cap}")
     if config.device_round:
-        return DeviceRound(widened)
+        return DeviceRound(found)
     if config.supports_clarification:
-        return Clarify("which_area", widened)
+        return Clarify("which_area", found)
     return ScopeEscalate("scope")

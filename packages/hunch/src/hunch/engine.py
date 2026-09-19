@@ -68,15 +68,21 @@ class Engine:
             elif isinstance(result, Clarify):
                 return NeedsClarification(result.question_key, result.candidates, trace)
             elif isinstance(result, ScopeEscalate):
-                return Escalate(result.reason, (), trace)
+                # One verb with nothing to apply to does not abort the turn; the others may
+                # still resolve. Only an empty result set overall escalates.
+                trace.note(f"dropped:{verb.name}:scope")
             elif isinstance(result, DeviceRound):
                 if rounds >= self._config.max_rounds:
                     return NeedsClarification("which_device", result.entities, trace) \
                         if self._config.supports_clarification else Escalate("scope", (), trace)
-                per_verb[verb.name] = await self._device_round(prompt, result.entities, trace)
+                chosen = await self._device_round(prompt, result.entities, trace)
                 rounds += 1
-                if not per_verb[verb.name]:
-                    return Escalate("scope", (), trace)
+                if chosen:
+                    per_verb[verb.name] = chosen
+                else:
+                    trace.note(f"dropped:{verb.name}:scope")
+        if not per_verb:
+            return Escalate("scope", (), trace)
 
         plan = plan_round2(home, shape, per_verb, th)
         questions: dict[str, Question] = build_round2_questions(shape, plan, home)

@@ -279,15 +279,25 @@ non-empty, in-cap set or terminates the request:
    below `scope_fire`) until the set is non-empty. Then the same for domains.
    Uses information already paid for; no extra call.
 2. **Cap.** If the set exceeds `scope_cap`, do not proceed to a Choice over it
-   (context rot returns). Fall through.
+   (context rot returns). Fall through. The cap applies to **whichever set is
+   in hand** — a strict set is capped exactly like a widened one, since an
+   oversized Choice rots its context either way.
 3. **Device round** (if `device_round` enabled). Spend one extra round on a
-   `Choice` over all exposed device names in scope (or all exposed devices if
-   scope is empty); candidates become that device's entities.
+   `Choice` over the **device** names in scope (entities with no device count
+   as a device of their own); candidates become **all** of that device's
+   entities. A device round counts against `max_rounds`, so enabling it
+   requires `max_rounds >= 3`.
 4. **Clarify** (if `supports_clarification`). Return
    `NeedsClarification("which_area" | "which_device", candidates)`.
 5. **Escalate.**
 
 Widening never narrows and never hard-fails on a Round 1 miss.
+
+A verb whose chain ends in **Escalate** (nothing applicable, or the device
+round matched nothing) is *dropped* from the turn rather than ending it —
+other fired verbs may still resolve. Only when every fired verb is dropped
+does the turn `Escalate("scope")`. A **Clarify**, by contrast, is a
+whole-turn decision and ends the turn immediately.
 
 ### Step 4 — Round 2: resolve targets and parameters
 

@@ -116,3 +116,12 @@ def test_scope_escalates_when_verb_applies_to_nothing(home, vocab, config):
 def test_device_label_prefers_device_name(home):
     assert device_label(home.entity_by_id("light.bedroom_left")) == "Bedside lamps"
     assert device_label(home.entity_by_id("light.christmas_tree")) == "Christmas tree"
+
+
+def test_scope_cap_applies_to_strict_sets_too(home, vocab):
+    # domain:light fired, no area — strict, but 9 lights is over a cap of 2.
+    cfg = EngineConfig(model="m", scope_cap=2, device_round=False, supports_clarification=True)
+    shape = _shape(home, verbs=("turn_on",), domains=("light",))
+    r = scope_candidates(home, vocab.by_name("turn_on"), shape, cfg, Trace())
+    assert isinstance(r, Clarify) and r.question_key == "which_area"
+    assert len(r.candidates) > 2

@@ -154,6 +154,25 @@ async def test_device_round_no_match_escalates(home, vocab):
     assert isinstance(r, Escalate) and r.reason == "scope"
 
 
+async def test_verb_with_no_candidates_is_dropped_not_fatal(home, vocab, config):
+    # The home has no alarm panel, so verb:arm can never apply; turn_off still resolves.
+    client, _ = _scripted({
+        "verb:turn_off": NoulA(0.95), "verb:arm": NoulA(0.9),
+        "area:hallway": NoulA(0.9), "flag:collective": NoulA(0.9),
+    })
+    r = await Engine(client, vocab, config).decide(home, "turn off the hallway and arm the alarm")
+    assert isinstance(r, Resolved)
+    assert [a.verb.name for a in r.actions] == ["turn_off"]
+    assert [e.entity_id for e in r.actions[0].targets] == ["light.hallway"]
+    assert "dropped:arm:scope" in r.trace.notes
+
+
+async def test_scope_escalates_only_when_every_verb_is_dropped(home, vocab, config):
+    client, _ = _scripted({"verb:arm": NoulA(0.9), "flag:collective": NoulA(0.9)})
+    r = await Engine(client, vocab, config).decide(home, "arm the alarm")
+    assert isinstance(r, Escalate) and r.reason == "scope"
+
+
 async def test_round_budget_escalates_when_round2_does_not_fit(home, vocab):
     cfg = EngineConfig(model="jev-1.13.0", max_rounds=1)
     client, calls = _scripted({
