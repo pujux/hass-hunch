@@ -6,13 +6,16 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 ## Latest result
 
 - **Model:** `jev-1.13.0`
-- **Date:** 2026-09-19
-- **Agreement:** 23/24 (96%)
-- **Latency:** p50=351 ms, p95=747 ms
-- **Cost:** $0.0016 (38,019 input tokens) for the full 24-row corpus
+- **Date:** 2026-09-19 (after the final-review fix wave)
+- **Agreement:** 22/24 (92%)
+- **Latency:** p50=377 ms, p95=720 ms
+- **Cost:** $0.0016 (37,419 input tokens) for the full 24-row corpus
 
-1 row still fails ("turn everything off"), and it is not threshold/wording-fixable within
-this task's bounds — see "Known issues" below.
+2 rows fail. "turn everything off" is the long-standing model-variance row. "open the blinds
+halfway" is **newly reported, not newly broken**: the fix wave tightened `check()` so a
+spurious extra action fails the row, and this prompt fires `open` (0.98) *and* `set_position`
+(0.99), producing two actions where the corpus expects one. Both are described under "Known
+issues" below.
 
 ## How to run
 
@@ -238,6 +241,25 @@ probability (0.65–0.67, close to the 0.7 `scope_fire` threshold) — re-runnin
 passed, and a second full run confirmed 23/24; this is the same class of scope-threshold
 variance already noted for "turn everything off", not a new defect.
 
+### 2026-09-19 — final-review fix wave (no tuning)
+
+Eleven review findings fixed across the engine (see
+`.superpowers/sdd/2026-09-19-hunch-engine/final-fix-report.md`). Nothing in this wave touched
+question wording or thresholds, by instruction. The one change that affects this corpus is to
+the runner itself:
+
+- `check()` now compares the **exact verb set** of the produced actions against `verb` /
+  `verbs`, instead of asking only whether the expected verb appears somewhere. An engine that
+  emits the right action *plus* a spurious one used to score a PASS.
+- The row loop closes the HTTP client in a `finally` block.
+
+Result: **22/24 agree (92%)**, p50=377 ms, p95=720 ms, cost=$0.0016 (37,419 tokens), against
+23/24 before the wave. The one row that changed verdict, "open the blinds halfway", was
+already producing the extra `open` action before this wave; only the check changed. Verified
+with `--verbose`: `verb:open`=0.98 alongside `verb:set_position`=0.99, so both fire and both
+resolve to `cover.living_blinds`. Separating them is a `phrasing` rewording, which this wave
+was explicitly told not to attempt — see "Known issues".
+
 ## Corpus expectation corrections
 
 - **`turn everything off`**: originally `{kind: confirm, verb: turn_off, reason:
@@ -250,7 +272,16 @@ variance already noted for "turn everything off", not a new defect.
 
 ## Known issues (not fixed — out of ruling C's bounds or inherent model variance)
 
-1. **"turn everything off" has high verb-probability variance.** Across repeated runs,
+1. **`open` co-fires with `set_position` on "open the blinds halfway".** `verb:open`=0.98 and
+   `verb:set_position`=0.99, so the engine emits two actions: open the blinds, and set them to
+   half. Tuning pass 1 already narrowed `set_position`'s phrasing to separate it from a *plain*
+   open/close ("rather than simply fully open or closed"), which fixed "close the living room
+   blinds"; a partial-position request such as "halfway" still reads as true for both verbs,
+   because it genuinely is an opening action. Fixing it means rewording `open`/`close` to
+   exclude a named partial position (or making partial-position requests suppress the plain
+   verb in the resolver) — wording/threshold work that the final-review fix wave was told not
+   to do. Reported, not papered over.
+2. **"turn everything off" has high verb-probability variance.** Across repeated runs,
    `verb:turn_off` for this prompt was observed at both ~0.99 (fires cleanly, resolves as
    expected) and ~0.40–0.41 (spread thin across `turn_off`/`close`/`lock`/`disarm`, none
    clearing `verb_fire`=0.7, so the request escalates as `no_intent`). This looks like genuine
