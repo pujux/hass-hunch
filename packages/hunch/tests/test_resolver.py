@@ -33,11 +33,11 @@ def _ents(home, *ids):
 
 def test_score_to_value_interpolates():
     spec = V.by_name("set_brightness").param
-    assert score_to_value(spec, 1.0) == 0
+    assert score_to_value(spec, 0.0) == 0
+    assert score_to_value(spec, 5.0) == 100
+    assert score_to_value(spec, 2.5) == 37.5
+    assert score_to_value(spec, -0.5) == 0
     assert score_to_value(spec, 6.0) == 100
-    assert score_to_value(spec, 3.5) == 37.5
-    assert score_to_value(spec, 0.5) == 0
-    assert score_to_value(spec, 7.0) == 100
 
 
 def test_collective_resolves_without_round2(home, config):
@@ -83,7 +83,7 @@ def test_param_is_interpolated_into_action(home, config):
     shape, vp = _shape(["set_brightness"], {"collective": 0.9}, {"set_brightness": 0.9})
     cands = {"set_brightness": _ents(home, "light.office_desk")}
     plan = plan_round2(home, shape, cands, config.thresholds)
-    r2 = Answers("m", {"param:set_brightness": ScoreA(3.5, 0.8, {})}, None)
+    r2 = Answers("m", {"param:set_brightness": ScoreA(2.5, 0.8, {})}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
     assert r.actions[0].params == {"brightness_pct": 37.5}

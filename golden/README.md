@@ -7,12 +7,12 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-19
-- **Agreement:** 21/24 (88%)
-- **Latency:** p50=474 ms, p95=686 ms
-- **Cost:** $0.0016 (37,635 input tokens) for the full 24-row corpus
+- **Agreement:** 23/24 (96%)
+- **Latency:** p50=351 ms, p95=747 ms
+- **Cost:** $0.0016 (38,019 input tokens) for the full 24-row corpus
 
-3 rows still fail; none are threshold/wording-fixable within this task's bounds. See
-"Known issues" below.
+1 row still fails ("turn everything off"), and it is not threshold/wording-fixable within
+this task's bounds — see "Known issues" below.
 
 ## How to run
 
@@ -188,6 +188,56 @@ both above and below `scope_fire` across repeated runs; see "Known issues").
 Stopped tuning here: 88% comfortably clears the 80% gate, and the 3 remaining failures are not
 addressable within ruling C's bounds (see below) rather than under-tuned wording/thresholds.
 
+### 2026-09-19 — follow-up fixes: `score_to_value` off-by-one, and lock/unlock phrasing
+
+The controller ruled two items from "Known issues" (below) back in scope:
+
+- **`resolver.py` `score_to_value`**: changed `idx = score - 1.0` to `idx = score`, per
+  `docs.typesafe.ai/primitives/score.md` confirming the Score primitive is 0-indexed over its
+  `criteria` list, not 1-indexed. Updated `test_score_to_value_interpolates` in
+  `test_resolver.py` to the 0-based contract (`0.0→0`, `5.0→100`, `2.5→37.5`, clamps
+  `-0.5→0`, `6.0→100`), and `test_param_is_interpolated_into_action`'s input score from `3.5`
+  to `2.5` so its expected `37.5` output stays correct under the new formula (that test is
+  about interpolation into `Action.params`, not about which score value maps to what).
+  Re-ran the two affected rows in isolation:
+  ```
+  $ uv run python golden/run_golden.py --only "office light"
+  PASS    1270 ms  rounds=2  'dim the office light to about half'
+  1/1 agree (100%)  ...
+  $ uv run python golden/run_golden.py --only "22 degrees"
+  PASS    1179 ms  rounds=2  'set the bedroom to 22 degrees'
+  1/1 agree (100%)  ...
+  ```
+- **`vocabulary.py` `Verb.phrasing` for `lock`/`unlock`**: reworded from "lock a door or lock"
+  / "unlock a door or lock" (both contained the literal word "lock", read as a list rather
+  than a contrast) to "lock or secure a door so it cannot be opened (not unlock)" / "unlock or
+  release a door so it can be opened (not lock)". Confirmed via a scratch diagnostic dumping
+  `verb:lock`/`verb:unlock` probabilities for the 4 front-door rows, run twice for stability:
+  ```
+  'lock the front door'                                   {'verb:lock': 0.99, 'verb:unlock': 0.01}
+  'unlock the front door'                                 {'verb:lock': 0.01, 'verb:unlock': 0.98}
+  'is the front door locked'                              {'verb:lock': 0.15, 'verb:unlock': 0.03}
+  'if the blinds are closed lock the front door'          {'verb:lock': 0.98, 'verb:unlock': 0.01}
+
+  'lock the front door'                                   {'verb:lock': 0.98, 'verb:unlock': 0.01}
+  'unlock the front door'                                 {'verb:lock': 0.01, 'verb:unlock': 0.98}
+  'is the front door locked'                              {'verb:lock': 0.15, 'verb:unlock': 0.03}
+  'if the blinds are closed lock the front door'          {'verb:lock': 0.98, 'verb:unlock': 0.02}
+  ```
+  `verb:unlock` dropped from ≈0.86 (co-firing, above `verb_fire`=0.7) to ≈0.01 on both lock
+  prompts, and vice versa — the first wording variant tried worked cleanly, no second attempt
+  needed.
+
+`uv run pytest -q` → 83 passed; `uv run ruff check packages/ golden/` → clean.
+
+Full-corpus result: **23/24 agree (96%)**, p50=351 ms, p95=747 ms, cost=$0.0016 (38,019
+tokens) — up from 21/24 (88%). Only "turn everything off" still fails (unchanged, pre-existing
+model-variance issue, see "Known issues"). A first full run after these fixes landed at
+22/24 (92%) because "turn off the downstairs lights" flaked on a borderline `domain:switch`
+probability (0.65–0.67, close to the 0.7 `scope_fire` threshold) — re-running that row alone
+passed, and a second full run confirmed 23/24; this is the same class of scope-threshold
+variance already noted for "turn everything off", not a new defect.
+
 ## Corpus expectation corrections
 
 - **`turn everything off`**: originally `{kind: confirm, verb: turn_off, reason:
@@ -200,24 +250,7 @@ addressable within ruling C's bounds (see below) rather than under-tuned wording
 
 ## Known issues (not fixed — out of ruling C's bounds or inherent model variance)
 
-1. **`score_to_value` off-by-one bug in `resolver.py`.** The TypeSafe Score primitive is
-   0-indexed over its `criteria` list (confirmed against
-   `docs.typesafe.ai/primitives/score.md`: "a level's number is its position in the `criteria`
-   array, starting at 0"), but `score_to_value` computes `idx = score - 1.0`, i.e. treats it as
-   1-indexed. This shifts every `ScoreQ`-backed parameter (`brightness_pct`, `position`,
-   `temperature`, `volume_level`) down by one rubric level. Evidence: "set the bedroom to 22
-   degrees" consistently returns `score≈3.0` with confidence 1.0 (the model is certain), which
-   under the *correct* 0-based formula is index 3 → `values[3]` = 22°C ("warm") — exactly the
-   expected answer — but the buggy 1-based formula computes index 2 → `values[2]` = 20°C
-   ("mild"), which is what the engine actually returns. Same shape of bug for "dim the office
-   light to about half" (score≈2.7–2.8 lands on "very dim"/"dim" under the buggy formula, but
-   on "dim"/"medium" — squarely in the expected [40, 60] range — under the correct formula).
-   This is a resolver-rule change, explicitly out of scope for this task's tuning (ruling C:
-   "Do NOT change ... the resolver's rules"). Both affected corpus rows (`dim the office light
-   to about half`, `set the bedroom to 22 degrees`) fail on every run until this is fixed.
-   **Recommended fix** (for a follow-up task): change `score_to_value` to `idx = score` (drop
-   the `- 1.0`).
-2. **"turn everything off" has high verb-probability variance.** Across repeated runs,
+1. **"turn everything off" has high verb-probability variance.** Across repeated runs,
    `verb:turn_off` for this prompt was observed at both ~0.99 (fires cleanly, resolves as
    expected) and ~0.40–0.41 (spread thin across `turn_off`/`close`/`lock`/`disarm`, none
    clearing `verb_fire`=0.7, so the request escalates as `no_intent`). This looks like genuine
@@ -226,13 +259,17 @@ addressable within ruling C's bounds (see below) rather than under-tuned wording
    ("directly turn a specific device or devices off"). Lowering `verb_fire` globally to
    accommodate this would reintroduce the cross-verb contamination fixed in tuning pass 1 (e.g.
    `set_position`/`close`, `lock`/`unlock`), so it was left alone. Re-running the corpus may
-   show this row passing or failing depending on the draw.
-3. **`unlock` fires alongside `lock`.** Not a corpus failure (the check only validates the
-   `verb` named in `expect`, so an extra co-fired verb doesn't fail the row), but observed
-   consistently: "lock the front door" and "if the blinds are closed lock the front door" both
-   show `verb:unlock`≈0.86 alongside `verb:lock`≈0.97–0.98, which would produce a spurious
-   `unlock` action alongside the intended `lock` action in `NeedsConfirmation.actions`. Likely
-   caused by the literal word "lock" appearing in both verbs' `phrasing` ("lock a door or
-   lock" / "unlock a door or lock"). Left unfixed since no corpus row exercises the exact-verb-set
-   check for these prompts and further phrasing changes to `lock`/`unlock` risk destabilizing
-   the passing confirm-flow rows; flagged here for a future tuning pass.
+   show this row passing or failing depending on the draw. The same class of borderline-Noul
+   variance was also observed once on "turn off the downstairs lights" (`domain:switch`≈0.65,
+   close to the 0.7 `scope_fire` threshold) — see the 2026-09-19 follow-up tuning-log entry.
+
+### Resolved
+
+- ~~`score_to_value` off-by-one bug in `resolver.py`~~ — **fixed** 2026-09-19 (see tuning log).
+  The TypeSafe Score primitive is 0-indexed over its `criteria` list (confirmed against
+  `docs.typesafe.ai/primitives/score.md`), but `score_to_value` computed `idx = score - 1.0`,
+  i.e. treated it as 1-indexed. Changed to `idx = score`.
+- ~~`unlock` fires alongside `lock`~~ — **fixed** 2026-09-19 (see tuning log). Reworded both
+  verbs' `phrasing` in `vocabulary.py` to explicitly contrast ("lock ... (not unlock)" /
+  "unlock ... (not lock)") instead of both containing the bare word "lock". Confirmed
+  `verb:unlock` dropped from ≈0.86 to ≈0.01 on lock prompts (and vice versa) across two runs.

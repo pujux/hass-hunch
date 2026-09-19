@@ -97,9 +97,10 @@ DEFAULT_VOCABULARY = Vocabulary(
         Verb("set_position", frozenset({"cover"}), _POSITION, Risk.SAFE, "HassSetPosition",
              "set blinds, shades or curtains to a specific partial position such as "
              "halfway or a percentage, rather than simply fully open or closed"),
-        Verb("lock", frozenset({"lock"}), None, Risk.CONFIRM, "HassLock", "lock a door or lock"),
+        Verb("lock", frozenset({"lock"}), None, Risk.CONFIRM, "HassLock",
+             "lock or secure a door so it cannot be opened (not unlock)"),
         Verb("unlock", frozenset({"lock"}), None, Risk.CONFIRM, "HassUnlock",
-             "unlock a door or lock"),
+             "unlock or release a door so it can be opened (not lock)"),
         Verb("set_temperature", frozenset({"climate"}), _TEMPERATURE, Risk.SAFE,
              "HassClimateSetTemperature", "set a target temperature or make it warmer or cooler"),
         Verb("set_volume", frozenset({"media_player"}), _VOLUME, Risk.SAFE,
