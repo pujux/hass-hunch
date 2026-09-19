@@ -159,7 +159,9 @@ DE = Phrasebook(
         ),
         "set_brightness": "einzustellen, wie hell ein Licht ist (dimmen, heller, dunkler)",
         "open": "Rollos, Jalousien, Vorhänge oder ein Garagentor zu öffnen bzw. hochzufahren",
-        "close": "Rollos, Jalousien, Vorhänge oder ein Garagentor zu schließen bzw. herunterzufahren",
+        "close": (
+            "Rollos, Jalousien, Vorhänge oder ein Garagentor zu schließen bzw. herunterzufahren"
+        ),
         "set_position": (
             "Rollos, Jalousien oder Vorhänge auf eine bestimmte Zwischenposition zu fahren, etwa "
             "halb oder auf einen Prozentwert, statt nur ganz auf oder ganz zu"
@@ -167,7 +169,9 @@ DE = Phrasebook(
         "lock": "eine Tür abzusperren bzw. zu verriegeln (nicht aufsperren)",
         "unlock": "eine Tür aufzusperren bzw. zu entriegeln (nicht absperren)",
         "set_temperature": "eine Zieltemperatur einzustellen oder es wärmer oder kälter zu machen",
-        "set_volume": "die Lautstärke eines Lautsprechers oder Fernsehers zu ändern (lauter, leiser)",
+        "set_volume": (
+            "die Lautstärke eines Lautsprechers oder Fernsehers zu ändern (lauter, leiser)"
+        ),
         "media_pause": "die Wiedergabe zu pausieren",
         "media_play": "die Wiedergabe zu starten oder fortzusetzen",
         "arm": "die Alarmanlage scharf zu schalten",
