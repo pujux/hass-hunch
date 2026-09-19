@@ -101,7 +101,10 @@ def resolve(
             )
             if c.choice == NO_MATCH:
                 trace.note(f"no_match:target:{verb.name}")
-                if verb.name in plan.scoped_sweep_ok:
+                named_device = shape.flag("names_specific") >= th.confirm_band
+                if named_device:
+                    trace.note(f"unknown_device:{verb.name}")
+                if verb.name in plan.scoped_sweep_ok and not named_device:
                     # Whole area/floor named, no device named: all of them, on the scope's word.
                     trace.note(f"scoped_sweep:{verb.name}")
                     targets = tuple(e for o in options for e in o.entities)
@@ -127,7 +130,13 @@ def resolve(
             else:
                 opt = next((o for o in options if o.label == c.choice), None)
                 weak = c.confidence < th.confirm_band and len(ranked) > 1
-                if opt is not None and weak and verb.name in plan.scoped_sweep_ok:
+                named_device = shape.flag("names_specific") >= th.confirm_band
+                if (
+                    opt is not None
+                    and weak
+                    and verb.name in plan.scoped_sweep_ok
+                    and not named_device
+                ):
                     # A weak pick inside a named area/floor: the user meant all of them.
                     trace.note(f"scoped_sweep:{verb.name}")
                     targets = tuple(e for o in options for e in o.entities)

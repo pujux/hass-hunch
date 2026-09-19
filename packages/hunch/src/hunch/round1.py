@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from hunch.config import Thresholds
 from hunch.model import Area, Entity, HomeModel
@@ -75,6 +75,7 @@ class Shape:
     flags: Mapping[str, float]
     scene: Entity | None
     condition_domain: str | None
+    floor_probs: Mapping[str, float] = field(default_factory=dict)
 
     def flag(self, name: str) -> float:
         return self.flags.get(name, 0.0)
@@ -104,6 +105,9 @@ def interpret_round1(
         a.area_id: answers.noul(f"area:{a.area_id}") for a in home.areas
     }
     scope_areas: list[str] = []
+    floor_probs: dict[str, float] = {
+        f.floor_id: answers.noul(f"floor:{f.floor_id}") for f in home.floors
+    }
     for f in home.floors:
         floor_fires = trace.decide(
             f"floor:{f.floor_id}", answers.noul(f"floor:{f.floor_id}"), thresholds.scope_fire
@@ -152,4 +156,5 @@ def interpret_round1(
         flags=flags,
         scene=scene,
         condition_domain=condition_domain,
+        floor_probs=floor_probs,
     )

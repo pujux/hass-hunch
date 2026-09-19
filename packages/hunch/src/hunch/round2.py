@@ -172,9 +172,13 @@ def plan_round2(
     widened: frozenset[str] = frozenset(),
 ) -> Round2Plan:
     collective = shape.flag("collective") >= thresholds.collective
-    if collective and shape.flag("names_specific") >= thresholds.specific_device:
-        collective = False  # a plural-looking name of one device: pick it, don't sweep the scope
     has_exception = shape.flag("has_exception") >= thresholds.flag
+    if (
+        collective
+        and not has_exception  # "everything except the fridge" names a device to EXCLUDE
+        and shape.flag("names_specific") >= thresholds.specific_device
+    ):
+        collective = False  # a plural-looking name of one device: pick it, don't sweep the scope
     area_names = {a.area_id: a.name for a in home.areas}
     exclude: dict[str, tuple[Entity, ...]] = {}
     singular: dict[str, tuple[TargetOption, ...]] = {}

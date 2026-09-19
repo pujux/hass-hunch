@@ -35,6 +35,8 @@ class Phrasebook:
     score_levels: Mapping[str, tuple[str, ...]] = field(
         default_factory=dict
     )  # overrides ScoreSpec.levels
+    # words people say for a domain, in this language
+    domain_synonyms: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     def phrasing_for(self, verb_name: str, default: str) -> str:
         return self.verb_phrasing.get(verb_name, default)
@@ -62,10 +64,10 @@ EN = Phrasebook(
             "'all', 'both' or 'every' — rather than exactly one specific device?"
         ),
         "names_specific": (
-            "Does the request name ONE specific device by its own name — a name that could be "
-            "grammatically plural, like 'the Spots' or 'the bedside lamps' if that is a single "
-            "device's name — rather than referring to devices by their kind, their room, or a "
-            "word like 'all'?"
+            "Does the request point at ONE particular device by a name or label of its own — "
+            "such as 'Stehlampe', 'Spots', 'desk lamp', 'the TV' — rather than only by a kind of "
+            "device ('light', 'blinds', 'Rollos') together with a room, floor or a word like "
+            "'all'? A plural-looking proper name still counts as one device."
         ),
         "has_exception": (
             "Does the request exclude something, e.g. 'except', 'but not', 'apart from', "
@@ -101,6 +103,37 @@ EN = Phrasebook(
     cond_subject_question="Which device is the request's condition about?",
     cond_state_question="Which state must that device be in for the request's condition to hold?",
     device_question="Which device does the request refer to?",
+    domain_synonyms={
+        "light": ("light", "lights", "lamp", "lamps", "lighting"),
+        "cover": (
+            "blind",
+            "blinds",
+            "shade",
+            "shades",
+            "curtain",
+            "curtains",
+            "shutter",
+            "shutters",
+            "garage door",
+            "awning",
+        ),
+        "switch": ("switch", "switches", "plug", "plugs", "socket", "sockets", "outlet", "outlets"),
+        "media_player": ("tv", "television", "speaker", "speakers", "music", "radio", "stereo"),
+        "fan": ("fan", "fans"),
+        "climate": (
+            "thermostat",
+            "heating",
+            "heater",
+            "air conditioning",
+            "air conditioner",
+            "ac",
+            "climate",
+        ),
+        "lock": ("lock", "locks", "door lock"),
+        "vacuum": ("vacuum", "robot vacuum", "hoover"),
+        "humidifier": ("humidifier",),
+        "alarm_control_panel": ("alarm", "alarm system"),
+    },
 )
 
 DE = Phrasebook(
@@ -119,9 +152,10 @@ DE = Phrasebook(
             "bestimmtes Gerät?"
         ),
         "names_specific": (
-            "Nennt die Anfrage EIN bestimmtes Gerät mit seinem eigenen Namen — auch wenn dieser "
-            "Name grammatikalisch ein Plural ist, wie 'die Spots' — statt Geräte über ihre Art, "
-            "ihren Raum oder ein Wort wie 'alle' zu bezeichnen?"
+            "Meint die Anfrage EIN bestimmtes Gerät mit einem eigenen Namen oder einer eigenen "
+            "Bezeichnung — etwa 'Stehlampe', 'Spots', 'Schreibtischlampe', 'der Fernseher' — statt "
+            "nur eine Geräteart ('Licht', 'Rollos') zusammen mit einem Raum, Stockwerk oder einem "
+            "Wort wie 'alle'? Ein Eigenname in Pluralform zählt trotzdem als ein Gerät."
         ),
         "has_exception": (
             "Schließt die Anfrage etwas aus, z. B. mit 'außer', 'aber nicht', 'abgesehen von', "
@@ -233,6 +267,41 @@ DE = Phrasebook(
             "heiß (24 °C)",
         ),
         "volume_level": ("stumm", "leise", "mittel", "laut", "maximal"),
+    },
+    domain_synonyms={
+        "light": ("licht", "lichter", "lampe", "lampen", "leuchte", "leuchten", "beleuchtung"),
+        "cover": (
+            "rollo",
+            "rollos",
+            "jalousie",
+            "jalousien",
+            "rolladen",
+            "rollladen",
+            "rollläden",
+            "vorhang",
+            "vorhänge",
+            "markise",
+            "markisen",
+            "raffstore",
+            "garagentor",
+        ),
+        "switch": ("schalter", "steckdose", "steckdosen", "stecker", "steckerleiste"),
+        "media_player": (
+            "fernseher",
+            "tv",
+            "lautsprecher",
+            "musik",
+            "radio",
+            "box",
+            "boxen",
+            "anlage",
+        ),
+        "fan": ("lüfter", "ventilator", "ventilatoren", "abluft"),
+        "climate": ("klimaanlage", "klima", "heizung", "thermostat", "klimagerät"),
+        "lock": ("schloss", "türschloss"),
+        "vacuum": ("staubsauger", "saugroboter", "roboter"),
+        "humidifier": ("luftbefeuchter", "befeuchter"),
+        "alarm_control_panel": ("alarmanlage", "alarm"),
     },
 )
 

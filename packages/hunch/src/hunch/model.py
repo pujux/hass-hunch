@@ -11,6 +11,7 @@ class Floor:
     floor_id: str
     name: str
     area_ids: tuple[str, ...]
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

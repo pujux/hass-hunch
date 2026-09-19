@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from hunch.config import EngineConfig
 from hunch.model import Entity, HomeModel
+from hunch.phrasing import Phrasebook
 from hunch.resolution import Trace
 from hunch.round1 import Shape
 from hunch.vocabulary import Verb
@@ -62,25 +63,42 @@ def verbatim_matches(entities: tuple[Entity, ...], prompt: str) -> tuple[Entity,
 
 
 def verbatim_areas(home: HomeModel, prompt: str) -> tuple[str, ...]:
-    """Areas the prompt names outright. Only if none is named in full, a stem shared by several
-    areas counts: "Badezimmer" scopes both "Badezimmer Oben" and "Badezimmer Unten", but
-    "Badezimmer unten" scopes just the one."""
+    """Areas the prompt names outright — by area name or alias, or by a floor's name or alias
+    (which scopes all of the floor's areas). Only if none is named in full, a stem shared by
+    several areas counts: "Badezimmer" scopes both "Badezimmer Oben" and "Badezimmer Unten",
+    but "Badezimmer unten" scopes just the one."""
     if not prompt:
         return ()
     text = _words(prompt)
-    full = tuple(
-        a.area_id
-        for a in home.areas
-        if any(_words(lbl) in text for lbl in (a.name, *a.aliases) if lbl)
-    )
-    if full:
-        return full
+    hits: list[str] = []
+    for a in home.areas:
+        if any(_words(lbl) in text for lbl in (a.name, *a.aliases) if lbl):
+            hits.append(a.area_id)
+    for f in home.floors:
+        if any(_words(lbl) in text for lbl in (f.name, *f.aliases) if lbl):
+            hits.extend(a for a in f.area_ids if a not in hits)
+    if hits:
+        return tuple(hits)
     stems: list[str] = []
     for a in home.areas:
         parts = a.name.split()
         if len(parts) > 1 and len(parts[0]) >= 4 and _words(parts[0]) in text:
             stems.append(a.area_id)
     return tuple(stems)
+
+
+def verbatim_domains(prompt: str, phrasebooks: tuple[Phrasebook, ...]) -> tuple[str, ...]:
+    """Domains the prompt names by a known word in any supported language ("Licht", "lights",
+    "Rollos", "Fernseher"). Empty when nothing matches — Jev's domain judgement then stands."""
+    if not prompt:
+        return ()
+    text = _words(prompt)
+    found: list[str] = []
+    for pb in phrasebooks:
+        for domain, words in pb.domain_synonyms.items():
+            if domain not in found and any(_words(w) in text for w in words):
+                found.append(domain)
+    return tuple(found)
 
 
 def device_label(e: Entity) -> str:

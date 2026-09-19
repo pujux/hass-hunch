@@ -167,3 +167,13 @@ def test_verbatim_match_needs_exactly_one_candidate(home, thresholds):
         "turn_on": cands
     }  # two candidates share the matched device name -> keep all
     assert plan.name_matched == ()
+
+
+def test_specific_flag_does_not_defeat_an_exception(home, thresholds):
+    # "turn off everything in the kitchen except the fridge": the named device is the exclusion.
+    shape, _ = _shape(
+        ["turn_off"], {"collective": 0.9, "has_exception": 0.85, "names_specific": 0.9}
+    )
+    cands = _ents(home, "light.kitchen_ceiling", "light.kitchen_counter", "switch.fridge")
+    plan = plan_round2(home, shape, {"turn_off": cands}, thresholds, 60)
+    assert "turn_off" in plan.exclude and "turn_off" not in plan.singular

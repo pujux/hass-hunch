@@ -7,7 +7,7 @@ import dataclasses
 from hunch.client import DecisionBackendError, DecisionClient
 from hunch.config import EngineConfig
 from hunch.model import Entity, HomeModel
-from hunch.phrasing import EN, Phrasebook
+from hunch.phrasing import EN, PHRASEBOOKS, Phrasebook
 from hunch.questions import ChoiceQ, Question
 from hunch.resolution import Escalate, NeedsClarification, Resolution, Trace
 from hunch.resolver import resolve
@@ -26,6 +26,7 @@ from hunch.scope import (
     ScopeEscalate,
     scope_candidates,
     verbatim_areas,
+    verbatim_domains,
 )
 from hunch.vocabulary import Vocabulary
 
@@ -101,12 +102,51 @@ class Engine:
         if not shape.fired_verbs:
             return Escalate("no_intent", (), trace)
 
-        named_areas = tuple(a for a in verbatim_areas(home, prompt) if a not in shape.scope_areas)
+        # Code decides the scope wherever it can. Areas and floors count when the prompt names
+        # them (name or alias) or when Jev is very sure; a merely-likely area nobody mentioned is
+        # a hallucination ("Licht aus" must not pick two random rooms). Domains named by a known
+        # word in any supported language override Jev's domain guess.
+        named_areas = verbatim_areas(home, prompt)
+        # Floors are few and rarely hallucinated: a floor that fired at scope_fire keeps its
+        # areas ("Schalte alle Lichter unten aus" without an alias for "unten"). Areas need
+        # either a verbatim mention or the hard bar.
+        fired_floor_areas = tuple(
+            a
+            for f in home.floors
+            if shape.floor_probs.get(f.floor_id, 0.0) >= th.scope_fire
+            for a in f.area_ids
+        )
         if named_areas:
-            # The prompt names these areas outright; Jev's hedging on a shared stem
-            # ("Badezimmer" for two bathrooms) must not lose them.
-            trace.note("area_match:" + ",".join(named_areas))
-            shape = dataclasses.replace(shape, scope_areas=shape.scope_areas + named_areas)
+            # A room said out loud beats everything else: a floor that also fired must not widen
+            # "Rollos im Schlafzimmer" to the whole upper floor.
+            kept = tuple(
+                a
+                for a in shape.scope_areas
+                if a in named_areas or shape.area_probs.get(a, 0.0) >= th.scope_hard
+            )
+        else:
+            kept = tuple(
+                a
+                for a in shape.scope_areas
+                if a in fired_floor_areas or shape.area_probs.get(a, 0.0) >= th.scope_hard
+            )
+        dropped = tuple(a for a in shape.scope_areas if a not in kept)
+        added = tuple(a for a in named_areas if a not in kept)
+        if dropped:
+            trace.note("soft_scope_dropped:" + ",".join(dropped))
+        if added:
+            trace.note("area_match:" + ",".join(added))
+        matched_domains = tuple(
+            d for d in verbatim_domains(prompt, tuple(PHRASEBOOKS.values())) if d in home.domains
+        )
+        scope_domains = shape.scope_domains
+        if matched_domains and matched_domains != scope_domains:
+            trace.note("domain_match:" + ",".join(matched_domains))
+            scope_domains = matched_domains
+        if kept + added != shape.scope_areas or scope_domains != shape.scope_domains:
+            shape = dataclasses.replace(
+                shape, scope_areas=kept + added, scope_domains=scope_domains
+            )
 
         per_verb: dict[str, tuple[Entity, ...]] = {}
         widened: set[str] = set()

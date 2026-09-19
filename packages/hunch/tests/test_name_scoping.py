@@ -126,3 +126,39 @@ def test_no_room_no_name_no_match_confirms_the_whole_domain(home, config):
     r = resolve(shape, plan, r2, config, t)
     assert isinstance(r, NeedsConfirmation) and r.reason == "collective_fallback"
     assert len(r.actions[0].targets) == len(cands)
+
+
+def test_named_but_unknown_device_never_sweeps_the_room(home, config):
+    # "Wohnzimmer Stehlampe aufdrehen" where the Stehlampe is not exposed: the room is named,
+    # no candidate matches, Jev says a device was named -> ask/escalate, never turn on the room.
+    from hunch.resolution import NeedsClarification
+
+    shape = _shape(
+        ["turn_on"], areas=("living",), domains=("light",), flags={"names_specific": 0.8}
+    )
+    t = Trace()
+    t.decide("verb:turn_on", 0.97, 0.7)
+    cands = tuple(e for e in home.entities if e.area_id == "living" and e.domain == "light")
+    plan = plan_round2(
+        home,
+        shape,
+        {"turn_on": cands},
+        config.thresholds,
+        60,
+        prompt="Wohnzimmer Stehlampe aufdrehen",
+    )
+    assert plan.scoped_sweep_ok == ("turn_on",)  # the planner cannot know; the resolver guards it
+    r2 = Answers(
+        "m",
+        {
+            "target:turn_on": ChoiceA(
+                "Living room main", 0.34, {"Living room main": 0.34, "Reading lamp": 0.3}
+            )
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, t)
+    assert isinstance(r, NeedsClarification)
+    assert (
+        "unknown_device:turn_on" not in r.trace.notes
+    )  # weak pick path; clarify with the candidates

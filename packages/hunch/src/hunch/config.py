@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Thresholds:
     verb_fire: float = 0.7
-    scope_fire: float = 0.7  # floor / area / domain Nouls
+    scope_fire: float = 0.7
+    scope_hard: float = 0.9  # a Jev-only area/floor (not named verbatim) needs this to count  # floor / area / domain Nouls
     collective: float = 0.5
     target_choice_conf: float = 0.7
     auto_execute: float = 0.75

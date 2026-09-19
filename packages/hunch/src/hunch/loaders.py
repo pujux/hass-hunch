@@ -34,6 +34,7 @@ def home_from_export(
             floor_id=f["floor_id"],
             name=f["name"],
             area_ids=tuple(a.area_id for a in areas if a.floor_id == f["floor_id"]),
+            aliases=tuple(f.get("aliases") or ()),
         )
         for f in export.get("floors", [])
     )
