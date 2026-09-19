@@ -42,7 +42,7 @@ def test_score_to_value_interpolates():
 def test_collective_resolves_without_round2(home, config):
     shape, vp = _shape(["turn_off"], {"collective": 0.9}, {"turn_off": 0.95})
     cands = _ents(home, "light.kitchen_ceiling", "light.kitchen_counter")
-    plan = plan_round2(home, shape, {"turn_off": cands}, config.thresholds)
+    plan = plan_round2(home, shape, {"turn_off": cands}, config.thresholds, 60)
     r = resolve(shape, plan, None, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
     assert r.actions[0].verb.name == "turn_off" and r.actions[0].targets == cands
@@ -52,7 +52,7 @@ def test_collective_resolves_without_round2(home, config):
 def test_exceptions_drop_excluded_entities(home, config):
     shape, vp = _shape(["turn_off"], {"collective": 0.9, "has_exception": 0.85}, {"turn_off": 0.95})
     cands = _ents(home, "light.kitchen_ceiling", "switch.fridge")
-    plan = plan_round2(home, shape, {"turn_off": cands}, config.thresholds)
+    plan = plan_round2(home, shape, {"turn_off": cands}, config.thresholds, 60)
     r2 = Answers("m", {
         "exclude:turn_off:light.kitchen_ceiling": NoulA(0.05),
         "exclude:turn_off:switch.fridge": NoulA(0.92),
@@ -67,7 +67,7 @@ def test_exceptions_drop_excluded_entities(home, config):
 def test_singular_picks_choice_target(home, config):
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
-    plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds)
+    plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds, 60)
     choice = ChoiceA(
         "Reading lamp", 0.88, {"Reading lamp": 0.88, "Living room main": 0.12}
     )
@@ -81,7 +81,7 @@ def test_singular_picks_choice_target(home, config):
 def test_param_is_interpolated_into_action(home, config):
     shape, vp = _shape(["set_brightness"], {"collective": 0.9}, {"set_brightness": 0.9})
     cands = {"set_brightness": _ents(home, "light.office_desk")}
-    plan = plan_round2(home, shape, cands, config.thresholds)
+    plan = plan_round2(home, shape, cands, config.thresholds, 60)
     r2 = Answers("m", {"param:set_brightness": ScoreA(2.5, 0.8, {})}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
@@ -90,7 +90,9 @@ def test_param_is_interpolated_into_action(home, config):
 
 def test_confirm_tier_verb_needs_confirmation(home, config):
     shape, vp = _shape(["unlock"], {"collective": 0.9}, {"unlock": 0.95})
-    plan = plan_round2(home, shape, {"unlock": _ents(home, "lock.front_door")}, config.thresholds)
+    plan = plan_round2(
+        home, shape, {"unlock": _ents(home, "lock.front_door")}, config.thresholds, 60
+    )
     r = resolve(shape, plan, None, config, _trace_with_verbs(vp))
     assert isinstance(r, NeedsConfirmation) and r.reason == "risk:confirm"
 
@@ -99,14 +101,16 @@ def test_blast_radius_needs_confirmation(home, config):
     cfg = EngineConfig(model="m", max_silent_targets=2)
     shape, vp = _shape(["turn_off"], {"collective": 0.95}, {"turn_off": 0.95})
     cands = tuple(e for e in home.entities if "turn_off" in e.verbs)
-    plan = plan_round2(home, shape, {"turn_off": cands}, cfg.thresholds)
+    plan = plan_round2(home, shape, {"turn_off": cands}, cfg.thresholds, 60)
     r = resolve(shape, plan, None, cfg, _trace_with_verbs(vp))
     assert isinstance(r, NeedsConfirmation) and r.reason == "blast_radius"
 
 
 def test_mid_confidence_needs_confirmation(home, config):
     shape, vp = _shape(["turn_off"], {"collective": 0.66}, {"turn_off": 0.72})
-    plan = plan_round2(home, shape, {"turn_off": _ents(home, "light.hallway")}, config.thresholds)
+    plan = plan_round2(
+        home, shape, {"turn_off": _ents(home, "light.hallway")}, config.thresholds, 60
+    )
     r = resolve(shape, plan, None, config, _trace_with_verbs(vp))
     assert isinstance(r, NeedsConfirmation) and r.reason == "confidence"
 
@@ -114,7 +118,7 @@ def test_mid_confidence_needs_confirmation(home, config):
 def test_low_confidence_escalates_with_partial(home, config):
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
-    plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds)
+    plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds, 60)
     choice = ChoiceA(
         "Reading lamp", 0.4, {"Reading lamp": 0.4, "Living room main": 0.35}
     )
@@ -126,7 +130,9 @@ def test_low_confidence_escalates_with_partial(home, config):
 
 def test_destructive_flag_escalates_before_anything(home, config):
     shape, vp = _shape(["turn_off"], {"collective": 0.9, "is_destructive": 0.8}, {"turn_off": 0.95})
-    plan = plan_round2(home, shape, {"turn_off": _ents(home, "light.hallway")}, config.thresholds)
+    plan = plan_round2(
+        home, shape, {"turn_off": _ents(home, "light.hallway")}, config.thresholds, 60
+    )
     r = resolve(shape, plan, None, config, _trace_with_verbs(vp))
     assert isinstance(r, Escalate) and r.reason == "destructive"
 
@@ -138,7 +144,7 @@ def test_condition_is_attached_not_evaluated(home, config):
         condition_domain="cover",
     )
     cands = {"lock": _ents(home, "lock.front_door")}
-    plan = plan_round2(home, shape, cands, config.thresholds)
+    plan = plan_round2(home, shape, cands, config.thresholds, 60)
     r2 = Answers("m", {
         "cond_subject": ChoiceA("Blinds", 0.9, {"Blinds": 0.9}),
         "cond_state": ChoiceA("closed", 0.85, {"closed": 0.85, "open": 0.15}),
@@ -153,7 +159,7 @@ def test_condition_is_attached_not_evaluated(home, config):
 def test_no_match_target_yields_no_action(home, config):
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
-    plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds)
+    plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds, 60)
     r2 = Answers("m", {"target:turn_on": ChoiceA(NO_MATCH, 0.9, {NO_MATCH: 0.9})}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Escalate) and r.reason == "low_confidence" and r.partial == ()
@@ -172,6 +178,7 @@ def test_dead_verb_does_not_drag_down_other_verbs_confidence(home, config):
             "turn_on": _ents(home, "light.living_main", "light.reading_lamp"),
         },
         config.thresholds,
+        config.scope_cap,
     )
     r2 = Answers("m", {"target:turn_on": ChoiceA(NO_MATCH, 0.3, {NO_MATCH: 0.3})}, None)
     trace = _trace_with_verbs(vp)
@@ -185,7 +192,8 @@ def test_dead_verb_does_not_drag_down_other_verbs_confidence(home, config):
 def test_verb_prob_fails_closed_when_round1_decision_is_missing(home, config):
     shape, _ = _shape(["turn_off"], {"collective": 0.9})
     plan = plan_round2(
-        home, shape, {"turn_off": _ents(home, "light.hallway")}, config.thresholds,
+        home, shape, {"turn_off": _ents(home, "light.hallway")},
+        config.thresholds, config.scope_cap,
     )
     r = resolve(shape, plan, None, config, Trace())  # no verb decision recorded
     assert isinstance(r, Escalate) and r.reason == "low_confidence"

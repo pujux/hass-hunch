@@ -184,6 +184,17 @@ async def test_round_budget_escalates_when_round2_does_not_fit(home, vocab):
     assert calls["n"] == 1
 
 
+async def test_unresolvable_condition_is_noted(home, vocab, config):
+    # The condition is about an alarm panel; the home has none, so nothing can express it.
+    client, _ = _scripted({
+        "verb:turn_off": NoulA(0.95), "area:hallway": NoulA(0.9), "flag:collective": NoulA(0.9),
+        "flag:has_condition": NoulA(0.9),
+        "condition_domain": ChoiceA("none", 0.9, {}),
+    })
+    r = await Engine(client, vocab, config).decide(home, "turn the hallway off if nobody is home")
+    assert "condition:unresolvable" in r.trace.notes
+
+
 async def test_backend_error_escalates(home, vocab, config):
     class Boom:
         async def ask(self, state, questions):

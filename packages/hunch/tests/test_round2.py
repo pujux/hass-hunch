@@ -19,10 +19,12 @@ _FLAG_NAMES = (
 )
 
 
-def _shape(home, verbs, flags=None, condition_domain=None):
+def _shape(home, verbs, flags=None, condition_domain=None, areas=()):
     f = {k: 0.05 for k in _FLAG_NAMES}
     f.update(flags or {})
-    return Shape(tuple(V.by_name(v) for v in verbs), (), (), {}, {}, f, None, condition_domain)
+    return Shape(
+        tuple(V.by_name(v) for v in verbs), tuple(areas), (), {}, {}, f, None, condition_domain
+    )
 
 
 def _ents(home, *ids):
@@ -59,7 +61,7 @@ def test_target_options_dedupes_labels(home):
 def test_collective_without_exception_skips_round2(home, thresholds):
     shape = _shape(home, ["turn_off"], {"collective": 0.9})
     cands = _ents(home, "light.kitchen_ceiling", "light.kitchen_counter")
-    plan = plan_round2(home, shape, {"turn_off": cands}, thresholds)
+    plan = plan_round2(home, shape, {"turn_off": cands}, thresholds, 60)
     assert plan.collective == {"turn_off": cands}
     assert build_round2_questions(shape, plan, home) == {}
 
@@ -67,7 +69,7 @@ def test_collective_without_exception_skips_round2(home, thresholds):
 def test_collective_with_exception_asks_exclude_per_candidate(home, thresholds):
     shape = _shape(home, ["turn_off"], {"collective": 0.9, "has_exception": 0.8})
     cands = _ents(home, "light.kitchen_ceiling", "switch.fridge")
-    plan = plan_round2(home, shape, {"turn_off": cands}, thresholds)
+    plan = plan_round2(home, shape, {"turn_off": cands}, thresholds, 60)
     qs = build_round2_questions(shape, plan, home)
     assert set(qs) == {"exclude:turn_off:light.kitchen_ceiling", "exclude:turn_off:switch.fridge"}
     assert all(isinstance(q, NoulQ) for q in qs.values())
@@ -78,7 +80,7 @@ def test_collective_with_exception_asks_exclude_per_candidate(home, thresholds):
 def test_singular_asks_one_choice_over_target_options(home, thresholds):
     shape = _shape(home, ["turn_on"], {"collective": 0.1})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
-    plan = plan_round2(home, shape, {"turn_on": cands}, thresholds)
+    plan = plan_round2(home, shape, {"turn_on": cands}, thresholds, 60)
     qs = build_round2_questions(shape, plan, home)
     assert isinstance(qs["target:turn_on"], ChoiceQ)
     assert qs["target:turn_on"].options == ("Living room main", "Reading lamp", NO_MATCH)
@@ -87,7 +89,7 @@ def test_singular_asks_one_choice_over_target_options(home, thresholds):
 def test_param_question_uses_verb_spec(home, thresholds):
     shape = _shape(home, ["set_brightness"], {"collective": 0.9})
     plan = plan_round2(
-        home, shape, {"set_brightness": _ents(home, "light.office_desk")}, thresholds
+        home, shape, {"set_brightness": _ents(home, "light.office_desk")}, thresholds, 60
     )
     qs = build_round2_questions(shape, plan, home)
     assert isinstance(qs["param:set_brightness"], ScoreQ)
@@ -96,7 +98,7 @@ def test_param_question_uses_verb_spec(home, thresholds):
 
 def test_param_verb_without_candidates_asks_no_param_question(home, thresholds):
     shape = _shape(home, ["set_brightness"], {"collective": 0.9})
-    plan = plan_round2(home, shape, {"set_brightness": ()}, thresholds)
+    plan = plan_round2(home, shape, {"set_brightness": ()}, thresholds, 60)
     assert build_round2_questions(shape, plan, home) == {}
     assert plan.params == ()
 
@@ -105,7 +107,7 @@ def test_condition_questions_when_condition_domain_set(home, thresholds):
     shape = _shape(
         home, ["arm"], {"collective": 0.9, "has_condition": 0.8}, condition_domain="lock"
     )
-    plan = plan_round2(home, shape, {"arm": ()}, thresholds)
+    plan = plan_round2(home, shape, {"arm": ()}, thresholds, 60)
     qs = build_round2_questions(shape, plan, home)
     assert qs["cond_subject"].options == ("Front door", NO_MATCH)
     assert set(qs["cond_state"].options) >= {"locked", "unlocked"}
@@ -114,7 +116,7 @@ def test_condition_questions_when_condition_domain_set(home, thresholds):
 def test_round2_state_lists_only_relevant_candidates(home, thresholds):
     shape = _shape(home, ["turn_on"], {"collective": 0.1})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
-    plan = plan_round2(home, shape, {"turn_on": cands}, thresholds)
+    plan = plan_round2(home, shape, {"turn_on": cands}, thresholds, 60)
     state = build_round2_state("turn on the lamp", plan, home)
     assert state["request"] == "turn on the lamp"
     names = {c["name"] for c in state["candidates"]}
@@ -141,3 +143,22 @@ def test_device_options_dedupe_labels(home):
     a = home.entity_by_id("light.office_desk")
     b = type(a)(**{**a.__dict__, "entity_id": "light.office_desk_2", "device_id": "dev_other"})
     assert [o.label for o in device_options((a, b))] == ["Desk lamp", "Desk lamp #2"]
+
+
+def test_condition_candidates_are_scoped_to_the_fired_areas(home, thresholds):
+    shape = _shape(
+        home, ["arm"], {"collective": 0.9, "has_condition": 0.8},
+        condition_domain="light", areas=("kitchen",),
+    )
+    plan = plan_round2(home, shape, {"arm": ()}, thresholds, 60)
+    qs = build_round2_questions(shape, plan, home)
+    assert qs["cond_subject"].options == ("Kitchen ceiling", "Counter strip", NO_MATCH)
+
+
+def test_condition_candidates_over_the_cap_are_dropped_not_truncated(home, thresholds):
+    shape = _shape(
+        home, ["arm"], {"collective": 0.9, "has_condition": 0.8}, condition_domain="light"
+    )
+    plan = plan_round2(home, shape, {"arm": ()}, thresholds, 2)
+    assert plan.condition_candidates == ()
+    assert "cond_subject" not in build_round2_questions(shape, plan, home)

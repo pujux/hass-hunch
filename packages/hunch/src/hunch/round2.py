@@ -107,6 +107,7 @@ def plan_round2(
     shape: Shape,
     per_verb: Mapping[str, tuple[Entity, ...]],
     thresholds: Thresholds,
+    scope_cap: int,
 ) -> Round2Plan:
     collective = shape.flag("collective") >= thresholds.collective
     has_exception = shape.flag("has_exception") >= thresholds.flag
@@ -133,6 +134,12 @@ def plan_round2(
     cond: tuple[Entity, ...] = ()
     if shape.condition_domain and shape.flag("has_condition") >= thresholds.flag:
         cond = tuple(e for e in home.entities if e.domain == shape.condition_domain)
+        if shape.scope_areas:
+            cond = tuple(e for e in cond if e.area_id in shape.scope_areas)
+        if len(cond) > scope_cap:
+            # Truncating would silently hide the right answer; ask nothing instead and let
+            # the engine record that the condition could not be resolved.
+            cond = ()
     return Round2Plan(exclude, singular, coll, tuple(params), cond)
 
 
