@@ -2,8 +2,8 @@
 from hunch.client import DecisionBackendError, FakeDecisionClient
 from hunch.config import EngineConfig
 from hunch.engine import Engine
-from hunch.questions import ChoiceA, ChoiceQ, NoulA, ScoreQ
-from hunch.resolution import Escalate, NeedsClarification, Resolved
+from hunch.questions import ChoiceA, ChoiceQ, NoulA, ScoreA, ScoreQ
+from hunch.resolution import Escalate, NeedsClarification, NeedsConfirmation, Resolved
 from hunch.round2 import NO_MATCH
 
 
@@ -27,7 +27,6 @@ def _scripted(round1: dict, round2: dict | None = None, device: dict | None = No
             elif isinstance(q, ChoiceQ):
                 out[qid] = ChoiceA("none" if "none" in q.options else q.options[0], 0.9, {})
             elif isinstance(q, ScoreQ):
-                from hunch.questions import ScoreA
                 out[qid] = ScoreA(1.0, 0.9, {})
             else:
                 out[qid] = NoulA(0.05)
@@ -230,3 +229,90 @@ async def test_trace_travels_with_result(home, vocab, config):
     r = await Engine(client, vocab, config).decide(home, "hallway off")
     assert r.trace.models == ["fake"]
     assert any(e.question_id == "verb:turn_off" for e in r.trace.entries)
+
+
+# --- end-to-end paths through the whole pipeline -------------------------------------------
+
+async def test_confirm_tier_verb_ends_in_needs_confirmation(home, vocab, config):
+    client, calls = _scripted({
+        "verb:lock": NoulA(0.95), "area:hallway": NoulA(0.9), "domain:lock": NoulA(0.9),
+        "flag:collective": NoulA(0.9),
+    })
+    r = await Engine(client, vocab, config).decide(home, "lock the front door")
+    assert isinstance(r, NeedsConfirmation) and r.reason == "risk:confirm"
+    assert [e.entity_id for e in r.actions[0].targets] == ["lock.front_door"]
+    assert calls["n"] == 1
+
+
+async def test_blast_radius_ends_in_needs_confirmation(home, vocab):
+    cfg = EngineConfig(model="jev-1.13.0", max_silent_targets=2)
+    client, _ = _scripted({
+        "verb:turn_off": NoulA(0.95), "floor:downstairs": NoulA(0.9),
+        "domain:light": NoulA(0.9), "flag:collective": NoulA(0.95),
+    })
+    r = await Engine(client, vocab, cfg).decide(home, "turn everything off")
+    assert isinstance(r, NeedsConfirmation) and r.reason == "blast_radius"
+    assert len(r.actions[0].targets) > 2
+
+
+async def test_param_verb_resolves_with_params_populated(home, vocab, config):
+    client, calls = _scripted(
+        {
+            "verb:set_brightness": NoulA(0.9), "area:office": NoulA(0.9),
+            "domain:light": NoulA(0.9), "flag:collective": NoulA(0.1),
+        },
+        {"param:set_brightness": ScoreA(3.0, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "dim the desk lamp")
+    assert isinstance(r, Resolved)
+    assert [e.entity_id for e in r.actions[0].targets] == ["light.office_desk"]
+    assert r.actions[0].params == {"brightness_pct": 50.0}
+    assert calls["n"] == 2  # the param Choice is the only thing Round 2 is spent on
+
+
+async def test_condition_rides_along_on_the_result(home, vocab, config):
+    client, _ = _scripted(
+        {
+            "verb:lock": NoulA(0.95), "domain:lock": NoulA(0.9),
+            "flag:has_condition": NoulA(0.9),
+            "condition_domain": ChoiceA("cover", 0.9, {"cover": 0.9}),
+        },
+        {
+            "cond_subject": ChoiceA("Blinds", 0.9, {"Blinds": 0.9}),
+            "cond_state": ChoiceA("closed", 0.9, {"closed": 0.9}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "if the blinds are closed lock the front door"
+    )
+    assert isinstance(r, NeedsConfirmation)
+    assert r.condition is not None
+    assert r.condition.subject.entity_id == "cover.living_blinds"
+    assert r.condition.expected_state == "closed"
+
+
+async def test_destructive_flag_escalates(home, vocab, config):
+    client, _ = _scripted({
+        "verb:turn_off": NoulA(0.9), "area:hallway": NoulA(0.9),
+        "flag:is_destructive": NoulA(0.85),
+    })
+    r = await Engine(client, vocab, config).decide(home, "disable the smoke alarm")
+    assert isinstance(r, Escalate) and r.reason == "destructive" and r.partial == ()
+
+
+async def test_multi_verb_request_yields_one_action_per_verb(home, vocab, config):
+    client, _ = _scripted({
+        "verb:turn_off": NoulA(0.95), "verb:close": NoulA(0.95),
+        "area:kitchen": NoulA(0.9), "area:living": NoulA(0.9),
+        "domain:light": NoulA(0.9), "domain:cover": NoulA(0.9),
+        "flag:collective": NoulA(0.9),
+    })
+    r = await Engine(client, vocab, config).decide(
+        home, "turn off the kitchen lights and close the blinds"
+    )
+    assert isinstance(r, Resolved)
+    assert {a.verb.name for a in r.actions} == {"turn_off", "close"}
+    by_verb = {a.verb.name: {e.entity_id for e in a.targets} for a in r.actions}
+    assert by_verb["close"] == {"cover.living_blinds"}
+    assert "light.kitchen_ceiling" in by_verb["turn_off"]
+    assert "switch.fridge" not in by_verb["turn_off"]
