@@ -409,7 +409,13 @@ attached to the chat log regardless of outcome.
    be checked against the real API early (spike, needs `TYPESAFE_API_KEY`).
 3. **Threshold defaults.** The values in §5.3 are starting points; they are
    tuned from the golden corpus, not reasoned from first principles.
-4. **Multi-language.** HA is multilingual; Jev's language coverage for
+4. **Compound requests.** TypeSafe's own [smart-home demo](https://docs.typesafe.ai/demos/smart-home)
+   detects compound requests with a Noul and then uses an LLM to split them
+   into atomic commands before evaluating each. Hunch instead relies on
+   per-verb Nouls plus set-selection. If the golden corpus shows verb fan-out
+   is weak on compound requests, adopt the demo's split step using the
+   fallback agent.
+5. **Multi-language.** HA is multilingual; Jev's language coverage for
    non-English requests and the effect on calibrated probabilities is
    unverified.
 
