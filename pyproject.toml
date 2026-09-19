@@ -2,12 +2,16 @@
 name = "hass-hunch-workspace"
 version = "0.0.0"
 requires-python = ">=3.13,<3.14"
+dependencies = ["hunch"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+hunch = { workspace = true }
 
 [dependency-groups]
 dev = [

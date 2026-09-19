@@ -43,12 +43,43 @@ by scoping candidates first (§6 Step 3) before asking any per-candidate
 `Noul`, so Round 2's exclusion questions should only ever see the already-
 narrowed candidate set, not hundreds of unrelated entities.
 
+## Addendum: scoped candidates, sharper wording
+
+The original ladder's candidates mixed domains (`light`, `switch`, `cover`,
+...) and areas (`Hallway`, `Bedroom`, `Garage`, ...), so "excluded from this
+request" was legitimately close to "yes" for every non-light and every
+non-downstairs candidate — the question conflated "not targeted by this
+request at all" with "explicitly named as an exception". This addendum
+(`uv run python spikes/question_count.py --variant scoped`) scopes
+candidates to downstairs lights only — exactly one `"Hallway light"`, the
+rest Kitchen/Living room lights — and rewords the question to name the
+exception concept explicitly: *"The request in `request` names an
+exception — something that must NOT be affected. Is the candidate named
+'{name}' in area '{area}' that exception?"*
+
+| n  | latency (ms) | input tokens | p(exception\|Hallway light) | mean p(exception\|other) |
+|----|-------------:|-------------:|-----------------------------:|---------------------------:|
+| 5  |          870 |          640 |                          0.99 |                        0.02 |
+| 10 |          432 |          993 |                          0.99 |                        0.02 |
+| 15 |          334 |         1350 |                          0.99 |                        0.02 |
+| 25 |          274 |         2060 |                          0.99 |                        0.02 |
+
+No errors; all four requests returned `200`.
+
+**Conclusion:** with candidates scoped to the actually-relevant domain and
+a question that names "exception" explicitly instead of the ambiguous
+"excluded", separation between the true exception and every other
+candidate is total (0.99 vs 0.02) and holds without any degradation at
+both n=15 and n=25. This confirms the original ladder's collapse was an
+artifact of conflated question wording and an unscoped candidate set, not
+evidence of context rot at these small n — reinforcing (rather than
+contradicting) the original conclusion that candidate scoping before a
+per-candidate exclusion `Noul` is what makes the signal usable.
+
 ## SDK observations
 
 Recorded against `typesafe-sdk==0.7.0` (confirmed via
-`uv run python -c "import typesafe_sdk, inspect; ..."` after `uv sync
---all-packages`, since the root workspace's `uv sync` alone does not
-install workspace members — see "Deviations from the brief" below).
+`uv run python -c "import typesafe_sdk, inspect; ..."`).
 
 - **Import names that worked, unchanged from the brief:**
   `from typesafe_sdk import AsyncTypeSafeClient, Noul, TypeSafeAPIError`.
@@ -91,13 +122,12 @@ install workspace members — see "Deviations from the brief" below).
 
 1. `getattr(exc, 'status_code', '?')` → `getattr(exc, 'status', '?')` in
    `spikes/question_count.py`, since the real attribute is `status`.
-2. `uv sync` at the workspace root only installs the `dev` dependency
-   group (root has `[tool.uv] package = false` per ruling 2, and nothing
-   in the root depends on `packages/hunch`), so `typesafe-sdk` was never
-   installed and `import typesafe_sdk` failed. Running
-   `uv sync --all-packages` installs every workspace member, including
-   `hunch` and its `typesafe-sdk` dependency. All later `uv run` commands
-   in this task were run against that environment.
+2. Plain `uv sync` at the workspace root installs `hunch` (and its
+   `typesafe-sdk` dependency) directly — the root `pyproject.toml`
+   declares `dependencies = ["hunch"]` with `[tool.uv.sources] hunch =
+   { workspace = true }`, so no `--all-packages` flag is needed. Verified
+   with a from-scratch `rm -rf .venv uv.lock && uv sync` followed by
+   `uv run python -c "import typesafe_sdk, hunch"` and `uv run pytest -q`.
 
 Everything else in the brief's spike script (state shape, question
 construction, ladder values, print format) matched the real API exactly.
