@@ -64,6 +64,36 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-20 (later) — Julian's own prompts: code matches names, Jev judges the rest
+
+13 prompts added verbatim to `corpus_julian.yaml` (32 rows). Baseline on the new rows was poor
+(25/32 overall) and every failure traced to a place where Jev was asked something code could
+have looked up:
+
+- **Explicit numbers** ("auf 15%", "22 Grad") are now read by code (`ScoreSpec.kind`); the
+  Score rubric is only asked for words like "halb".
+- **Names before judgement.** Areas and floors named in the prompt (names or aliases, and a
+  stem like "Badezimmer" for two bathrooms) set the scope; a Jev-only area needs ≥ 0.9
+  ("Licht aus" had picked Ankleide 0.72 + Wohnzimmer 0.77 out of thin air). Device and
+  entity names in the prompt narrow the candidates inside the scope ("Dachterrassentür" → the
+  two door sensors, not 116 candidates). Domain words in either language ("Licht", "lights",
+  "Rollos", "Fernseher") override Jev's domain guess ("downstairs lights" had swept a switch).
+- **Contradictory verbs** (open+close+set_position, on+off, lock+unlock) — only the strongest
+  fires. Fixed the long-standing "open the blinds halfway" co-fire.
+- **Sweeps.** Whole area/floor named + no device named + no single target → all of them;
+  no area + no name → all, with confirmation ("Licht aus"); never on widened candidates;
+  never when Jev says a device was named (`names_specific` reworded: 0.84 for an unexposed
+  "Stehlampe", 0.04 for "Licht aus").
+- **Ask, don't guess:** weak pick among real alternatives → clarify; same name in several
+  rooms with no room said → clarify even on a confident pick ("Dachterrasse Rollo zu").
+- **Safety:** a condition or exception we could not honour blocks execution and escalates
+  ("… wenn es wärmer als 23 Grad ist" would have closed the blinds unconditionally).
+- Result: **29/32 (91%)**, p50 ≈ 410 ms; fixture corpus **23/24**.
+- The three remaining rows are threshold/contribution questions, not logic: two correct
+  sweeps land at 0.55–0.72 because the `collective` flag is a min-contribution
+  ("Rollos im Schlafzimmer runter", "Badezimmer Rollos auf 15%"); "Mach alles aus" has
+  `turn_off` at 0.63–0.75 around `verb_fire` 0.7.
+
 ### 2026-09-20 — first real home (German, 187 exposed entities) and the rules it forced
 
 Export of a real HA 2026.9.2 installation via `tools/export_home.py` (gitignored), corpus

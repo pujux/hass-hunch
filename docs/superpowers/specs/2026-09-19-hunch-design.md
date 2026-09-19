@@ -356,6 +356,18 @@ name, even a grammatically plural one like 'the Spots'?") overrides `collective`
 Round 2 planning when both fire, so a plural-looking device name selects that device
 instead of sweeping its scope.
 
+**Deterministic scope (2026-09-20, later).** Before Jev's Round 1 scope is used, code
+applies what the prompt says outright: areas and floors named by name or alias (a stem
+shared by several areas, e.g. "Badezimmer", scopes all of them unless one is named in
+full) set `scope_areas`; a Jev-only area counts only at ≥ `scope_hard` (0.9), a fired floor
+keeps its areas unless an area was named; domain words in any supported language
+(`Phrasebook.domain_synonyms`) override Jev's domains. Inside the scope, candidates whose
+name, alias or device name appears in the prompt are the candidates (not when an exception
+is named). Verbs in an exclusive group (`EXCLUSIVE_GROUPS`) — open/close/set_position,
+on/off, lock/unlock, arm/disarm, play/pause — keep only the strongest. Duplicate option
+labels are qualified by area ("Dachterrasse Rollo (Galerie)"); same-named options in
+several rooms with no room said always clarify.
+
 **Rules from the first set of real prompts (2026-09-20).**
 
 - *Explicit numbers are read by code.* If the prompt contains exactly one number with a
