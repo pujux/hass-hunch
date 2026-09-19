@@ -42,16 +42,15 @@ class TargetOption:
     entities: tuple[Entity, ...]
 
 
-def target_options(candidates: tuple[Entity, ...]) -> tuple[TargetOption, ...]:
+def _group_by_device(candidates: tuple[Entity, ...]) -> list[list[Entity]]:
+    """Entities grouped by device, in first-seen order. A deviceless entity is its own device."""
     by_device: dict[str, list[Entity]] = {}
     for e in candidates:
         by_device.setdefault(e.device_id or f"entity:{e.entity_id}", []).append(e)
-    raw: list[TargetOption] = []
-    for group in by_device.values():
-        if len(group) == 1:
-            raw.append(TargetOption(device_label(group[0]), (group[0],)))
-        else:
-            raw.extend(TargetOption(f"{device_label(e)} — {e.name}", (e,)) for e in group)
+    return list(by_device.values())
+
+
+def _dedupe(raw: list[TargetOption]) -> tuple[TargetOption, ...]:
     seen: dict[str, int] = {}
     out: list[TargetOption] = []
     for opt in raw:
@@ -59,6 +58,28 @@ def target_options(candidates: tuple[Entity, ...]) -> tuple[TargetOption, ...]:
         seen[opt.label] = n
         out.append(opt if n == 1 else TargetOption(f"{opt.label} #{n}", opt.entities))
     return tuple(out)
+
+
+def target_options(candidates: tuple[Entity, ...]) -> tuple[TargetOption, ...]:
+    """One option per *entity*: a multi-entity device is expanded into its entities."""
+    raw: list[TargetOption] = []
+    for group in _group_by_device(candidates):
+        if len(group) == 1:
+            raw.append(TargetOption(device_label(group[0]), (group[0],)))
+        else:
+            raw.extend(TargetOption(f"{device_label(e)} — {e.name}", (e,)) for e in group)
+    return _dedupe(raw)
+
+
+def device_options(candidates: tuple[Entity, ...]) -> tuple[TargetOption, ...]:
+    """One option per *device*: choosing it selects all of that device's candidate entities.
+
+    People name devices, not entities, so the narrowing device round offers device names
+    only; the per-entity split, if it is still needed, happens in Round 2.
+    """
+    return _dedupe(
+        [TargetOption(device_label(g[0]), tuple(g)) for g in _group_by_device(candidates)]
+    )
 
 
 @dataclass(frozen=True)

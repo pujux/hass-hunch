@@ -67,3 +67,9 @@ def test_trace_records_answers_decisions_and_models():
         "name": "flag:collective", "value": 0.4, "threshold": 0.65, "passed": False,
     }
     json.dumps(d)  # must be JSON-serialisable
+
+
+def test_device_round_requires_a_third_round():
+    with pytest.raises(ValueError, match="device_round requires max_rounds >= 3"):
+        EngineConfig(model="jev-1.13.0", device_round=True)
+    assert EngineConfig(model="jev-1.13.0", device_round=True, max_rounds=3).device_round

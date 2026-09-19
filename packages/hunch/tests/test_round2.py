@@ -4,6 +4,7 @@ from hunch.round2 import (
     NO_MATCH,
     build_round2_questions,
     build_round2_state,
+    device_options,
     plan_round2,
     target_options,
 )
@@ -121,3 +122,23 @@ def test_round2_state_lists_only_relevant_candidates(home, thresholds):
     assert names == {"Living room main", "Reading lamp"}
     assert {"aliases", "area", "device"} <= set(state["candidates"][0])
     assert {c["area"] for c in state["candidates"]} == {"Living room"}
+
+
+def test_device_options_offer_whole_devices_not_entities(home):
+    opts = device_options(
+        _ents(
+            home,
+            "light.bedroom_left",
+            "light.bedroom_right",
+            "light.office_desk",
+            "light.christmas_tree",
+        )
+    )
+    assert [o.label for o in opts] == ["Bedside lamps", "Desk lamp", "Christmas tree"]
+    assert [e.entity_id for e in opts[0].entities] == ["light.bedroom_left", "light.bedroom_right"]
+
+
+def test_device_options_dedupe_labels(home):
+    a = home.entity_by_id("light.office_desk")
+    b = type(a)(**{**a.__dict__, "entity_id": "light.office_desk_2", "device_id": "dev_other"})
+    assert [o.label for o in device_options((a, b))] == ["Desk lamp", "Desk lamp #2"]

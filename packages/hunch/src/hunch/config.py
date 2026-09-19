@@ -31,3 +31,8 @@ class EngineConfig:
     device_round: bool = False
     supports_clarification: bool = True
     max_prompt_chars: int = 500
+
+    def __post_init__(self) -> None:
+        # A device round is a round: Round 1 + device round + Round 2 needs a budget of 3.
+        if self.device_round and self.max_rounds < 3:
+            raise ValueError("device_round requires max_rounds >= 3")

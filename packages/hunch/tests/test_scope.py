@@ -86,7 +86,7 @@ def test_scope_widens_when_strict_empty(home, vocab, config):
 
 
 def test_scope_cap_then_device_round_when_enabled(home, vocab):
-    cfg = EngineConfig(model="m", scope_cap=2, device_round=True)
+    cfg = EngineConfig(model="m", scope_cap=2, device_round=True, max_rounds=3)
     shape = _shape(home, areas=(), domains=(), domain_probs={"light": 0.3})
     r = scope_candidates(home, vocab.by_name("turn_on"), shape, cfg, Trace())
     assert isinstance(r, DeviceRound)

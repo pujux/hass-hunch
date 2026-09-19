@@ -13,8 +13,8 @@ from hunch.round2 import (
     NO_MATCH,
     build_round2_questions,
     build_round2_state,
+    device_options,
     plan_round2,
-    target_options,
 )
 from hunch.scope import Candidates, Clarify, DeviceRound, ScopeEscalate, scope_candidates
 from hunch.vocabulary import Vocabulary
@@ -84,7 +84,7 @@ class Engine:
         if questions:
             if rounds >= self._config.max_rounds:
                 trace.note("max_rounds_reached_before_round2")
-                return Escalate("low_confidence", (), trace)
+                return Escalate("round_budget", (), trace)
             round2 = await self._client.ask(build_round2_state(prompt, plan, home), questions)
             rounds += 1
         return resolve(shape, plan, round2, self._config, trace)
@@ -92,7 +92,7 @@ class Engine:
     async def _device_round(
         self, prompt: str, entities: tuple[Entity, ...], trace: Trace
     ) -> tuple[Entity, ...]:
-        opts = target_options(entities)
+        opts = device_options(entities)
         q = ChoiceQ(
             "Which device does the request refer to?",
             tuple(o.label for o in opts) + (NO_MATCH,),

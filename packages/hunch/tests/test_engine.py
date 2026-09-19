@@ -125,6 +125,24 @@ async def test_device_round_when_enabled(home, vocab):
     assert calls["n"] == 2  # round 1 + device round; single-option target needs no round 2
 
 
+async def test_device_round_offers_devices_not_entities(home, vocab):
+    cfg = EngineConfig(model="jev-1.13.0", scope_cap=2, device_round=True, max_rounds=3)
+    client, calls = _scripted(
+        {"verb:turn_on": NoulA(0.9), "flag:collective": NoulA(0.9), "domain:light": NoulA(0.3)},
+        None,
+        {"device_round": ChoiceA("Bedside lamps", 0.9, {})},
+    )
+    r = await Engine(client, vocab, cfg).decide(home, "turn on both bedside lamps")
+    assert isinstance(r, Resolved)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.bedroom_left", "light.bedroom_right",
+    }
+    options = client.calls[1][1]["device_round"].options
+    assert options.count("Bedside lamps") == 1
+    assert not any(o.startswith("Bedside lamps — ") for o in options)
+    assert calls["n"] == 2  # round 1 + device round; the collective path needs no round 2
+
+
 async def test_device_round_no_match_escalates(home, vocab):
     cfg = EngineConfig(model="jev-1.13.0", scope_cap=2, device_round=True, max_rounds=3)
     client, _ = _scripted(
@@ -134,6 +152,17 @@ async def test_device_round_no_match_escalates(home, vocab):
     )
     r = await Engine(client, vocab, cfg).decide(home, "turn on the thingamajig")
     assert isinstance(r, Escalate) and r.reason == "scope"
+
+
+async def test_round_budget_escalates_when_round2_does_not_fit(home, vocab):
+    cfg = EngineConfig(model="jev-1.13.0", max_rounds=1)
+    client, calls = _scripted({
+        "verb:turn_on": NoulA(0.9), "area:living": NoulA(0.85),
+        "domain:light": NoulA(0.8), "flag:collective": NoulA(0.1),
+    })
+    r = await Engine(client, vocab, cfg).decide(home, "turn on the lamp in the lounge")
+    assert isinstance(r, Escalate) and r.reason == "round_budget"
+    assert calls["n"] == 1
 
 
 async def test_backend_error_escalates(home, vocab, config):
