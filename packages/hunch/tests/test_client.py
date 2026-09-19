@@ -100,3 +100,15 @@ async def test_typesafe_client_wraps_sdk_errors():
     with pytest.raises(DecisionBackendError) as ei:
         await client.ask({}, {"q": NoulQ("x")})
     assert ei.value.reason == "decision_backend_unavailable"
+
+
+async def test_typesafe_client_rejects_partial_answer_set():
+    resp = SimpleNamespace(
+        model="jev-1.13.0",
+        usage=SimpleNamespace(input_tokens=1),
+        answers={"q": SimpleNamespace(type="noul", noul=0.5)},
+    )
+    client = TypeSafeDecisionClient(model="jev-1.13.0", sdk_client=_StubSDK(response=resp))
+    with pytest.raises(DecisionBackendError) as ei:
+        await client.ask({}, {"q": NoulQ("x"), "missing": NoulQ("y")})
+    assert ei.value.reason == "malformed_response"

@@ -113,6 +113,10 @@ class TypeSafeDecisionClient:
         if resp.model != self._model:
             raise DecisionBackendError("model_mismatch")
         answers = {qid: from_sdk_answer(a) for qid, a in resp.answers.items()}
+        if set(answers) != set(questions):
+            # A partial or over-full answer set would surface downstream as a KeyError deep
+            # inside interpretation; fail here so the engine can degrade cleanly instead.
+            raise DecisionBackendError("malformed_response")
         usage = getattr(resp, "usage", None)
         input_tokens = getattr(usage, "input_tokens", None)
         return Answers(model=resp.model, answers=answers, input_tokens=input_tokens)

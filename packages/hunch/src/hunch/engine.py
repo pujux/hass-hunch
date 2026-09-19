@@ -35,8 +35,11 @@ class Engine:
             return Escalate("prompt_invalid", (), trace)
         try:
             return await self._decide(home, prompt, trace)
-        except DecisionBackendError as exc:
-            trace.note(f"backend_error:{exc.reason}")
+        except (DecisionBackendError, KeyError, TypeError) as exc:
+            # KeyError/TypeError mean the backend answered with a missing id or the wrong
+            # primitive; like an explicit backend error, that degrades, it never raises.
+            reason = exc.reason if isinstance(exc, DecisionBackendError) else type(exc).__name__
+            trace.note(f"backend_error:{reason}")
             return Escalate("decision_backend_unavailable", (), trace)
 
     async def _decide(self, home: HomeModel, prompt: str, trace: Trace) -> Resolution:

@@ -144,6 +144,20 @@ async def test_backend_error_escalates(home, vocab, config):
     assert isinstance(r, Escalate) and r.reason == "decision_backend_unavailable"
 
 
+async def test_partial_round1_answers_escalate_as_backend_unavailable(home, vocab, config):
+    def script(state, qs):
+        out = {qid: NoulA(0.05) for qid in qs if not isinstance(qs[qid], ChoiceQ)}
+        out.pop("verb:turn_off", None)  # backend dropped one answer
+        for qid, q in qs.items():
+            if isinstance(q, ChoiceQ):
+                out[qid] = ChoiceA("none", 0.9, {})
+        return out
+
+    r = await Engine(FakeDecisionClient(script), vocab, config).decide(home, "turn off the lights")
+    assert isinstance(r, Escalate) and r.reason == "decision_backend_unavailable"
+    assert any(n.startswith("backend_error:") for n in r.trace.notes)
+
+
 async def test_prompt_prechecks(home, vocab, config):
     eng = Engine(FakeDecisionClient({}), vocab, config)
     assert isinstance(await eng.decide(home, "   "), Escalate)
