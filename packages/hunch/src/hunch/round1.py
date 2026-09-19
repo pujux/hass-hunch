@@ -15,8 +15,9 @@ FLAGS = ("collective", "has_exception", "has_condition", "is_query", "has_timing
 
 _FLAG_INSTRUCTIONS = {
     "collective": (
-        "Does the request target all matching devices in its scope (plural or 'all'), "
-        "rather than one specific device?"
+        "Does the request target every matching device in its scope for at least one of its "
+        "actions — signaled by a plain plural (e.g. 'the kitchen lights'), or a word like "
+        "'all', 'both' or 'every' — rather than exactly one specific device?"
     ),
     "has_exception": (
         "Does the request exclude something, e.g. 'except', 'but not', 'apart from', 'other than'?"
@@ -30,12 +31,15 @@ _FLAG_INSTRUCTIONS = {
         "rather than asking to change it?"
     ),
     "has_timing": (
-        "Does the request involve a delay, schedule, duration or sequence, "
-        "e.g. 'in ten minutes', 'after', 'later', 'then'?"
+        "Does the request ask to delay, schedule, sequence or time a device action, "
+        "e.g. 'in ten minutes', 'after', 'later', 'then' — as opposed to merely mentioning "
+        "a future time in a request that is not about controlling a device (such as asking "
+        "about tomorrow's weather)?"
     ),
     "is_destructive": (
         "Would fulfilling the request cause irreversible, unsafe or security-relevant effects "
-        "(unlocking, disarming, opening to the outside)?"
+        "beyond an ordinary lock, unlock, arm or disarm action (which are handled separately) — "
+        "for example, disabling safety equipment, or leaving the home open to unauthorized entry?"
     ),
 }
 

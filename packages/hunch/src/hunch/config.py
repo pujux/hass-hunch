@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Thresholds:
     verb_fire: float = 0.7
-    scope_fire: float = 0.6         # floor / area / domain Nouls
-    collective: float = 0.65
+    scope_fire: float = 0.7         # floor / area / domain Nouls
+    collective: float = 0.5
     target_choice_conf: float = 0.7
     auto_execute: float = 0.75
     confirm_band: float = 0.5       # [confirm_band, auto_execute) -> NeedsConfirmation

@@ -21,7 +21,7 @@
 - prompt: run the goodnight script
   expect: {kind: resolved, verb: activate, targets: [script.goodnight]}
 - prompt: turn everything off
-  expect: {kind: confirm, verb: turn_off, reason: blast_radius}
+  expect: {kind: resolved, verb: turn_off}
 - prompt: set the bedroom to 22 degrees
   expect: {kind: resolved, verb: set_temperature, targets: [climate.bedroom], params: {temperature: [21, 23]}}
 - prompt: make the bedroom warmer

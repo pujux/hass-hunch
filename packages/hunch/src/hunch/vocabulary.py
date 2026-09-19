@@ -84,8 +84,10 @@ _VOLUME = ScoreSpec(
 
 DEFAULT_VOCABULARY = Vocabulary(
     (
-        Verb("turn_on", _ON_OFF, None, Risk.SAFE, "HassTurnOn", "turn something on"),
-        Verb("turn_off", _ON_OFF, None, Risk.SAFE, "HassTurnOff", "turn something off"),
+        Verb("turn_on", _ON_OFF, None, Risk.SAFE, "HassTurnOn",
+             "directly turn a specific device or devices on (not by naming a scene or script)"),
+        Verb("turn_off", _ON_OFF, None, Risk.SAFE, "HassTurnOff",
+             "directly turn a specific device or devices off (not by naming a scene or script)"),
         Verb("set_brightness", frozenset({"light"}), _BRIGHTNESS, Risk.SAFE,
              "HassLightSet", "set how bright a light is"),
         Verb("open", frozenset({"cover"}), None, Risk.SAFE, "HassOpenCover",
@@ -93,7 +95,8 @@ DEFAULT_VOCABULARY = Vocabulary(
         Verb("close", frozenset({"cover"}), None, Risk.SAFE, "HassCloseCover",
              "close blinds, shades, curtains or a garage door"),
         Verb("set_position", frozenset({"cover"}), _POSITION, Risk.SAFE, "HassSetPosition",
-             "set how far open blinds, shades or curtains are"),
+             "set blinds, shades or curtains to a specific partial position such as "
+             "halfway or a percentage, rather than simply fully open or closed"),
         Verb("lock", frozenset({"lock"}), None, Risk.CONFIRM, "HassLock", "lock a door or lock"),
         Verb("unlock", frozenset({"lock"}), None, Risk.CONFIRM, "HassUnlock",
              "unlock a door or lock"),
