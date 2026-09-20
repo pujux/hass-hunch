@@ -40,7 +40,15 @@ class PendingStore:
         return self._clock()
 
     def put(self, conversation_id: str, turn: PendingConfirm | PendingClarify) -> None:
+        self._sweep()
         self._turns[conversation_id] = turn
+
+    def _sweep(self) -> None:
+        """Drop everything past its TTL. Conversation ids are unbounded and nothing else
+        ever removes a turn that was asked about and then abandoned."""
+        cutoff = self._clock() - self._ttl
+        for cid in [c for c, t in self._turns.items() if t.created < cutoff]:
+            del self._turns[cid]
 
     def take(self, conversation_id: str) -> PendingConfirm | PendingClarify | None:
         turn = self._turns.pop(conversation_id, None)

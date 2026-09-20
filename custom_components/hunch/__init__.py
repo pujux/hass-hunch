@@ -107,7 +107,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HunchConfigEntry) -> boo
 
 async def async_unload_entry(hass: HomeAssistant, entry: HunchConfigEntry) -> bool:
     ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not ok:  # the entry stays loaded; a closed client would make it useless
+        return False
     aclose = getattr(entry.runtime_data.client, "aclose", None)
     if aclose is not None:
         await aclose()
-    return ok
+    return True

@@ -41,3 +41,17 @@ def test_peek_expired_removes_expired_turn():
 
     # peek_expired on non-existent conversation should return False
     assert store.peek_expired("c2") is False
+
+
+def test_put_sweeps_expired_turns_of_other_conversations():
+    """Conversation ids are unbounded; an abandoned question must not linger for ever."""
+    t = [100.0]
+    store = PendingStore(ttl_seconds=120, clock=lambda: t[0])
+    for cid in ("c1", "c2", "c3"):
+        store.put(cid, PendingConfirm((), None, cid, store.now()))
+    assert len(store._turns) == 3
+    t[0] = 221.0
+    store.put("c4", PendingConfirm((), None, "c4", store.now()))
+    assert list(store._turns) == ["c4"]
+    # the fresh turn itself survives its own put
+    assert store.take("c4").question == "c4"

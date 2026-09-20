@@ -44,6 +44,8 @@ from .const import (
     THRESHOLD_FIELDS,
 )
 
+PROBE_TIMEOUT_S = 5.0  # the config flow must not hang on a dead backend
+
 
 class InvalidAuth(HomeAssistantError):
     """The key was rejected."""
@@ -69,7 +71,7 @@ async def async_validate_api_key(hass: HomeAssistant, api_key: str, model: str) 
     """
     from typesafe_sdk import AsyncTypeSafeClient, Noul, TypeSafeError
 
-    client = AsyncTypeSafeClient(api_key=api_key, model=model)
+    client = AsyncTypeSafeClient(api_key=api_key, model=model, timeout=PROBE_TIMEOUT_S)
     try:
         await client.system_one(
             state={"probe": True},
@@ -80,7 +82,7 @@ async def async_validate_api_key(hass: HomeAssistant, api_key: str, model: str) 
         status = getattr(err, "status", None)
         if status in (401, 403):
             raise InvalidAuth from err
-        if status == 404 or "model" in str(err).lower():
+        if status == 404:
             raise UnknownModel from err
         raise CannotConnect from err
     except Exception as err:  # noqa: BLE001 - timeouts and transport errors
