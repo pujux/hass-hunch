@@ -111,7 +111,7 @@ def test_blast_radius_needs_confirmation(home, config):
 
 
 def test_mid_confidence_needs_confirmation(home, config):
-    shape, vp = _shape(["turn_off"], {"collective": 0.66}, {"turn_off": 0.72})
+    shape, vp = _shape(["turn_off"], {"collective": 0.6}, {"turn_off": 0.65})
     plan = plan_round2(
         home, shape, {"turn_off": _ents(home, "light.hallway")}, config.thresholds, 60
     )

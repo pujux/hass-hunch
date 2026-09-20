@@ -11,11 +11,13 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Thresholds:
     verb_fire: float = 0.7
+    verb_lone_leader: float = 0.55  # below verb_fire, a single clear leader still fires ...
+    verb_rival: float = 0.3  # ... if no other verb reaches this
     scope_fire: float = 0.7
     scope_hard: float = 0.9  # a Jev-only area/floor (not named verbatim) needs this to count  # floor / area / domain Nouls
     collective: float = 0.5
     target_choice_conf: float = 0.7
-    auto_execute: float = 0.75
+    auto_execute: float = 0.70  # 2026-09-20: 0.75 asked on correct sweeps; set on Julian's corpus
     confirm_band: float = 0.5  # [confirm_band, auto_execute) -> NeedsConfirmation
     flag: float = 0.6
     specific_device: float = 0.7  # names_specific flag: plural-looking name of ONE device

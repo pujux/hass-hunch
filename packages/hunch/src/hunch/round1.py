@@ -91,6 +91,16 @@ def interpret_round1(
         for v in vocab.verbs
         if trace.decide(f"verb:{v.name}", answers.noul(f"verb:{v.name}"), thresholds.verb_fire)
     ]
+    if not fired:
+        # "Mach alles aus": nothing reaches verb_fire, but one verb clearly leads and nothing
+        # else is even close. A lone leader is a decision; a crowded field is not.
+        probs = {v.name: answers.noul(f"verb:{v.name}") for v in vocab.verbs}
+        leaders = [n for n, p in probs.items() if p >= thresholds.verb_lone_leader]
+        if len(leaders) == 1 and all(
+            p < thresholds.verb_rival for n, p in probs.items() if n != leaders[0]
+        ):
+            trace.note(f"lone_leader:{leaders[0]}")
+            fired = [vocab.by_name(leaders[0])]
     for group in EXCLUSIVE_GROUPS:
         rivals = [v for v in fired if v.name in group]
         if len(rivals) > 1:

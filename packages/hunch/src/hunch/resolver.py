@@ -75,7 +75,19 @@ def resolve(
         if verb.name in plan.collective:
             targets = plan.collective[verb.name]
             if len(targets) > 1:  # a single candidate never relied on the collective flag
-                local.append(shape.flag("collective"))
+                collective = shape.flag("collective")
+                in_scope = shape.scope_areas and all(
+                    e.area_id in shape.scope_areas for e in targets
+                )
+                if in_scope:
+                    # The room or floor was said out loud (or a floor fired) and everything we
+                    # are about to touch is inside it: two signals agree on "all of them".
+                    named = any(n.startswith("area_match:") for n in trace.notes)
+                    backing = 1.0 if named else _scope_strength(shape, trace)
+                    if backing > collective:
+                        trace.note(f"collective_backed_by_scope:{verb.name}")
+                        collective = backing
+                local.append(collective)
         elif verb.name in plan.exclude and round2 is not None:
             kept: list[Entity] = []
             local.append(shape.flag("collective"))
