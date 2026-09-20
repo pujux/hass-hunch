@@ -145,3 +145,11 @@ def test_specific_flag_does_not_defeat_an_exception(home, thresholds):
     cands = _ents(home, "light.kitchen_ceiling", "light.kitchen_counter", "switch.fridge")
     plan = plan_round2(home, shape, {"turn_off": cands}, thresholds, 60)
     assert "turn_off" in plan.exclude and "turn_off" not in plan.singular
+
+
+def test_exception_implies_a_set_even_when_the_plural_flag_is_low(home, thresholds):
+    # "Licht im Untergeschoss aus ausser Wohnzimmer Stehlampe": singular 'Licht', but an exception
+    shape, _ = _shape(["turn_off"], {"collective": 0.2, "has_exception": 0.87})
+    cands = _ents(home, "light.kitchen_ceiling", "light.kitchen_counter", "light.living_main")
+    plan = plan_round2(home, shape, {"turn_off": cands}, thresholds, 60)
+    assert "turn_off" in plan.exclude and "turn_off" not in plan.singular

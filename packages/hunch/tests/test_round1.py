@@ -152,3 +152,11 @@ def test_round1_state_names_the_devices_the_prompt_mentions(home):
     ]
     assert build_round1_state(home, "lights off")["mentioned_devices"] == []
     assert "entities" not in state  # still never the full list
+
+
+def test_verb_questions_carry_cue_words_in_both_languages(home, vocab):
+    qs = build_round1_questions(home, vocab)
+    q = qs["verb:turn_off"].instructions
+    assert "off" in q and "aus" in q and "außer" in q
+    assert "auf" in qs["verb:open"].instructions and "zu" in qs["verb:close"].instructions
+    assert "aus" in qs["verb_primary"].descriptions["turn_off"]

@@ -81,10 +81,16 @@ def build_round1_questions(
     home: HomeModel, vocab: Vocabulary, pb: Phrasebook = EN
 ) -> dict[str, Question]:
     qs: dict[str, Question] = {}
+
+    def _cued(v: Verb) -> str:
+        words: list[str] = []
+        for book in PHRASEBOOKS.values():
+            words.extend(w for w in book.verb_synonyms.get(v.name, ()) if w not in words)
+        base = pb.phrasing_for(v.name, v.phrasing)
+        return f"{base} — cue words: {', '.join(words)}" if words else base
+
     for v in vocab.verbs:
-        qs[f"verb:{v.name}"] = NoulQ(
-            pb.verb_question.format(phrasing=pb.phrasing_for(v.name, v.phrasing))
-        )
+        qs[f"verb:{v.name}"] = NoulQ(pb.verb_question.format(phrasing=_cued(v)))
     for f in home.floors:
         qs[f"floor:{f.floor_id}"] = NoulQ(pb.floor_question.format(name=f.name))
     for a in home.areas:
@@ -110,7 +116,7 @@ def build_round1_questions(
         pb.verb_primary_question,
         tuple(v.name for v in vocab.verbs) + ("several", "none"),
         {
-            **{v.name: pb.phrasing_for(v.name, v.phrasing) for v in vocab.verbs},
+            **{v.name: _cued(v) for v in vocab.verbs},
             "several": pb.special_descriptions["several_verbs"],
             "none": pb.special_descriptions["no_verb"],
         },

@@ -2,7 +2,7 @@
 - prompt: Mach das Licht im Arbeitszimmer aus
   expect: {kind: resolved, verb: turn_off, targets: [light.arbeitszimmer_lichtschalter]}
 - prompt: Schalte alle Lichter unten aus
-  expect: {kind: resolved, verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+  expect: {kind: resolved, verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 - prompt: Fahr die Rollos im Schlafzimmer runter
   expect: {kind: resolved, verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}
 - prompt: Mach das Rollo in der Küche auf
@@ -61,8 +61,8 @@
   # 28 lights, no room: either confirm the sweep (blast radius) or ask which room
   expect: {kinds: [confirm, clarify]}
 - prompt: Wohnzimmer Stehlampe aufdrehen
-  # light.wohnzimmer_stehlampe is NOT exposed to Assist -> the engine must not guess another lamp
-  expect: {kinds: [clarify, escalate]}
+  # exposed since 2026-09-21 (before: not exposed -> the engine had to ask or hand off)
+  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_stehlampe]}
 - prompt: Wandlicht im Schlafzimmer für 15 Minuten an
   expect: {kind: escalate, reason: timing}
 - prompt: Welche Fenster sind offen?
@@ -77,10 +77,10 @@
   # numeric condition: not expressible in the two-slot condition model -> must NOT execute unconditionally
   expect: {kinds: [escalate, confirm]}
 - prompt: Licht im Untergeschoss an
-  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 - prompt: Licht im Untergeschoss aus ausser Wohnzimmer Stehlampe
-  # the excepted lamp is not exposed, so the exception cannot be honoured -> must NOT silently sweep
-  expect: {kinds: [clarify, escalate, confirm]}
+  # all downstairs lights except the (now exposed) Wohnzimmer Stehlampe; 14 targets, asking is fine
+  expect: {kinds: [resolved, confirm], verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 
 # ---- numbers: code lists them, Jev decides what they mean (2026-09-20) ----
 - prompt: Rollos im Schlafzimmer 15% zu

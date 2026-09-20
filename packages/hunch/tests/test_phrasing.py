@@ -12,9 +12,9 @@ def test_default_phrasebook_is_english_and_unchanged(home, vocab):
 
 def test_german_phrasebook_produces_german_questions(home, vocab):
     qs = build_round1_questions(home, vocab, DE)
-    assert qs["verb:turn_off"].instructions == (
+    assert qs["verb:turn_off"].instructions.startswith(
         "Verlangt die Anfrage, ein bestimmtes Gerät oder bestimmte Geräte direkt auszuschalten "
-        "(nicht über eine Szene oder ein Skript)?"
+        "(nicht über eine Szene oder ein Skript)"
     )
     assert "Licht / Lampen" in qs["domain:light"].instructions
     assert (

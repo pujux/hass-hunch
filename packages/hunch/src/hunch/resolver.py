@@ -146,7 +146,9 @@ def resolve(
                 local.append(collective)
         elif verb.name in plan.exclude and round2 is not None:
             kept: list[Entity] = []
-            local.append(shape.flag("collective"))
+            # The set was justified by the plural OR by the exception ("Licht aus außer …" has
+            # no plural); count whichever signal carried it, plus the exception itself.
+            local.append(max(shape.flag("collective"), shape.flag("has_exception")))
             local.append(shape.flag("has_exception"))
             for e in plan.exclude[verb.name]:
                 p = round2.noul(f"exclude:{verb.name}:{e.entity_id}")

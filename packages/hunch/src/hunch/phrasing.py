@@ -51,6 +51,8 @@ class Phrasebook:
     score_levels: Mapping[str, tuple[str, ...]] = field(
         default_factory=dict
     )  # overrides ScoreSpec.levels
+    # words people say for a verb, in this language (cue words, shown to Jev with the verb)
+    verb_synonyms: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     # words people say for a domain, in this language
     domain_synonyms: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
@@ -117,7 +119,9 @@ EN = Phrasebook(
     ),
     verb_primary_question=(
         "Which ONE action does the request primarily ask for? Compare the options: a word like "
-        "'auf' or 'zu' can look like several verbs but the request means one. Choose 'several' "
+        "'auf' or 'zu' can look like several verbs but the request means one, and 'außer' / "
+        "'except' introduces an exception, not an action ('Licht aus außer …' is turn_off). "
+        "Choose 'several' "
         "only if it clearly asks for more than one different action; 'none' if it asks for no "
         "device action at all (a question about the world, a joke, a calculation, the time)."
     ),
@@ -179,6 +183,20 @@ EN = Phrasebook(
     cond_subject_question="Which device is the request's condition about?",
     cond_state_question="Which state must that device be in for the request's condition to hold?",
     device_question="Which device does the request refer to?",
+    verb_synonyms={
+        "turn_on": ("on", "switch on", "turn on", "start"),
+        "turn_off": ("off", "switch off", "turn off", "kill"),
+        "open": ("open", "up", "raise"),
+        "close": ("close", "down", "lower", "shut"),
+        "set_position": ("halfway", "percent", "%", "position"),
+        "set_brightness": ("dim", "brighter", "darker", "brightness"),
+        "set_temperature": ("degrees", "warmer", "cooler", "temperature"),
+        "set_volume": ("louder", "quieter", "volume"),
+        "lock": ("lock",),
+        "unlock": ("unlock",),
+        "query_state": ("is …?", "how warm", "how much", "which … are"),
+        "activate": ("scene", "run the script"),
+    },
     domain_synonyms={
         "light": ("light", "lights", "lamp", "lamps", "lighting"),
         "cover": (
@@ -406,6 +424,20 @@ DE = Phrasebook(
             "heiß (24 °C)",
         ),
         "volume_level": ("stumm", "leise", "mittel", "laut", "maximal"),
+    },
+    verb_synonyms={
+        "turn_on": ("an", "ein", "einschalten", "anmachen", "aufdrehen", "starte"),
+        "turn_off": ("aus", "ausschalten", "ausmachen", "abdrehen", "aus außer …"),
+        "open": ("auf", "öffnen", "hoch", "hochfahren", "rauf"),
+        "close": ("zu", "schließen", "runter", "runterfahren", "herunter"),
+        "set_position": ("halb", "prozent", "%", "position"),
+        "set_brightness": ("dimmen", "heller", "dunkler", "helligkeit"),
+        "set_temperature": ("grad", "wärmer", "kälter", "temperatur"),
+        "set_volume": ("lauter", "leiser", "lautstärke"),
+        "lock": ("absperren", "zusperren", "verriegeln"),
+        "unlock": ("aufsperren", "entriegeln"),
+        "query_state": ("ist …?", "wie warm", "wie viel", "welche … sind"),
+        "activate": ("szene", "skript starten"),
     },
     domain_synonyms={
         "light": ("licht", "lichter", "lampe", "lampen", "leuchte", "leuchten", "beleuchtung"),
