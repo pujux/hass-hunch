@@ -68,6 +68,9 @@ async def test_builder_uses_exposed_entities_and_live_state(hass: HomeAssistant)
     assert {e.entity_id for e in home.entities} == {e1.entity_id, e3.entity_id}
     ent = next(e for e in home.entities if e.entity_id == e1.entity_id)
     assert ent.area_id == area.id and ent.device_name == "Kücheninsel" and ent.state == "off"
+    # HA seeds new registry entries with a COMPUTED_NAME sentinel in `aliases`; only strings
+    # belong in the export shape (the engine casefolds every alias).
+    assert all(isinstance(a, str) for a in ent.aliases)
     assert home.floors[0].aliases == ("unten",)
     hass.states.async_set(e1.entity_id, "on")
     assert next(e for e in b.build().entities if e.entity_id == e1.entity_id).state == "on"
