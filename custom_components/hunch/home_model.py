@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.homeassistant.exposed_entities import (
-    async_get_assistant_settings,
     async_listen_entity_updates,
+    async_should_expose,
 )
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
@@ -55,13 +55,17 @@ class HomeModelBuilder:
 
     def snapshot(self) -> dict[str, Any]:
         if self._skeleton is None:
-            settings = async_get_assistant_settings(self._hass, ASSISTANT)
-            exposed = {eid for eid, s in settings.items() if s.get("should_expose")}
+            entities = er.async_get(self._hass).entities.values()
+            exposed = {
+                e.entity_id
+                for e in entities
+                if async_should_expose(self._hass, ASSISTANT, e.entity_id)
+            }
             self._skeleton = export_shape(
                 fr.async_get(self._hass).async_list_floors(),
                 ar.async_get(self._hass).async_list_areas(),
                 dr.async_get(self._hass).devices.values(),
-                er.async_get(self._hass).entities.values(),
+                entities,
                 exposed,
             )
         return self._skeleton
