@@ -8,5 +8,43 @@
     },
     "abort": { "already_configured": "Hunch ist bereits eingerichtet." }
   },
-  "options": { "step": { "init": { "title": "Hunch-Optionen" } } }
+  "options": {
+    "step": {
+      "init": {
+        "title": "Hunch-Optionen",
+        "data": {
+          "fallback_agent": "Fallback-Gesprächsagent",
+          "model": "Jev-Modell",
+          "response_language": "Antwortsprache",
+          "timeout_ms": "Jev-Timeout (ms)",
+          "max_silent_targets": "Max. stille Ziele",
+          "device_round": "Bei Unsicherheit einzelne Geräte fragen",
+          "max_rounds": "Max. Klärungsrunden",
+          "threshold_verb_fire": "Verb-Fire-Konfidenz (Standard 0.7)",
+          "threshold_scope_fire": "Scope-Fire-Konfidenz (Standard 0.7)",
+          "threshold_place_override": "Place-Override-Konfidenz (Standard 0.9)",
+          "threshold_collective": "Kollektiv-Konfidenz (Standard 0.5)",
+          "threshold_target_choice_conf": "Zielauswahl-Konfidenz (Standard 0.7)",
+          "threshold_auto_execute": "Auto-Ausführungs-Konfidenz (Standard 0.7)",
+          "threshold_confirm_band": "Bestätigungsband-Konfidenz (Standard 0.5)",
+          "threshold_flag": "Flag-Konfidenz (Standard 0.6)",
+          "threshold_specific_device": "Konfidenz für bestimmtes Gerät (Standard 0.7)",
+          "threshold_collective_fallback": "Kollektiv-Fallback-Konfidenz (Standard 0.4)",
+          "threshold_no_match_clarify": "Klärungs-Konfidenz bei fehlender Übereinstimmung (Standard 0.6)"
+        }
+      }
+    },
+    "error": {
+      "cannot_select_self": "Hunch kann nicht sein eigener Fallback sein."
+    }
+  },
+  "selector": {
+    "response_language": {
+      "options": {
+        "auto": "Wie die Anfrage",
+        "en": "Englisch",
+        "de": "Deutsch"
+      }
+    }
+  }
 }

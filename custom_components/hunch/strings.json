@@ -9,6 +9,42 @@
     "abort": { "already_configured": "Hunch is already set up." }
   },
   "options": {
-    "step": { "init": { "title": "Hunch options" } }
+    "step": {
+      "init": {
+        "title": "Hunch options",
+        "data": {
+          "fallback_agent": "Fallback conversation agent",
+          "model": "Jev model",
+          "response_language": "Response language",
+          "timeout_ms": "Jev timeout (ms)",
+          "max_silent_targets": "Max silent targets",
+          "device_round": "Ask individual devices when unsure",
+          "max_rounds": "Max clarification rounds",
+          "threshold_verb_fire": "Verb-fire confidence (default 0.7)",
+          "threshold_scope_fire": "Scope-fire confidence (default 0.7)",
+          "threshold_place_override": "Place-override confidence (default 0.9)",
+          "threshold_collective": "Collective confidence (default 0.5)",
+          "threshold_target_choice_conf": "Target-choice confidence (default 0.7)",
+          "threshold_auto_execute": "Auto-execute confidence (default 0.7)",
+          "threshold_confirm_band": "Confirm-band confidence (default 0.5)",
+          "threshold_flag": "Flag confidence (default 0.6)",
+          "threshold_specific_device": "Specific-device confidence (default 0.7)",
+          "threshold_collective_fallback": "Collective-fallback confidence (default 0.4)",
+          "threshold_no_match_clarify": "No-match clarify confidence (default 0.6)"
+        }
+      }
+    },
+    "error": {
+      "cannot_select_self": "Hunch cannot be its own fallback."
+    }
+  },
+  "selector": {
+    "response_language": {
+      "options": {
+        "auto": "Same as the request",
+        "en": "English",
+        "de": "German"
+      }
+    }
   }
 }

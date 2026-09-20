@@ -13,9 +13,36 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    ConversationAgentSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
+from hunch import Thresholds
 
-from .const import CONF_API_KEY, DEFAULT_MODEL, DOMAIN
+from .const import (
+    CONF_API_KEY,
+    DEFAULT_MODEL,
+    DEFAULT_RESPONSE_LANGUAGE,
+    DEFAULT_TIMEOUT_MS,
+    DOMAIN,
+    OPT_DEVICE_ROUND,
+    OPT_FALLBACK_AGENT,
+    OPT_MAX_ROUNDS,
+    OPT_MAX_SILENT_TARGETS,
+    OPT_MODEL,
+    OPT_RESPONSE_LANGUAGE,
+    OPT_TIMEOUT_MS,
+    THRESHOLD_FIELDS,
+)
 
 
 class InvalidAuth(HomeAssistantError):
@@ -100,9 +127,55 @@ class HunchConfigFlow(ConfigFlow, domain=DOMAIN):
         return HunchOptionsFlow()
 
 
+def _options_schema() -> vol.Schema:
+    defaults = Thresholds()
+    fields: dict[Any, Any] = {
+        vol.Optional(OPT_FALLBACK_AGENT): ConversationAgentSelector(),
+        vol.Optional(OPT_MODEL, default=DEFAULT_MODEL): TextSelector(),
+        vol.Optional(OPT_RESPONSE_LANGUAGE, default=DEFAULT_RESPONSE_LANGUAGE): SelectSelector(
+            SelectSelectorConfig(
+                options=["auto", "en", "de"],
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key="response_language",
+            )
+        ),
+        vol.Optional(OPT_TIMEOUT_MS, default=DEFAULT_TIMEOUT_MS): NumberSelector(
+            NumberSelectorConfig(min=300, max=10000, step=100, mode=NumberSelectorMode.BOX)
+        ),
+        vol.Optional(OPT_MAX_SILENT_TARGETS, default=20): NumberSelector(
+            NumberSelectorConfig(min=1, max=200, step=1, mode=NumberSelectorMode.BOX)
+        ),
+        vol.Optional(OPT_DEVICE_ROUND, default=False): BooleanSelector(),
+        vol.Optional(OPT_MAX_ROUNDS, default=2): NumberSelector(
+            NumberSelectorConfig(min=2, max=4, step=1, mode=NumberSelectorMode.BOX)
+        ),
+    }
+    for name in THRESHOLD_FIELDS:
+        fields[vol.Optional(f"threshold_{name}", default=getattr(defaults, name))] = NumberSelector(
+            NumberSelectorConfig(min=0, max=1, step=0.05, mode=NumberSelectorMode.BOX)
+        )
+    return vol.Schema(fields)
+
+
 class HunchOptionsFlow(OptionsFlowWithReload):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        # Task 9 fills the form; for now: save whatever comes in.
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
-        return self.async_show_form(step_id="init", data_schema=vol.Schema({}))
+            own = self._own_entity_id()
+            if own and user_input.get(OPT_FALLBACK_AGENT) == own:
+                errors[OPT_FALLBACK_AGENT] = "cannot_select_self"
+            else:
+                for key in (OPT_TIMEOUT_MS, OPT_MAX_SILENT_TARGETS, OPT_MAX_ROUNDS):
+                    if key in user_input:
+                        user_input[key] = int(user_input[key])
+                return self.async_create_entry(data=user_input)
+        schema = self.add_suggested_values_to_schema(
+            _options_schema(), user_input or self.config_entry.options
+        )
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
+
+    def _own_entity_id(self) -> str | None:
+        from homeassistant.helpers import entity_registry as er
+
+        reg = er.async_get(self.hass)
+        return reg.async_get_entity_id("conversation", DOMAIN, self.config_entry.entry_id)
