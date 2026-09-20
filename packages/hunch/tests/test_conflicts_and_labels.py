@@ -31,24 +31,6 @@ def test_only_the_strongest_verb_of_an_exclusive_group_fires(home, vocab, thresh
     assert "verb_conflict:close<open" in t.notes and "verb_conflict:set_position<open" in t.notes
 
 
-def test_widened_candidates_never_qualify_for_a_sweep(home, thresholds):
-    f = {k: 0.05 for k in FLAGS}
-    shape = Shape((V.by_name("turn_on"),), ("kitchen",), ("cover",), {}, {}, f, None, None)
-    cands = tuple(
-        e for e in home.entities if "turn_on" in e.verbs
-    )  # came from widening, not the kitchen
-    plan = plan_round2(
-        home,
-        shape,
-        {"turn_on": cands},
-        thresholds,
-        60,
-        prompt="Rollo in der Küche auf",
-        widened=frozenset({"turn_on"}),
-    )
-    assert plan.scoped_sweep_ok == () and plan.domain_sweep_ok == ()
-
-
 def _two_rooms_home():
     e = lambda eid, area, dev: Entity(
         eid, "binary_sensor", "Tür", (), area, f"dev_{area}", dev, frozenset({"query_state"}), "off"
@@ -136,48 +118,3 @@ def test_same_name_in_two_areas_with_no_area_named_clarifies_even_on_a_confident
     )
     r = resolve(shape, plan, r2, EngineConfig(model="m"), t)
     assert isinstance(r, NeedsClarification) and len(r.candidates) == 2
-
-
-def test_weak_pick_inside_a_named_scope_sweeps_instead_of_asking(home, config):
-    from hunch.questions import Answers, ChoiceA
-    from hunch.resolution import Resolved
-    from hunch.resolver import resolve
-
-    f = {k: 0.05 for k in FLAGS}
-    shape = Shape(
-        (V.by_name("turn_on"),),
-        ("kitchen", "living", "hallway"),
-        (),
-        {"kitchen": 0.2, "living": 0.2, "hallway": 0.2},
-        {},
-        f,
-        None,
-        None,
-    )
-    t = Trace()
-    t.decide("verb:turn_on", 0.95, 0.7)
-    t.decide("floor:downstairs", 0.9, 0.6)
-    cands = tuple(
-        home.entity_by_id(i)
-        for i in (
-            "light.kitchen_ceiling",
-            "light.kitchen_counter",
-            "light.living_main",
-            "light.reading_lamp",
-            "light.hallway",
-        )
-    )
-    plan = plan_round2(
-        home, shape, {"turn_on": cands}, config.thresholds, 60, prompt="Licht im Untergeschoss an"
-    )
-    r2 = Answers(
-        "m",
-        {
-            "target:turn_on": ChoiceA(
-                "Hallway light", 0.3, {"Hallway light": 0.3, "Reading lamp": 0.25}
-            )
-        },
-        None,
-    )
-    r = resolve(shape, plan, r2, config, t)
-    assert isinstance(r, Resolved) and len(r.actions[0].targets) == 5

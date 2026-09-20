@@ -170,7 +170,7 @@ class Engine:
             if isinstance(result, Candidates):
                 per_verb[verb.name] = result.entities
                 if result.widened:
-                    widened.add(verb.name)
+                    widened.add(verb.name)  # Jev is asked in Round 2 whether these were meant
             elif isinstance(result, Clarify):
                 if verb.is_query:
                     # "Which windows are open?" over the whole home: summarising state is the
@@ -211,8 +211,6 @@ class Engine:
         plan = plan_round2(
             home, shape, per_verb, th, self._config.scope_cap, prompt, frozenset(widened)
         )
-        for v in plan.name_matched:
-            trace.note(f"name_match:{v}")
         if shape.flag("has_condition") >= th.flag and not plan.condition_candidates:
             # The request carried a condition but nothing in scope can express it.
             trace.note("condition:unresolvable")

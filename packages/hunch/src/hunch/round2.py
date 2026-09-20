@@ -11,7 +11,7 @@ from hunch.model import Entity, HomeModel
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
 from hunch.round1 import Shape
-from hunch.scope import device_label, verbatim_matches
+from hunch.scope import device_label
 from hunch.vocabulary import ScoreSpec
 
 # Sentinel option appended to every Round 2 Choice so the model can say nothing fits,
@@ -112,20 +112,16 @@ class Round2Plan:
     collective: dict[str, tuple[Entity, ...]] = field(default_factory=dict)
     params: tuple[str, ...] = ()
     condition_candidates: tuple[Entity, ...] = ()
-    # verbs whose collective sweep was narrowed by a verbatim device name in the prompt
-    name_matched: tuple[str, ...] = ()
     # verb -> the numeric literals found in the prompt; Jev is asked which one (if any) is the value
     numeric: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    # singular verbs where a no-match may sweep the named area/floor
-    scoped_sweep_ok: tuple[str, ...] = ()
-    # singular verbs with no area and no name: a no-match may sweep the domain, with confirmation
-    domain_sweep_ok: tuple[str, ...] = ()
     # options offered for the condition subject (labels must match the question exactly)
     condition_options: tuple[TargetOption, ...] = ()
     # singular verbs whose options differ only by area while the prompt names no area: ask
     ambiguous_by_area: tuple[str, ...] = ()
-    # verb -> entities the prompt names as the exception (excluded by code, no Nouls needed)
-    excluded_by_name: Mapping[str, tuple[Entity, ...]] = field(default_factory=dict)
+    # singular verbs also asked "all of these?" (Jev sees the candidates in the state)
+    all_of: tuple[str, ...] = ()
+    # verbs whose candidates lie outside the named room/floor: Jev is asked whether they were meant
+    outside_scope: tuple[str, ...] = ()
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
@@ -161,12 +157,6 @@ def parse_number(literal: str) -> float | None:
     return float(m.group(0).replace(",", ".")) if m else None
 
 
-def _verbatim_named(cands: tuple[Entity, ...], prompt: str) -> Entity | None:
-    """Exactly one candidate named verbatim in the prompt, else None (see scope.verbatim_matches)."""
-    hits = verbatim_matches(cands, prompt)
-    return hits[0] if len(hits) == 1 else None
-
-
 def plan_round2(
     home: HomeModel,
     shape: Shape,
@@ -189,13 +179,10 @@ def plan_round2(
     singular: dict[str, tuple[TargetOption, ...]] = {}
     coll: dict[str, tuple[Entity, ...]] = {}
     params: list[str] = []
-    name_matched: list[str] = []
     numeric: dict[str, tuple[str, ...]] = {}
     literals = numeric_literals(prompt)
-    scoped_sweep_ok: list[str] = []
-    domain_sweep_ok: list[str] = []
     ambiguous_by_area: list[str] = []
-    excluded_by_name: dict[str, tuple[Entity, ...]] = {}
+    all_of: list[str] = []
     for verb in shape.fired_verbs:
         cands = per_verb.get(verb.name, ())
         if not cands:
@@ -205,19 +192,9 @@ def plan_round2(
             if literals and isinstance(verb.param, ScoreSpec):
                 numeric[verb.name] = literals
         if collective and not has_exception:
-            named = _verbatim_named(cands, prompt)
-            if named is not None:
-                cands = (named,)
-                name_matched.append(verb.name)
             coll[verb.name] = cands
         elif collective:
-            named = verbatim_matches(cands, prompt)
-            if named:
-                # "except the fridge" with a Fridge among the candidates: code knows the exception.
-                excluded_by_name[verb.name] = named
-                coll[verb.name] = tuple(e for e in cands if e not in named)
-            else:
-                exclude[verb.name] = cands
+            exclude[verb.name] = cands
         else:
             opts = target_options(cands, area_names)
             if len(opts) == 1:
@@ -229,17 +206,8 @@ def plan_round2(
                     # 'Dachterrasse Rollo' in Galerie and Schlafzimmer, no room said: nothing
                     # in the request can tell them apart, whatever the model claims.
                     ambiguous_by_area.append(verb.name)
-                # A whole area or floor was named and no device was: if Jev then finds no
-                # single target, the user meant every candidate in that scope.
-                if (
-                    not verb.is_query
-                    and verb.name not in widened
-                    and not verbatim_matches(cands, prompt)
-                ):
-                    if shape.scope_areas:
-                        scoped_sweep_ok.append(verb.name)
-                    elif shape.scope_domains:
-                        domain_sweep_ok.append(verb.name)
+                if not verb.is_query:
+                    all_of.append(verb.name)  # Jev, not code, decides "one of them or all of them"
     cond: tuple[Entity, ...] = ()
     if shape.condition_domain and shape.flag("has_condition") >= thresholds.flag:
         cond = tuple(e for e in home.entities if e.domain == shape.condition_domain)
@@ -255,13 +223,11 @@ def plan_round2(
         coll,
         tuple(params),
         cond,
-        tuple(name_matched),
         numeric,
-        tuple(scoped_sweep_ok),
-        tuple(domain_sweep_ok),
         target_options(cond, area_names) if cond else (),
         tuple(ambiguous_by_area),
-        excluded_by_name,
+        tuple(all_of),
+        tuple(v.name for v in shape.fired_verbs if v.name in widened and shape.scope_areas),
     )
 
 
@@ -296,6 +262,13 @@ def build_round2_questions(
         qs[f"target:{verb_name}"] = ChoiceQ(
             pb.target_question.format(phrasing=pb.phrasing_for(verb.name, verb.phrasing)),
             tuple(o.label for o in opts) + (NO_MATCH,),
+        )
+    for verb_name in plan.all_of:
+        qs[f"all_of:{verb_name}"] = NoulQ(pb.all_of_question)
+    for verb_name in plan.outside_scope:
+        verb = next(v for v in shape.fired_verbs if v.name == verb_name)
+        qs[f"outside_scope:{verb_name}"] = NoulQ(
+            pb.outside_scope_question.format(phrasing=pb.phrasing_for(verb.name, verb.phrasing))
         )
     for verb_name in plan.params:
         verb = next(v for v in shape.fired_verbs if v.name == verb_name)

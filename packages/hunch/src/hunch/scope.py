@@ -177,13 +177,14 @@ def scope_candidates(
 
     # The cap guards against context rot in the Round 2 Choice, which an oversized *strict*
     # set causes just as surely as an oversized widened one.
-    named = verbatim_matches(found, prompt)
-    has_exception = shape.flag("has_exception") >= config.thresholds.flag
-    if named and len(named) < len(found) and not has_exception:
-        # The prompt names some of the candidates outright: those are the candidates.
-        # (Not when it names an exception — then the named thing is what to leave alone.)
-        trace.note(f"name_scope:{verb.name}:{len(named)}")
-        found = named
+    if len(found) > config.scope_cap:
+        # Over the cap, candidates the prompt names outright (name, alias or device name) are
+        # what Jev must at least get to see. Code does not decide that they ARE the target —
+        # the Choice still has "none of these" — it only keeps them from being capped away.
+        named = verbatim_matches(found, prompt)
+        if named and len(named) <= config.scope_cap:
+            trace.note(f"name_rescue:{verb.name}:{len(named)}")
+            found = named
     if len(found) <= config.scope_cap:
         return Candidates(found, widened=widened)
 

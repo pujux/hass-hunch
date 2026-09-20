@@ -3,11 +3,8 @@
 
 from hunch.config import EngineConfig
 from hunch.model import Area, Entity, Floor, HomeModel
-from hunch.questions import Answers, ChoiceA
-from hunch.resolution import NeedsConfirmation, Trace
-from hunch.resolver import resolve
+from hunch.resolution import Trace
 from hunch.round1 import FLAGS, Shape
-from hunch.round2 import NO_MATCH, plan_round2
 from hunch.scope import Candidates, scope_candidates, verbatim_areas, verbatim_matches
 from hunch.vocabulary import DEFAULT_VOCABULARY as V
 
@@ -80,7 +77,7 @@ def test_verbatim_matches_include_device_names():
     assert verbatim_matches(home.entities, "Licht aus") == ()
 
 
-def test_name_filter_narrows_inside_scope_before_the_cap():
+def test_names_in_the_prompt_are_rescued_from_the_cap():
     home = _german_home()
     cfg = EngineConfig(model="m", scope_cap=3)
     shape = _shape(["query_state"], domains=("binary_sensor", "cover"))
@@ -112,53 +109,3 @@ def test_generic_group_name_does_not_hijack_an_area_scoped_request():
         "cover.bo_mitte",
         "cover.bo_rechts",
     }
-
-
-def test_no_room_no_name_no_match_confirms_the_whole_domain(home, config):
-    # "Licht aus": nothing named, nothing scoped, Jev finds no single target -> all lights, ask.
-    shape = _shape(["turn_off"], domains=("light",), flags={"collective": 0.37})
-    cands = tuple(e for e in home.entities if e.domain == "light")
-    t = Trace()
-    t.decide("verb:turn_off", 0.9, 0.7)
-    plan = plan_round2(home, shape, {"turn_off": cands}, config.thresholds, 60, prompt="Licht aus")
-    assert plan.domain_sweep_ok == ("turn_off",)
-    r2 = Answers("m", {"target:turn_off": ChoiceA(NO_MATCH, 0.36, {NO_MATCH: 0.36})}, None)
-    r = resolve(shape, plan, r2, config, t)
-    assert isinstance(r, NeedsConfirmation) and r.reason == "collective_fallback"
-    assert len(r.actions[0].targets) == len(cands)
-
-
-def test_named_but_unknown_device_never_sweeps_the_room(home, config):
-    # "Wohnzimmer Stehlampe aufdrehen" where the Stehlampe is not exposed: the room is named,
-    # no candidate matches, Jev says a device was named -> ask/escalate, never turn on the room.
-    from hunch.resolution import NeedsClarification
-
-    shape = _shape(
-        ["turn_on"], areas=("living",), domains=("light",), flags={"names_specific": 0.8}
-    )
-    t = Trace()
-    t.decide("verb:turn_on", 0.97, 0.7)
-    cands = tuple(e for e in home.entities if e.area_id == "living" and e.domain == "light")
-    plan = plan_round2(
-        home,
-        shape,
-        {"turn_on": cands},
-        config.thresholds,
-        60,
-        prompt="Wohnzimmer Stehlampe aufdrehen",
-    )
-    assert plan.scoped_sweep_ok == ("turn_on",)  # the planner cannot know; the resolver guards it
-    r2 = Answers(
-        "m",
-        {
-            "target:turn_on": ChoiceA(
-                "Living room main", 0.34, {"Living room main": 0.34, "Reading lamp": 0.3}
-            )
-        },
-        None,
-    )
-    r = resolve(shape, plan, r2, config, t)
-    assert isinstance(r, NeedsClarification)
-    assert (
-        "unknown_device:turn_on" not in r.trace.notes
-    )  # weak pick path; clarify with the candidates

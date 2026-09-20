@@ -79,22 +79,6 @@ async def test_exception_uses_second_round(home, vocab, config):
     assert "entities" not in client.calls[0][0] and "candidates" in client.calls[1][0]
 
 
-async def test_named_exception_needs_no_second_round(home, vocab, config):
-    client, calls = _scripted(
-        {
-            "verb:turn_off": NoulA(0.95),
-            "area:kitchen": NoulA(0.9),
-            "flag:collective": NoulA(0.9),
-            "flag:has_exception": NoulA(0.85),
-        }
-    )
-    r = await Engine(client, vocab, config).decide(
-        home, "turn off everything in the kitchen except the fridge"
-    )
-    assert isinstance(r, Resolved) and calls["n"] == 1
-    assert "switch.fridge" not in {e.entity_id for e in r.actions[0].targets}
-
-
 async def test_singular_uses_choice(home, vocab, config):
     client, _ = _scripted(
         {

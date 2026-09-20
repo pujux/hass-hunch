@@ -205,57 +205,6 @@ def test_weak_chosen_target_clarifies_with_chosen_first(home, config):
 # ---- C: whole area/floor named, no device named, no single target -> all of them ---------
 
 
-def test_scoped_sweep_when_no_device_named(home, config):
-    shape, vp = _shape(
-        ["turn_on"],
-        {"collective": 0.05},
-        {"turn_on": 0.96},
-        areas=("kitchen", "living", "hallway"),
-        area_probs={"kitchen": 0.2, "living": 0.2, "hallway": 0.2},
-    )
-    t = _trace(vp)
-    t.decide("floor:downstairs", 0.9, 0.6)
-    cands = _ents(
-        home,
-        "light.kitchen_ceiling",
-        "light.kitchen_counter",
-        "light.living_main",
-        "light.reading_lamp",
-        "light.hallway",
-    )
-    plan = plan_round2(
-        home, shape, {"turn_on": cands}, config.thresholds, 60, prompt="Licht im Untergeschoss an"
-    )
-    assert plan.scoped_sweep_ok == ("turn_on",)
-    r2 = Answers("m", {"target:turn_on": ChoiceA(NO_MATCH, 0.31, {NO_MATCH: 0.31})}, None)
-    r = resolve(shape, plan, r2, config, t)
-    assert isinstance(r, Resolved) and len(r.actions[0].targets) == 5
-    assert (
-        r.confidence == 0.9
-    )  # min(verb 0.96, strongest scope signal 0.9); the no-match confidence is not a contribution
-    assert "scoped_sweep:turn_on" in r.trace.notes
-
-
-def test_scoped_sweep_not_allowed_when_a_device_is_named(home, config):
-    shape, vp = _shape(
-        ["turn_on"],
-        {"collective": 0.05},
-        {"turn_on": 0.96},
-        areas=("living",),
-        area_probs={"living": 0.95},
-    )
-    cands = _ents(home, "light.living_main", "light.reading_lamp")
-    plan = plan_round2(
-        home,
-        shape,
-        {"turn_on": cands},
-        config.thresholds,
-        60,
-        prompt="Reading lamp im Wohnzimmer an",
-    )
-    assert plan.scoped_sweep_ok == ()
-
-
 # ---- D/E: a condition or exception we could not honour blocks execution ---------------------
 
 
@@ -320,3 +269,74 @@ async def test_collective_query_over_cap_escalates(home, vocab):
     r = await Engine(FakeDecisionClient(script), vocab, cfg).decide(home, "which lights are on?")
     assert isinstance(r, Escalate) and r.reason == "scope"
     assert "dropped:query_state:query_over_cap" in r.trace.notes
+
+
+# ---- Jev decides "one of them or all of them" with the candidates in front of it -------------
+
+
+def test_all_of_noul_selects_every_candidate(home, config):
+    # "Licht im Untergeschoss an": Jev sees the 5 downstairs lights and says "all of these".
+    shape, vp = _shape(
+        ["turn_on"], {"collective": 0.05}, {"turn_on": 0.96}, areas=("kitchen", "living", "hallway")
+    )
+    cands = _ents(
+        home,
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+        "light.living_main",
+        "light.reading_lamp",
+        "light.hallway",
+    )
+    plan = plan_round2(
+        home, shape, {"turn_on": cands}, config.thresholds, 60, prompt="Licht im Untergeschoss an"
+    )
+    assert plan.all_of == ("turn_on",)
+    r2 = Answers(
+        "m",
+        {
+            "target:turn_on": ChoiceA(NO_MATCH, 0.31, {NO_MATCH: 0.31}),
+            "all_of:turn_on": NoulA(0.92),
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
+    assert isinstance(r, Resolved) and len(r.actions[0].targets) == 5
+    assert r.confidence == 0.92 and "all_of:turn_on" in r.trace.notes
+
+
+def test_named_unknown_device_is_not_all_of_them(home, config):
+    # "Wohnzimmer Stehlampe aufdrehen" with no Stehlampe exposed: Jev says not all, weak pick -> ask.
+    shape, vp = _shape(["turn_on"], {"collective": 0.05}, {"turn_on": 0.97}, areas=("living",))
+    cands = _ents(home, "light.living_main", "light.reading_lamp")
+    plan = plan_round2(
+        home,
+        shape,
+        {"turn_on": cands},
+        config.thresholds,
+        60,
+        prompt="Wohnzimmer Stehlampe aufdrehen",
+    )
+    r2 = Answers(
+        "m",
+        {
+            "target:turn_on": ChoiceA(
+                "Living room main", 0.34, {"Living room main": 0.34, "Reading lamp": 0.3}
+            ),
+            "all_of:turn_on": NoulA(0.08),
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
+    assert isinstance(r, NeedsClarification)
+
+
+def test_all_of_is_not_asked_for_queries(home, thresholds):
+    shape, _ = _shape(["query_state"], {}, {"query_state": 0.9})
+    plan = plan_round2(
+        home,
+        shape,
+        {"query_state": _ents(home, "light.living_main", "light.reading_lamp")},
+        thresholds,
+        60,
+    )
+    assert plan.all_of == ()

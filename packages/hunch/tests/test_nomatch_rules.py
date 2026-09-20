@@ -137,38 +137,6 @@ def test_new_thresholds_have_defaults():
     assert EngineConfig(model="m").clarify_max_candidates == 5
 
 
-def test_verbatim_device_name_in_prompt_overrides_collective(home, thresholds):
-    # "Mach die Spots in der Küche an": 'Spots' is plural-looking but names exactly one device.
-    shape, _ = _shape(["turn_on"], {"collective": 0.87, "names_specific": 0.49})
-    spots = type(home.entity_by_id("light.kitchen_counter"))(
-        **{
-            **home.entity_by_id("light.kitchen_counter").__dict__,
-            "name": "Spots",
-            "device_name": "Spots",
-        }
-    )
-    cands = (home.entity_by_id("light.kitchen_ceiling"), spots)
-    plan = plan_round2(
-        home, shape, {"turn_on": cands}, thresholds, 60, prompt="Mach die Spots in der Küche an"
-    )
-    assert plan.collective == {"turn_on": (spots,)}
-    assert plan.name_matched == ("turn_on",)
-
-
-def test_verbatim_match_needs_exactly_one_candidate(home, thresholds):
-    shape, _ = _shape(["turn_on"], {"collective": 0.9})
-    cands = _ents(
-        home, "light.bedroom_left", "light.bedroom_right"
-    )  # both on device "Bedside lamps"
-    plan = plan_round2(
-        home, shape, {"turn_on": cands}, thresholds, 60, prompt="turn on the bedside lamps"
-    )
-    assert plan.collective == {
-        "turn_on": cands
-    }  # two candidates share the matched device name -> keep all
-    assert plan.name_matched == ()
-
-
 def test_specific_flag_does_not_defeat_an_exception(home, thresholds):
     # "turn off everything in the kitchen except the fridge": the named device is the exclusion.
     shape, _ = _shape(

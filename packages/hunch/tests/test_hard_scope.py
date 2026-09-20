@@ -7,7 +7,7 @@ from hunch.engine import Engine
 from hunch.loaders import home_from_export
 from hunch.phrasing import DE, EN
 from hunch.questions import ChoiceA, ChoiceQ, NoulA, ScoreA, ScoreQ
-from hunch.resolution import NeedsConfirmation, Resolved
+from hunch.resolution import Resolved
 from hunch.round2 import NO_MATCH
 from hunch.scope import verbatim_areas, verbatim_domains
 
@@ -68,7 +68,7 @@ def _script(overrides):
 
 async def test_soft_jev_areas_are_dropped_without_verbatim_support(home, vocab, config):
     # "lights off" with Jev hallucinating the bedroom at 0.75 and the office at 0.72: neither is
-    # named, neither is sure -> no area scope -> whole light domain, confirm (28 > cap? here 9).
+    # named, neither is sure -> no area scope -> whole light domain; Jev then says "all of these".
     ov = {
         "verb:turn_off": NoulA(0.9),
         "domain:light": NoulA(0.97),
@@ -76,10 +76,11 @@ async def test_soft_jev_areas_are_dropped_without_verbatim_support(home, vocab, 
         "area:office": NoulA(0.72),
         "flag:collective": NoulA(0.35),
         "target:turn_off": ChoiceA(NO_MATCH, 0.45, {}),
+        "all_of:turn_off": NoulA(0.85),
     }
     r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(home, "lights off")
-    assert isinstance(r, NeedsConfirmation) and r.reason == "collective_fallback"
-    assert len(r.actions[0].targets) == 9
+    assert isinstance(r, Resolved) and len(r.actions[0].targets) == 9
+    assert "all_of:turn_off" in r.trace.notes
     assert any(n.startswith("soft_scope_dropped:") for n in r.trace.notes)
 
 
@@ -154,21 +155,37 @@ async def test_most_rooms_firing_means_the_whole_home(home, vocab, config):
     assert "whole_home" in r.trace.notes
 
 
-async def test_a_named_exception_is_excluded_by_code(home, vocab, config):
+async def test_out_of_room_verb_is_dropped_when_jev_says_it_was_not_meant(home, vocab, config):
+    # "lamps in the bedroom up": `open` co-fires on "up", finds no bedroom cover, widens.
     ov = {
-        "verb:turn_off": NoulA(0.9),
-        "area:kitchen": NoulA(0.99),
+        "verb:turn_on": NoulA(0.95),
+        "verb:open": NoulA(0.75),
+        "area:bedroom": NoulA(0.99),
+        "domain:light": NoulA(0.9),
         "flag:collective": NoulA(0.9),
-        "flag:has_exception": NoulA(0.95),
+        "outside_scope:open": NoulA(0.1),
     }
-    client = FakeDecisionClient(_script(ov))
-    r = await Engine(client, vocab, config).decide(
-        home, "turn off everything in the kitchen except the fridge"
+    r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
+        home, "lamps in the bedroom up"
     )
     assert isinstance(r, Resolved)
-    assert {e.entity_id for e in r.actions[0].targets} == {
-        "light.kitchen_ceiling",
-        "light.kitchen_counter",
+    assert [a.verb.name for a in r.actions] == ["turn_on"]
+    assert "dropped:open:outside_scope" in r.trace.notes
+
+
+async def test_out_of_room_verb_is_kept_when_jev_says_it_was_meant(home, vocab, config):
+    # "turn off the kitchen lights and close the blinds": the blinds are in the living room.
+    ov = {
+        "verb:turn_off": NoulA(0.95),
+        "verb:close": NoulA(0.9),
+        "area:kitchen": NoulA(0.99),
+        "domain:light": NoulA(0.9),
+        "domain:cover": NoulA(0.9),
+        "flag:collective": NoulA(0.9),
+        "outside_scope:close": NoulA(0.9),
     }
-    assert len(client.calls) == 1  # no exclusion Nouls were needed
-    assert "exception_match:turn_off:1" in r.trace.notes
+    r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
+        home, "turn off the kitchen lights and close the blinds"
+    )
+    assert isinstance(r, Resolved)
+    assert sorted(a.verb.name for a in r.actions) == ["close", "turn_off"]

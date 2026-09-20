@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from hunch.config import EngineConfig
 from hunch.model import Entity
 from hunch.phrasing import EN, Phrasebook
@@ -54,6 +56,11 @@ def _numeric_value(spec: ScoreSpec, number: float, *, inverted: bool) -> float |
     return number
 
 
+def _base_label(label: str) -> str:
+    """'Dachterrasse Rollo (Galerie)' -> 'Dachterrasse Rollo'; '#2' suffixes likewise."""
+    return re.sub(r" (?:\([^)]*\)|#\d+)$", "", label)
+
+
 def _verb_prob(trace: Trace, verb_name: str) -> float:
     for d in reversed(trace.decisions):
         if d.name == f"verb:{verb_name}":
@@ -94,11 +101,15 @@ def resolve(
         local: list[float] = [_verb_prob(trace, verb.name)]
         targets: tuple[Entity, ...] = ()
 
+        if verb.name in plan.outside_scope and round2 is not None:
+            p_out = round2.noul(f"outside_scope:{verb.name}")
+            if not trace.decide(f"outside_scope:{verb.name}", p_out, th.flag):
+                trace.note(f"dropped:{verb.name}:outside_scope")
+                continue
+            local.append(p_out)
+
         if verb.name in plan.collective:
             targets = plan.collective[verb.name]
-            if verb.name in plan.excluded_by_name:
-                trace.note(f"exception_match:{verb.name}:{len(plan.excluded_by_name[verb.name])}")
-                local.append(shape.flag("has_exception"))
             if len(targets) > 1:  # a single candidate never relied on the collective flag
                 collective = shape.flag("collective")
                 in_scope = shape.scope_areas and all(
@@ -129,35 +140,42 @@ def resolve(
                 trace.note(f"exception_unresolved:{verb.name}")
                 exception_unresolved = True
         elif verb.name in plan.singular and round2 is not None:
+            options = plan.singular[verb.name]
             c = round2.choice(f"target:{verb.name}")
             trace.decide(f"target:{verb.name}", c.confidence, th.target_choice_conf)
-            options = plan.singular[verb.name]
             ranked = sorted(
                 (o for o in options if o.label != NO_MATCH),
                 key=lambda o: -c.probabilities.get(o.label, 0.0),
             )
-            if c.choice == NO_MATCH:
+            p_all = (
+                round2.noul(f"all_of:{verb.name}")
+                if f"all_of:{verb.name}" in round2.answers
+                else 0.0
+            )
+            if trace.decide(f"all_of:{verb.name}", p_all, th.collective):
+                # Jev saw the candidates and says the request means every one of them.
+                trace.note(f"all_of:{verb.name}")
+                targets = tuple(e for o in options for e in o.entities)
+                backing = p_all
+                if shape.scope_areas and all(e.area_id in shape.scope_areas for e in targets):
+                    named = any(n.startswith("area_match:") for n in trace.notes)
+                    backing = max(p_all, 1.0 if named else _scope_strength(shape, trace))
+                    if backing > p_all:
+                        trace.note(f"collective_backed_by_scope:{verb.name}")
+                local.append(backing)
+            elif c.choice == NO_MATCH:
                 trace.note(f"no_match:target:{verb.name}")
-                named_device = shape.flag("names_specific") >= th.confirm_band
-                if named_device:
-                    trace.note(f"unknown_device:{verb.name}")
-                if verb.name in plan.scoped_sweep_ok and not named_device:
-                    # Whole area/floor named, no device named: all of them, on the scope's word.
-                    trace.note(f"scoped_sweep:{verb.name}")
-                    targets = tuple(e for o in options for e in o.entities)
-                    local.append(_scope_strength(shape, trace))
-                elif verb.name in plan.domain_sweep_ok or trace.decide(
+                if trace.decide(
                     f"collective_fallback:{verb.name}",
-                    shape.flag("collective"),
+                    max(shape.flag("collective"), p_all),
                     th.collective_fallback,
                 ):
-                    # Plural hint under threshold but present: the user meant all of them. Ask.
+                    # Some plural signal, no single target: all of them — but ask first.
                     trace.note(f"collective_fallback:{verb.name}")
                     targets = tuple(e for o in options for e in o.entities)
-                    local.append(c.confidence)
+                    local.append(max(shape.flag("collective"), p_all))
                     reasons.append("collective_fallback")
                 elif c.confidence < th.no_match_clarify:
-                    # Mass spread across real options: ask which one, don't give up.
                     candidates = tuple(e for o in ranked for e in o.entities)
                     trace.note(f"clarify:target:{verb.name}")
                     if pending_clarify is None:
@@ -167,20 +185,17 @@ def resolve(
             else:
                 opt = next((o for o in options if o.label == c.choice), None)
                 weak = c.confidence < th.confirm_band and len(ranked) > 1
-                named_device = shape.flag("names_specific") >= th.confirm_band
-                if (
-                    opt is not None
-                    and weak
-                    and verb.name in plan.scoped_sweep_ok
-                    and not named_device
-                ):
-                    # A weak pick inside a named area/floor: the user meant all of them.
-                    trace.note(f"scoped_sweep:{verb.name}")
-                    targets = tuple(e for o in options for e in o.entities)
-                    local.append(_scope_strength(shape, trace))
-                elif opt is not None and (weak or verb.name in plan.ambiguous_by_area):
+                twins: list = []
+                if opt is not None and not shape.scope_areas:
+                    # Same device name in several rooms and no room said: nothing in the request
+                    # can tell them apart, whatever the pick's confidence. A lookup, not a judgement.
+                    base = _base_label(opt.label)
+                    twins = [o for o in options if o is not opt and _base_label(o.label) == base]
+                if opt is not None and (weak or twins or verb.name in plan.ambiguous_by_area):
                     if not weak:
                         trace.note(f"clarify:ambiguous_by_area:{verb.name}")
+                    if twins:
+                        ranked = [opt, *twins]
                     # A weak pick among real alternatives, or same-named devices in different
                     # rooms with no room said: asking beats guessing or giving up.
                     ordered = [opt, *(o for o in ranked if o is not opt)]
