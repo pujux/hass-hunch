@@ -43,6 +43,7 @@ testpaths = ["packages/hunch/tests", "tests/unit"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

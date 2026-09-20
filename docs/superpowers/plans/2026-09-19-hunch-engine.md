@@ -184,7 +184,11 @@ SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "hunch"
 
 
 def test_hunch_never_imports_homeassistant():
-    offenders = [p for p in SRC.rglob("*.py") if "homeassistant" in p.read_text(encoding="utf-8")]
+    offenders = [
+        p
+        for p in SRC.rglob("*.py")
+        if "homeassistant" in p.read_text(encoding="utf-8")
+    ]
     assert offenders == [], f"HA imports found in engine library: {offenders}"
 ```
 
@@ -359,21 +363,12 @@ def home() -> HomeModel:
             _e("switch.fridge", "Fridge", "kitchen", "Fridge", SWITCH_VERBS, "on"),
             _e("light.living_main", "Living room main", "living", "Living room main"),
             _e("light.reading_lamp", "Reading lamp", "living", "Reading lamp", aliases=("lamp",)),
-            _e(
-                "cover.living_blinds", "Living room blinds", "living", "Blinds", COVER_VERBS, "open"
-            ),
+            _e("cover.living_blinds", "Living room blinds", "living", "Blinds", COVER_VERBS, "open"),
             _e("light.hallway", "Hallway light", "hallway", "Hallway light"),
             _e("lock.front_door", "Front door", "hallway", "Front door", LOCK_VERBS, "locked"),
             _e("light.bedroom_left", "Bedside left", "bedroom", "Bedside lamps"),
             _e("light.bedroom_right", "Bedside right", "bedroom", "Bedside lamps"),
-            _e(
-                "climate.bedroom",
-                "Bedroom thermostat",
-                "bedroom",
-                "Thermostat",
-                CLIMATE_VERBS,
-                "heat",
-            ),
+            _e("climate.bedroom", "Bedroom thermostat", "bedroom", "Thermostat", CLIMATE_VERBS, "heat"),
             _e("light.office_desk", "Desk lamp", "office", "Desk lamp"),
             _e("light.christmas_tree", "Christmas tree", None, None),
         ),
@@ -547,18 +542,8 @@ from hunch.vocabulary import (
 
 def test_default_vocabulary_has_expected_core_verbs():
     names = set(DEFAULT_VOCABULARY.names)
-    assert {
-        "turn_on",
-        "turn_off",
-        "set_brightness",
-        "open",
-        "close",
-        "lock",
-        "unlock",
-        "set_temperature",
-        "activate",
-        "query_state",
-    } <= names
+    assert {"turn_on", "turn_off", "set_brightness", "open", "close", "lock", "unlock",
+            "set_temperature", "activate", "query_state"} <= names
 
 
 def test_lock_and_unlock_are_confirm_tier():
@@ -585,9 +570,7 @@ def test_verbs_for_domain():
     assert verbs_for_domain("light", DEFAULT_VOCABULARY) == frozenset(
         {"turn_on", "turn_off", "set_brightness", "query_state"}
     )
-    assert verbs_for_domain("lock", DEFAULT_VOCABULARY) == frozenset(
-        {"lock", "unlock", "query_state"}
-    )
+    assert verbs_for_domain("lock", DEFAULT_VOCABULARY) == frozenset({"lock", "unlock", "query_state"})
     assert verbs_for_domain("unknown_domain", DEFAULT_VOCABULARY) == frozenset({"query_state"})
 
 
@@ -597,14 +580,8 @@ def test_by_name_raises_on_unknown():
 
 
 def test_vocabulary_extension_keeps_frozen_semantics():
-    extra = Verb(
-        "party",
-        frozenset({"light"}),
-        ChoiceSpec("mode", ("disco", "chill")),
-        Risk.SAFE,
-        "script.party",
-        "start a party mode",
-    )
+    extra = Verb("party", frozenset({"light"}), ChoiceSpec("mode", ("disco", "chill")),
+                 Risk.SAFE, "script.party", "start a party mode")
     v2 = Vocabulary(DEFAULT_VOCABULARY.verbs + (extra,))
     assert v2.by_name("party").intent == "script.party"
     assert "party" not in DEFAULT_VOCABULARY.names
@@ -638,15 +615,15 @@ from functools import cached_property
 
 
 class Risk(Enum):
-    SAFE = auto()  # auto-executes above threshold
-    CONFIRM = auto()  # always asks first
+    SAFE = auto()         # auto-executes above threshold
+    CONFIRM = auto()      # always asks first
     DESTRUCTIVE = auto()  # never executes from the fast path; escalates
 
 
 @dataclass(frozen=True)
 class ScoreSpec:
-    name: str  # parameter key in Action.params
-    levels: tuple[str, ...]  # 2..10 ordered descriptions; index maps to a value via `values`
+    name: str                  # parameter key in Action.params
+    levels: tuple[str, ...]    # 2..10 ordered descriptions; index maps to a value via `values`
     values: tuple[float, ...]  # same length as levels; the number each level stands for
 
 
@@ -716,107 +693,34 @@ DEFAULT_VOCABULARY = Vocabulary(
     (
         Verb("turn_on", _ON_OFF, None, Risk.SAFE, "HassTurnOn", "turn something on"),
         Verb("turn_off", _ON_OFF, None, Risk.SAFE, "HassTurnOff", "turn something off"),
-        Verb(
-            "set_brightness",
-            frozenset({"light"}),
-            _BRIGHTNESS,
-            Risk.SAFE,
-            "HassLightSet",
-            "set how bright a light is",
-        ),
-        Verb(
-            "open",
-            frozenset({"cover"}),
-            None,
-            Risk.SAFE,
-            "HassOpenCover",
-            "open blinds, shades, curtains or a garage door",
-        ),
-        Verb(
-            "close",
-            frozenset({"cover"}),
-            None,
-            Risk.SAFE,
-            "HassCloseCover",
-            "close blinds, shades, curtains or a garage door",
-        ),
-        Verb(
-            "set_position",
-            frozenset({"cover"}),
-            _POSITION,
-            Risk.SAFE,
-            "HassSetPosition",
-            "set how far open blinds, shades or curtains are",
-        ),
+        Verb("set_brightness", frozenset({"light"}), _BRIGHTNESS, Risk.SAFE,
+             "HassLightSet", "set how bright a light is"),
+        Verb("open", frozenset({"cover"}), None, Risk.SAFE, "HassOpenCover",
+             "open blinds, shades, curtains or a garage door"),
+        Verb("close", frozenset({"cover"}), None, Risk.SAFE, "HassCloseCover",
+             "close blinds, shades, curtains or a garage door"),
+        Verb("set_position", frozenset({"cover"}), _POSITION, Risk.SAFE, "HassSetPosition",
+             "set how far open blinds, shades or curtains are"),
         Verb("lock", frozenset({"lock"}), None, Risk.CONFIRM, "HassLock", "lock a door or lock"),
-        Verb(
-            "unlock", frozenset({"lock"}), None, Risk.CONFIRM, "HassUnlock", "unlock a door or lock"
-        ),
-        Verb(
-            "set_temperature",
-            frozenset({"climate"}),
-            _TEMPERATURE,
-            Risk.SAFE,
-            "HassClimateSetTemperature",
-            "set a target temperature or make it warmer or cooler",
-        ),
-        Verb(
-            "set_volume",
-            frozenset({"media_player"}),
-            _VOLUME,
-            Risk.SAFE,
-            "HassSetVolume",
-            "change the volume of a speaker or TV",
-        ),
-        Verb(
-            "media_pause",
-            frozenset({"media_player"}),
-            None,
-            Risk.SAFE,
-            "HassMediaPause",
-            "pause playback",
-        ),
-        Verb(
-            "media_play",
-            frozenset({"media_player"}),
-            None,
-            Risk.SAFE,
-            "HassMediaUnpause",
-            "resume or start playback",
-        ),
-        Verb(
-            "arm",
-            frozenset({"alarm_control_panel"}),
-            None,
-            Risk.CONFIRM,
-            "HassAlarmArm",
-            "arm the alarm system",
-        ),
-        Verb(
-            "disarm",
-            frozenset({"alarm_control_panel"}),
-            None,
-            Risk.CONFIRM,
-            "HassAlarmDisarm",
-            "disarm the alarm system",
-        ),
-        Verb(
-            "activate",
-            frozenset({"scene", "script"}),
-            None,
-            Risk.SAFE,
-            "HassTurnOn",
-            "activate a scene or run a script by name",
-        ),
-        Verb(
-            "query_state",
-            frozenset(),
-            None,
-            Risk.SAFE,
-            "HassGetState",
-            "ask whether something is on, off, open, closed, locked, or what its value is",
-            is_query=True,
-        ),
+        Verb("unlock", frozenset({"lock"}), None, Risk.CONFIRM, "HassUnlock",
+             "unlock a door or lock"),
+        Verb("set_temperature", frozenset({"climate"}), _TEMPERATURE, Risk.SAFE,
+             "HassClimateSetTemperature", "set a target temperature or make it warmer or cooler"),
+        Verb("set_volume", frozenset({"media_player"}), _VOLUME, Risk.SAFE,
+             "HassSetVolume", "change the volume of a speaker or TV"),
+        Verb("media_pause", frozenset({"media_player"}), None, Risk.SAFE, "HassMediaPause",
+             "pause playback"),
+        Verb("media_play", frozenset({"media_player"}), None, Risk.SAFE, "HassMediaUnpause",
+             "resume or start playback"),
+        Verb("arm", frozenset({"alarm_control_panel"}), None, Risk.CONFIRM,
+             "HassAlarmArm", "arm the alarm system"),
+        Verb("disarm", frozenset({"alarm_control_panel"}), None, Risk.CONFIRM,
+             "HassAlarmDisarm", "disarm the alarm system"),
+        Verb("activate", frozenset({"scene", "script"}), None, Risk.SAFE, "HassTurnOn",
+             "activate a scene or run a script by name"),
+        Verb("query_state", frozenset(), None, Risk.SAFE, "HassGetState",
+             "ask whether something is on, off, open, closed, locked, or what its value is",
+             is_query=True),
     )
 )
 ```
@@ -912,17 +816,8 @@ def test_trace_records_answers_decisions_and_models():
     assert t.decide("flag:collective", 0.4, 0.65) is False
     d = t.to_dict()
     assert d["models"] == ["jev-1.13.0"]
-    assert d["entries"][0] == {
-        "round": 1,
-        "question_id": "verb:turn_off",
-        "answer": {"type": "noul", "probability": 0.93},
-    }
-    assert d["decisions"][1] == {
-        "name": "flag:collective",
-        "value": 0.4,
-        "threshold": 0.65,
-        "passed": False,
-    }
+    assert d["entries"][0] == {"round": 1, "question_id": "verb:turn_off", "answer": {"type": "noul", "probability": 0.93}}
+    assert d["decisions"][1] == {"name": "flag:collective", "value": 0.4, "threshold": 0.65, "passed": False}
     json.dumps(d)  # must be JSON-serialisable
 ```
 
@@ -1040,17 +935,17 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Thresholds:
     verb_fire: float = 0.7
-    scope_fire: float = 0.6  # floor / area / domain Nouls
+    scope_fire: float = 0.6         # floor / area / domain Nouls
     collective: float = 0.65
     target_choice_conf: float = 0.7
     auto_execute: float = 0.75
-    confirm_band: float = 0.5  # [confirm_band, auto_execute) -> NeedsConfirmation
-    flag: float = 0.6  # has_exception / has_condition / is_query / has_timing / is_destructive
+    confirm_band: float = 0.5       # [confirm_band, auto_execute) -> NeedsConfirmation
+    flag: float = 0.6               # has_exception / has_condition / is_query / has_timing / is_destructive
 
 
 @dataclass(frozen=True)
 class EngineConfig:
-    model: str  # pinned Jev model id, e.g. "jev-1.13.0"
+    model: str                      # pinned Jev model id, e.g. "jev-1.13.0"
     thresholds: Thresholds = field(default_factory=Thresholds)
     max_rounds: int = 2
     latency_budget_ms: int = 600
@@ -1130,19 +1025,11 @@ def _answer_dict(a: Answer) -> JSON:
     if isinstance(a, NoulA):
         return {"type": "noul", "probability": a.probability}
     if isinstance(a, ChoiceA):
-        return {
-            "type": "choice",
-            "choice": a.choice,
-            "confidence": a.confidence,
-            "probabilities": dict(a.probabilities),
-        }
+        return {"type": "choice", "choice": a.choice, "confidence": a.confidence,
+                "probabilities": dict(a.probabilities)}
     if isinstance(a, ScoreA):
-        return {
-            "type": "score",
-            "score": a.score,
-            "confidence": a.confidence,
-            "probabilities": {str(k): v for k, v in a.probabilities.items()},
-        }
+        return {"type": "score", "score": a.score, "confidence": a.confidence,
+                "probabilities": {str(k): v for k, v in a.probabilities.items()}}
     raise TypeError(type(a))
 
 
@@ -1177,14 +1064,14 @@ class NeedsConfirmation:
 
 @dataclass(frozen=True)
 class NeedsClarification:
-    question_key: str  # "which_area" | "which_device"
+    question_key: str            # "which_area" | "which_device"
     candidates: tuple[Entity, ...]
     trace: Trace
 
 
 @dataclass(frozen=True)
 class Escalate:
-    reason: str  # "timing" | "no_intent" | "destructive" | "low_confidence" | "scope" | "decision_backend_unavailable" | "prompt_invalid"
+    reason: str                  # "timing" | "no_intent" | "destructive" | "low_confidence" | "scope" | "decision_backend_unavailable" | "prompt_invalid"
     partial: tuple[Action, ...]
     trace: Trace
 
@@ -1253,9 +1140,7 @@ def test_to_sdk_question_maps_all_three_primitives():
 def test_from_sdk_answer_maps_all_three_primitives():
     assert from_sdk_answer(SimpleNamespace(type="noul", noul=0.9)) == NoulA(0.9)
     assert from_sdk_answer(
-        SimpleNamespace(
-            type="choice", choice="a", confidence=0.8, probabilities={"a": 0.8, "b": 0.2}
-        )
+        SimpleNamespace(type="choice", choice="a", confidence=0.8, probabilities={"a": 0.8, "b": 0.2})
     ) == ChoiceA("a", 0.8, {"a": 0.8, "b": 0.2})
     assert from_sdk_answer(
         SimpleNamespace(type="score", score=1.5, confidence=0.6, probabilities={1: 0.5, 2: 0.5})
@@ -1316,9 +1201,7 @@ async def test_typesafe_client_round_trips_and_pins_model():
 
 
 async def test_typesafe_client_rejects_model_mismatch():
-    client = TypeSafeDecisionClient(
-        model="jev-1.13.0", sdk_client=_StubSDK(response=_resp("jev-1.14.0"))
-    )
+    client = TypeSafeDecisionClient(model="jev-1.13.0", sdk_client=_StubSDK(response=_resp("jev-1.14.0")))
     with pytest.raises(DecisionBackendError) as ei:
         await client.ask({}, {"q": NoulQ("x")})
     assert ei.value.reason == "model_mismatch"
@@ -1356,18 +1239,7 @@ from typesafe_sdk import (
     TypeSafeError,
 )
 
-from hunch.questions import (
-    JSON,
-    Answer,
-    Answers,
-    ChoiceA,
-    ChoiceQ,
-    NoulA,
-    NoulQ,
-    Question,
-    ScoreA,
-    ScoreQ,
-)
+from hunch.questions import JSON, Answer, Answers, ChoiceA, ChoiceQ, NoulA, NoulQ, Question, ScoreA, ScoreQ
 
 
 class DecisionBackendError(Exception):
@@ -1418,11 +1290,7 @@ def from_sdk_answer(a: Any) -> Answer:
     if kind == "choice":
         return ChoiceA(str(a.choice), float(a.confidence), dict(a.probabilities))
     if kind == "score":
-        return ScoreA(
-            float(a.score),
-            float(a.confidence),
-            {int(k): float(v) for k, v in a.probabilities.items()},
-        )
+        return ScoreA(float(a.score), float(a.confidence), {int(k): float(v) for k, v in a.probabilities.items()})
     raise DecisionBackendError("malformed_response")
 
 
@@ -1447,18 +1315,14 @@ class TypeSafeDecisionClient:
     async def ask(self, state: JSON, questions: Mapping[str, Question]) -> Answers:
         sdk_questions = {qid: to_sdk_question(q) for qid, q in questions.items()}
         try:
-            resp = await self._sdk.system_one(
-                state=state, questions=sdk_questions, model=self._model
-            )
+            resp = await self._sdk.system_one(state=state, questions=sdk_questions, model=self._model)
         except TypeSafeError as exc:
             raise DecisionBackendError("decision_backend_unavailable", exc) from exc
         if resp.model != self._model:
             raise DecisionBackendError("model_mismatch")
         answers = {qid: from_sdk_answer(a) for qid, a in resp.answers.items()}
         usage = getattr(resp, "usage", None)
-        return Answers(
-            model=resp.model, answers=answers, input_tokens=getattr(usage, "input_tokens", None)
-        )
+        return Answers(model=resp.model, answers=answers, input_tokens=getattr(usage, "input_tokens", None))
 
     async def aclose(self) -> None:
         aclose = getattr(self._sdk, "aclose", None)
@@ -1513,13 +1377,7 @@ def test_state_is_small_and_names_only(home):
     state = build_round1_state(home, "turn off the downstairs lights")
     assert state["request"] == "turn off the downstairs lights"
     assert state["floors"] == ["Downstairs", "Upstairs"]
-    assert state["areas"] == [
-        "Kitchen",
-        "Living room (lounge)",
-        "Hallway",
-        "Bedroom",
-        "Office (study)",
-    ]
+    assert state["areas"] == ["Kitchen", "Living room (lounge)", "Hallway", "Bedroom", "Office (study)"]
     assert state["domains"] == ["climate", "cover", "light", "lock", "switch"]
     assert state["scenes"] == ["Movie night", "Goodnight"]
     assert "entities" not in state  # never show Round 1 the entity list
@@ -1532,19 +1390,9 @@ def test_questions_cover_verbs_floors_areas_domains_flags_scene_condition(home, 
     assert {"area:kitchen", "area:office"} <= set(qs)
     assert {"domain:light", "domain:lock"} <= set(qs)
     assert {f"flag:{f}" for f in FLAGS} <= set(qs)
-    assert isinstance(qs["scene"], ChoiceQ) and qs["scene"].options == (
-        "Movie night",
-        "Goodnight",
-        "none",
-    )
-    assert (
-        isinstance(qs["condition_domain"], ChoiceQ) and qs["condition_domain"].options[-1] == "none"
-    )
-    assert all(
-        isinstance(q, NoulQ)
-        for k, q in qs.items()
-        if k.startswith(("verb:", "floor:", "area:", "domain:", "flag:"))
-    )
+    assert isinstance(qs["scene"], ChoiceQ) and qs["scene"].options == ("Movie night", "Goodnight", "none")
+    assert isinstance(qs["condition_domain"], ChoiceQ) and qs["condition_domain"].options[-1] == "none"
+    assert all(isinstance(q, NoulQ) for k, q in qs.items() if k.startswith(("verb:", "floor:", "area:", "domain:", "flag:")))
 
 
 def test_area_question_mentions_aliases(home, vocab):
@@ -1570,16 +1418,12 @@ def _answers(home, vocab, **overrides):
 
 
 def test_interpret_floor_expands_to_areas_and_fires_verb(home, vocab, thresholds):
-    ans = _answers(
-        home,
-        vocab,
-        **{
-            "verb:turn_off": NoulA(0.95),
-            "floor:downstairs": NoulA(0.9),
-            "domain:light": NoulA(0.9),
-            "flag:collective": NoulA(0.9),
-        },
-    )
+    ans = _answers(home, vocab, **{
+        "verb:turn_off": NoulA(0.95),
+        "floor:downstairs": NoulA(0.9),
+        "domain:light": NoulA(0.9),
+        "flag:collective": NoulA(0.9),
+    })
     shape = interpret_round1(home, vocab, ans, thresholds, Trace())
     assert [v.name for v in shape.fired_verbs] == ["turn_off"]
     assert set(shape.scope_areas) == {"kitchen", "living", "hallway"}
@@ -1591,46 +1435,32 @@ def test_interpret_floor_expands_to_areas_and_fires_verb(home, vocab, thresholds
 def test_interpret_keeps_probabilities_for_ranked_widening(home, vocab, thresholds):
     ans = _answers(home, vocab, **{"verb:turn_on": NoulA(0.9), "area:living": NoulA(0.45)})
     shape = interpret_round1(home, vocab, ans, thresholds, Trace())
-    assert shape.scope_areas == ()  # 0.45 < scope_fire
+    assert shape.scope_areas == ()             # 0.45 < scope_fire
     assert shape.area_probs["living"] == 0.45  # but retained
 
 
 def test_interpret_scene_and_condition_domain(home, vocab, thresholds):
-    ans = _answers(
-        home,
-        vocab,
-        **{
-            "verb:activate": NoulA(0.9),
-            "scene": ChoiceA(
-                "Movie night", 0.85, {"Movie night": 0.85, "Goodnight": 0.1, "none": 0.05}
-            ),
-            "flag:has_condition": NoulA(0.8),
-            "condition_domain": ChoiceA("lock", 0.8, {"lock": 0.8, "none": 0.2}),
-        },
-    )
+    ans = _answers(home, vocab, **{
+        "verb:activate": NoulA(0.9),
+        "scene": ChoiceA("Movie night", 0.85, {"Movie night": 0.85, "Goodnight": 0.1, "none": 0.05}),
+        "flag:has_condition": NoulA(0.8),
+        "condition_domain": ChoiceA("lock", 0.8, {"lock": 0.8, "none": 0.2}),
+    })
     shape = interpret_round1(home, vocab, ans, thresholds, Trace())
     assert shape.scene is not None and shape.scene.entity_id == "scene.movie_night"
     assert shape.condition_domain == "lock"
 
 
 def test_interpret_ignores_scene_below_confidence(home, vocab, thresholds):
-    ans = _answers(
-        home,
-        vocab,
-        **{
-            "scene": ChoiceA(
-                "Movie night", 0.4, {"Movie night": 0.4, "Goodnight": 0.35, "none": 0.25}
-            ),
-        },
-    )
+    ans = _answers(home, vocab, **{
+        "scene": ChoiceA("Movie night", 0.4, {"Movie night": 0.4, "Goodnight": 0.35, "none": 0.25}),
+    })
     assert interpret_round1(home, vocab, ans, thresholds, Trace()).scene is None
 
 
 def test_interpret_records_trace(home, vocab, thresholds):
     trace = Trace()
-    interpret_round1(
-        home, vocab, _answers(home, vocab, **{"verb:turn_off": NoulA(0.9)}), thresholds, trace
-    )
+    interpret_round1(home, vocab, _answers(home, vocab, **{"verb:turn_off": NoulA(0.9)}), thresholds, trace)
     assert trace.models == ["jev-1.13.0"]
     assert any(d.name == "verb:turn_off" and d.passed for d in trace.decisions)
 ```
@@ -1687,9 +1517,7 @@ def build_round1_questions(home: HomeModel, vocab: Vocabulary) -> dict[str, Ques
     for v in vocab.verbs:
         qs[f"verb:{v.name}"] = NoulQ(f"Does the request ask to {v.phrasing}?")
     for f in home.floors:
-        qs[f"floor:{f.floor_id}"] = NoulQ(
-            f"Does the request refer to the floor '{f.name}' or to all of it?"
-        )
+        qs[f"floor:{f.floor_id}"] = NoulQ(f"Does the request refer to the floor '{f.name}' or to all of it?")
     for a in home.areas:
         qs[f"area:{a.area_id}"] = NoulQ(f"Does the request refer to the area '{_label(a)}'?")
     for d in home.domains:
@@ -1729,19 +1557,14 @@ def interpret_round1(
     trace.record(1, answers)
 
     fired_verbs = tuple(
-        v
-        for v in vocab.verbs
+        v for v in vocab.verbs
         if trace.decide(f"verb:{v.name}", answers.noul(f"verb:{v.name}"), thresholds.verb_fire)
     )
 
-    area_probs: dict[str, float] = {
-        a.area_id: answers.noul(f"area:{a.area_id}") for a in home.areas
-    }
+    area_probs: dict[str, float] = {a.area_id: answers.noul(f"area:{a.area_id}") for a in home.areas}
     scope_areas: list[str] = []
     for f in home.floors:
-        if trace.decide(
-            f"floor:{f.floor_id}", answers.noul(f"floor:{f.floor_id}"), thresholds.scope_fire
-        ):
+        if trace.decide(f"floor:{f.floor_id}", answers.noul(f"floor:{f.floor_id}"), thresholds.scope_fire):
             scope_areas.extend(f.area_ids)
     for a in home.areas:
         if trace.decide(f"area:{a.area_id}", area_probs[a.area_id], thresholds.scope_fire):
@@ -1750,9 +1573,7 @@ def interpret_round1(
 
     domain_probs = {d: answers.noul(f"domain:{d}") for d in home.domains}
     scope_domains = tuple(
-        d
-        for d in home.domains
-        if trace.decide(f"domain:{d}", domain_probs[d], thresholds.scope_fire)
+        d for d in home.domains if trace.decide(f"domain:{d}", domain_probs[d], thresholds.scope_fire)
     )
 
     flags = {flag: answers.noul(f"flag:{flag}") for flag in FLAGS}
@@ -1760,17 +1581,13 @@ def interpret_round1(
     scene: Entity | None = None
     if "scene" in answers.answers:
         c = answers.choice("scene")
-        if c.choice != "none" and trace.decide(
-            "scene", c.confidence, thresholds.target_choice_conf
-        ):
+        if c.choice != "none" and trace.decide("scene", c.confidence, thresholds.target_choice_conf):
             scene = next((s for s in home.scenes if s.name == c.choice), None)
 
     condition_domain: str | None = None
     if trace.decide("flag:has_condition", flags["has_condition"], thresholds.flag):
         c = answers.choice("condition_domain")
-        if c.choice != "none" and trace.decide(
-            "condition_domain", c.confidence, thresholds.target_choice_conf
-        ):
+        if c.choice != "none" and trace.decide("condition_domain", c.confidence, thresholds.target_choice_conf):
             condition_domain = c.choice
 
     return Shape(
@@ -1842,11 +1659,8 @@ from hunch.scope import (
 )
 
 
-def _shape(
-    home, verbs=("turn_off",), areas=(), domains=(), area_probs=None, domain_probs=None, vocab=None
-):
+def _shape(home, verbs=("turn_off",), areas=(), domains=(), area_probs=None, domain_probs=None, vocab=None):
     from hunch.vocabulary import DEFAULT_VOCABULARY
-
     vocab = vocab or DEFAULT_VOCABULARY
     ap = {a.area_id: 0.05 for a in home.areas}
     ap.update(area_probs or {})
@@ -1858,17 +1672,7 @@ def _shape(
         scope_domains=tuple(domains),
         area_probs=ap,
         domain_probs=dp,
-        flags={
-            f: 0.05
-            for f in (
-                "collective",
-                "has_exception",
-                "has_condition",
-                "is_query",
-                "has_timing",
-                "is_destructive",
-            )
-        },
+        flags={f: 0.05 for f in ("collective", "has_exception", "has_condition", "is_query", "has_timing", "is_destructive")},
         scene=None,
         condition_domain=None,
     )
@@ -1877,13 +1681,8 @@ def _shape(
 def test_strict_intersects_verb_area_domain(home, vocab):
     shape = _shape(home, areas=("kitchen", "living", "hallway"), domains=("light",))
     ids = {e.entity_id for e in strict_candidates(home, vocab.by_name("turn_off"), shape)}
-    assert ids == {
-        "light.kitchen_ceiling",
-        "light.kitchen_counter",
-        "light.living_main",
-        "light.reading_lamp",
-        "light.hallway",
-    }
+    assert ids == {"light.kitchen_ceiling", "light.kitchen_counter", "light.living_main",
+                   "light.reading_lamp", "light.hallway"}
 
 
 def test_strict_respects_verb_applicability(home, vocab):
@@ -2014,12 +1813,9 @@ def _applicable(home: HomeModel, verb: Verb) -> tuple[Entity, ...]:
     return tuple(e for e in home.entities if verb.name in e.verbs)
 
 
-def _filter(
-    entities: tuple[Entity, ...], areas: tuple[str, ...], domains: tuple[str, ...]
-) -> tuple[Entity, ...]:
+def _filter(entities: tuple[Entity, ...], areas: tuple[str, ...], domains: tuple[str, ...]) -> tuple[Entity, ...]:
     return tuple(
-        e
-        for e in entities
+        e for e in entities
         if (not areas or e.area_id in areas) and (not domains or e.domain in domains)
     )
 
@@ -2127,17 +1923,7 @@ from hunch.vocabulary import DEFAULT_VOCABULARY as V
 
 
 def _shape(home, verbs, flags=None, condition_domain=None):
-    f = {
-        k: 0.05
-        for k in (
-            "collective",
-            "has_exception",
-            "has_condition",
-            "is_query",
-            "has_timing",
-            "is_destructive",
-        )
-    }
+    f = {k: 0.05 for k in ("collective", "has_exception", "has_condition", "is_query", "has_timing", "is_destructive")}
     f.update(flags or {})
     return Shape(tuple(V.by_name(v) for v in verbs), (), (), {}, {}, f, None, condition_domain)
 
@@ -2147,22 +1933,9 @@ def _ents(home, *ids):
 
 
 def test_target_options_collapse_single_entity_devices_and_expand_multi(home):
-    opts = target_options(
-        _ents(
-            home,
-            "light.bedroom_left",
-            "light.bedroom_right",
-            "light.office_desk",
-            "light.christmas_tree",
-        )
-    )
+    opts = target_options(_ents(home, "light.bedroom_left", "light.bedroom_right", "light.office_desk", "light.christmas_tree"))
     labels = [o.label for o in opts]
-    assert labels == [
-        "Bedside lamps — Bedside left",
-        "Bedside lamps — Bedside right",
-        "Desk lamp",
-        "Christmas tree",
-    ]
+    assert labels == ["Bedside lamps — Bedside left", "Bedside lamps — Bedside right", "Desk lamp", "Christmas tree"]
     assert all(len(o.entities) == 1 for o in opts)
 
 
@@ -2202,18 +1975,14 @@ def test_singular_asks_one_choice_over_target_options(home, thresholds):
 
 def test_param_question_uses_verb_spec(home, thresholds):
     shape = _shape(home, ["set_brightness"], {"collective": 0.9})
-    plan = plan_round2(
-        home, shape, {"set_brightness": _ents(home, "light.office_desk")}, thresholds
-    )
+    plan = plan_round2(home, shape, {"set_brightness": _ents(home, "light.office_desk")}, thresholds)
     qs = build_round2_questions(shape, plan, home)
     assert isinstance(qs["param:set_brightness"], ScoreQ)
     assert qs["param:set_brightness"].levels == V.by_name("set_brightness").param.levels
 
 
 def test_condition_questions_when_condition_domain_set(home, thresholds):
-    shape = _shape(
-        home, ["arm"], {"collective": 0.9, "has_condition": 0.8}, condition_domain="lock"
-    )
+    shape = _shape(home, ["arm"], {"collective": 0.9, "has_condition": 0.8}, condition_domain="lock")
     plan = plan_round2(home, shape, {"arm": ()}, thresholds)
     qs = build_round2_questions(shape, plan, home)
     assert qs["cond_subject"].options == ("Front door",)
@@ -2314,10 +2083,7 @@ class Round2Plan:
 
 
 def plan_round2(
-    home: HomeModel,
-    shape: Shape,
-    per_verb: Mapping[str, tuple[Entity, ...]],
-    thresholds: Thresholds,
+    home: HomeModel, shape: Shape, per_verb: Mapping[str, tuple[Entity, ...]], thresholds: Thresholds
 ) -> Round2Plan:
     collective = shape.flag("collective") >= thresholds.collective
     has_exception = shape.flag("has_exception") >= thresholds.flag
@@ -2381,13 +2147,9 @@ def build_round2_questions(shape: Shape, plan: Round2Plan, home: HomeModel) -> d
         verb = next(v for v in shape.fired_verbs if v.name == verb_name)
         spec = verb.param
         if isinstance(spec, ScoreSpec):
-            qs[f"param:{verb_name}"] = ScoreQ(
-                f"What {spec.name.replace('_', ' ')} does the request ask for?", spec.levels
-            )
+            qs[f"param:{verb_name}"] = ScoreQ(f"What {spec.name.replace('_', ' ')} does the request ask for?", spec.levels)
         elif isinstance(spec, ChoiceSpec):
-            qs[f"param:{verb_name}"] = ChoiceQ(
-                f"Which {spec.name.replace('_', ' ')} does the request ask for?", spec.options
-            )
+            qs[f"param:{verb_name}"] = ChoiceQ(f"Which {spec.name.replace('_', ' ')} does the request ask for?", spec.options)
     if plan.condition_candidates and shape.condition_domain:
         qs["cond_subject"] = ChoiceQ(
             "Which device is the request's condition about?",
@@ -2445,21 +2207,9 @@ from hunch.vocabulary import DEFAULT_VOCABULARY as V
 
 
 def _shape(verbs, flags=None, verb_probs=None, condition_domain=None):
-    f = {
-        k: 0.05
-        for k in (
-            "collective",
-            "has_exception",
-            "has_condition",
-            "is_query",
-            "has_timing",
-            "is_destructive",
-        )
-    }
+    f = {k: 0.05 for k in ("collective", "has_exception", "has_condition", "is_query", "has_timing", "is_destructive")}
     f.update(flags or {})
-    return Shape(tuple(V.by_name(v) for v in verbs), (), (), {}, {}, f, None, condition_domain), (
-        verb_probs or {}
-    )
+    return Shape(tuple(V.by_name(v) for v in verbs), (), (), {}, {}, f, None, condition_domain), (verb_probs or {})
 
 
 def _trace_with_verbs(verb_probs):
@@ -2494,35 +2244,21 @@ def test_exceptions_drop_excluded_entities(home, config):
     shape, vp = _shape(["turn_off"], {"collective": 0.9, "has_exception": 0.85}, {"turn_off": 0.95})
     cands = _ents(home, "light.kitchen_ceiling", "switch.fridge")
     plan = plan_round2(home, shape, {"turn_off": cands}, config.thresholds)
-    r2 = Answers(
-        "m",
-        {
-            "exclude:turn_off:light.kitchen_ceiling": NoulA(0.05),
-            "exclude:turn_off:switch.fridge": NoulA(0.92),
-        },
-        None,
-    )
+    r2 = Answers("m", {
+        "exclude:turn_off:light.kitchen_ceiling": NoulA(0.05),
+        "exclude:turn_off:switch.fridge": NoulA(0.92),
+    }, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
     assert [e.entity_id for e in r.actions[0].targets] == ["light.kitchen_ceiling"]
-    assert (
-        abs(r.confidence - 0.85) < 1e-9
-    )  # min(0.95, 0.9, 0.85 exception flag, 0.95 kept, 0.92 excluded)
+    assert abs(r.confidence - 0.85) < 1e-9  # min(0.95, 0.9, 0.85 exception flag, 0.95 kept, 0.92 excluded)
 
 
 def test_singular_picks_choice_target(home, config):
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
     plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds)
-    r2 = Answers(
-        "m",
-        {
-            "target:turn_on": ChoiceA(
-                "Reading lamp", 0.88, {"Reading lamp": 0.88, "Living room main": 0.12}
-            )
-        },
-        None,
-    )
+    r2 = Answers("m", {"target:turn_on": ChoiceA("Reading lamp", 0.88, {"Reading lamp": 0.88, "Living room main": 0.12})}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
     assert [e.entity_id for e in r.actions[0].targets] == ["light.reading_lamp"]
@@ -2531,9 +2267,7 @@ def test_singular_picks_choice_target(home, config):
 
 def test_param_is_interpolated_into_action(home, config):
     shape, vp = _shape(["set_brightness"], {"collective": 0.9}, {"set_brightness": 0.9})
-    plan = plan_round2(
-        home, shape, {"set_brightness": _ents(home, "light.office_desk")}, config.thresholds
-    )
+    plan = plan_round2(home, shape, {"set_brightness": _ents(home, "light.office_desk")}, config.thresholds)
     r2 = Answers("m", {"param:set_brightness": ScoreA(3.5, 0.8, {})}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Resolved)
@@ -2567,15 +2301,7 @@ def test_low_confidence_escalates_with_partial(home, config):
     shape, vp = _shape(["turn_on"], {"collective": 0.1}, {"turn_on": 0.9})
     cands = _ents(home, "light.living_main", "light.reading_lamp")
     plan = plan_round2(home, shape, {"turn_on": cands}, config.thresholds)
-    r2 = Answers(
-        "m",
-        {
-            "target:turn_on": ChoiceA(
-                "Reading lamp", 0.4, {"Reading lamp": 0.4, "Living room main": 0.35}
-            )
-        },
-        None,
-    )
+    r2 = Answers("m", {"target:turn_on": ChoiceA("Reading lamp", 0.4, {"Reading lamp": 0.4, "Living room main": 0.35})}, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, Escalate) and r.reason == "low_confidence"
     assert r.partial[0].verb.name == "turn_on"
@@ -2590,18 +2316,12 @@ def test_destructive_flag_escalates_before_anything(home, config):
 
 def test_condition_is_attached_not_evaluated(home, config):
     # "if the blinds are closed, lock the front door"
-    shape, vp = _shape(
-        ["lock"], {"collective": 0.9, "has_condition": 0.8}, {"lock": 0.9}, condition_domain="cover"
-    )
+    shape, vp = _shape(["lock"], {"collective": 0.9, "has_condition": 0.8}, {"lock": 0.9}, condition_domain="cover")
     plan = plan_round2(home, shape, {"lock": _ents(home, "lock.front_door")}, config.thresholds)
-    r2 = Answers(
-        "m",
-        {
-            "cond_subject": ChoiceA("Blinds", 0.9, {"Blinds": 0.9}),
-            "cond_state": ChoiceA("closed", 0.85, {"closed": 0.85, "open": 0.15}),
-        },
-        None,
-    )
+    r2 = Answers("m", {
+        "cond_subject": ChoiceA("Blinds", 0.9, {"Blinds": 0.9}),
+        "cond_state": ChoiceA("closed", 0.85, {"closed": 0.85, "open": 0.15}),
+    }, None)
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     # lock is CONFIRM tier, so we get NeedsConfirmation, but the condition rides along
     assert isinstance(r, NeedsConfirmation) and r.reason == "risk:confirm"
@@ -2675,9 +2395,7 @@ def resolve(
 
         if verb.name in plan.collective:
             targets = plan.collective[verb.name]
-            if (
-                len(targets) > 1
-            ):  # a single deterministic candidate never relied on the collective flag
+            if len(targets) > 1:  # a single deterministic candidate never relied on the collective flag
                 contributions.append(shape.flag("collective"))
         elif verb.name in plan.exclude and round2 is not None:
             kept: list[Entity] = []
@@ -2723,9 +2441,7 @@ def resolve(
         subj = round2.choice("cond_subject")
         state = round2.choice("cond_state")
         contributions.extend((subj.confidence, state.confidence))
-        opt = next(
-            (o for o in target_options(plan.condition_candidates) if o.label == subj.choice), None
-        )
+        opt = next((o for o in target_options(plan.condition_candidates) if o.label == subj.choice), None)
         if opt:
             condition = Condition(opt.entities[0], state.choice)
 
@@ -2803,7 +2519,6 @@ def _scripted(round1: dict, round2: dict | None = None, device: dict | None = No
                 out[qid] = ChoiceA("none" if "none" in q.options else q.options[0], 0.9, {})
             elif isinstance(q, ScoreQ):
                 from hunch.questions import ScoreA
-
                 out[qid] = ScoreA(1.0, 0.9, {})
             else:
                 out[qid] = NoulA(0.05)
@@ -2813,56 +2528,32 @@ def _scripted(round1: dict, round2: dict | None = None, device: dict | None = No
 
 
 async def test_collective_downstairs_resolves_in_one_round(home, vocab, config):
-    client, calls = _scripted(
-        {
-            "verb:turn_off": NoulA(0.95),
-            "floor:downstairs": NoulA(0.9),
-            "domain:light": NoulA(0.9),
-            "flag:collective": NoulA(0.9),
-        }
-    )
+    client, calls = _scripted({
+        "verb:turn_off": NoulA(0.95), "floor:downstairs": NoulA(0.9),
+        "domain:light": NoulA(0.9), "flag:collective": NoulA(0.9),
+    })
     r = await Engine(client, vocab, config).decide(home, "turn off the downstairs lights")
     assert isinstance(r, Resolved)
     assert {e.entity_id for e in r.actions[0].targets} == {
-        "light.kitchen_ceiling",
-        "light.kitchen_counter",
-        "light.living_main",
-        "light.reading_lamp",
-        "light.hallway",
-    }
+        "light.kitchen_ceiling", "light.kitchen_counter", "light.living_main", "light.reading_lamp", "light.hallway"}
     assert calls["n"] == 1
 
 
 async def test_exception_uses_second_round(home, vocab, config):
     client, calls = _scripted(
-        {
-            "verb:turn_off": NoulA(0.95),
-            "area:kitchen": NoulA(0.9),
-            "flag:collective": NoulA(0.9),
-            "flag:has_exception": NoulA(0.85),
-        },
+        {"verb:turn_off": NoulA(0.95), "area:kitchen": NoulA(0.9), "flag:collective": NoulA(0.9), "flag:has_exception": NoulA(0.85)},
         {"exclude:turn_off:switch.fridge": NoulA(0.93)},
     )
-    r = await Engine(client, vocab, config).decide(
-        home, "turn off everything in the kitchen except the fridge"
-    )
+    r = await Engine(client, vocab, config).decide(home, "turn off everything in the kitchen except the fridge")
     assert isinstance(r, Resolved)
-    assert {e.entity_id for e in r.actions[0].targets} == {
-        "light.kitchen_ceiling",
-        "light.kitchen_counter",
-    }
+    assert {e.entity_id for e in r.actions[0].targets} == {"light.kitchen_ceiling", "light.kitchen_counter"}
     assert calls["n"] == 2
     assert "entities" not in client.calls[0][0] and "candidates" in client.calls[1][0]
 
 
 async def test_singular_uses_choice(home, vocab, config):
     client, _ = _scripted(
-        {
-            "verb:turn_on": NoulA(0.9),
-            "area:living": NoulA(0.85),
-            "domain:light": NoulA(0.8),
-            "flag:collective": NoulA(0.1),
-        },
+        {"verb:turn_on": NoulA(0.9), "area:living": NoulA(0.85), "domain:light": NoulA(0.8), "flag:collective": NoulA(0.1)},
         {"target:turn_on": ChoiceA("Reading lamp", 0.9, {})},
     )
     r = await Engine(client, vocab, config).decide(home, "turn on the lamp in the lounge")
@@ -2883,14 +2574,10 @@ async def test_no_intent_escalates(home, vocab, config):
 
 
 async def test_scene_short_circuits(home, vocab, config):
-    client, calls = _scripted(
-        {
-            "verb:activate": NoulA(0.9),
-            "scene": ChoiceA(
-                "Movie night", 0.9, {"Movie night": 0.9, "Goodnight": 0.05, "none": 0.05}
-            ),
-        }
-    )
+    client, calls = _scripted({
+        "verb:activate": NoulA(0.9),
+        "scene": ChoiceA("Movie night", 0.9, {"Movie night": 0.9, "Goodnight": 0.05, "none": 0.05}),
+    })
     r = await Engine(client, vocab, config).decide(home, "movie night please")
     assert isinstance(r, Resolved) and r.actions[0].targets[0].entity_id == "scene.movie_night"
     assert calls["n"] == 1
@@ -2898,9 +2585,7 @@ async def test_scene_short_circuits(home, vocab, config):
 
 async def test_clarify_when_scope_too_wide(home, vocab):
     cfg = EngineConfig(model="jev-1.13.0", scope_cap=2, device_round=False)
-    client, _ = _scripted(
-        {"verb:turn_on": NoulA(0.9), "flag:collective": NoulA(0.1), "domain:light": NoulA(0.3)}
-    )
+    client, _ = _scripted({"verb:turn_on": NoulA(0.9), "flag:collective": NoulA(0.1), "domain:light": NoulA(0.3)})
     r = await Engine(client, vocab, cfg).decide(home, "turn on the light")
     assert isinstance(r, NeedsClarification) and r.question_key == "which_area"
 
@@ -2921,7 +2606,6 @@ async def test_backend_error_escalates(home, vocab, config):
     class Boom:
         async def ask(self, state, questions):
             raise DecisionBackendError("decision_backend_unavailable")
-
     r = await Engine(Boom(), vocab, config).decide(home, "turn off the lights")
     assert isinstance(r, Escalate) and r.reason == "decision_backend_unavailable"
 
@@ -2933,9 +2617,7 @@ async def test_prompt_prechecks(home, vocab, config):
 
 
 async def test_trace_travels_with_result(home, vocab, config):
-    client, _ = _scripted(
-        {"verb:turn_off": NoulA(0.95), "area:hallway": NoulA(0.9), "flag:collective": NoulA(0.9)}
-    )
+    client, _ = _scripted({"verb:turn_off": NoulA(0.95), "area:hallway": NoulA(0.9), "flag:collective": NoulA(0.9)})
     r = await Engine(client, vocab, config).decide(home, "hallway off")
     assert r.trace.models == ["fake"]
     assert any(e.question_id == "verb:turn_off" for e in r.trace.entries)
@@ -2966,9 +2648,7 @@ from hunch.vocabulary import Vocabulary
 
 
 class Engine:
-    def __init__(
-        self, client: DecisionClient, vocabulary: Vocabulary, config: EngineConfig
-    ) -> None:
+    def __init__(self, client: DecisionClient, vocabulary: Vocabulary, config: EngineConfig) -> None:
         self._client = client
         self._vocab = vocabulary
         self._config = config
@@ -2988,9 +2668,7 @@ class Engine:
         th = self._config.thresholds
         rounds = 0
 
-        answers = await self._client.ask(
-            build_round1_state(home, prompt), build_round1_questions(home, self._vocab)
-        )
+        answers = await self._client.ask(build_round1_state(home, prompt), build_round1_questions(home, self._vocab))
         rounds += 1
         shape = interpret_round1(home, self._vocab, answers, th, trace)
 
@@ -3013,11 +2691,8 @@ class Engine:
                 return Escalate(result.reason, (), trace)
             elif isinstance(result, DeviceRound):
                 if rounds >= self._config.max_rounds:
-                    return (
-                        NeedsClarification("which_device", result.entities, trace)
-                        if self._config.supports_clarification
-                        else Escalate("scope", (), trace)
-                    )
+                    return NeedsClarification("which_device", result.entities, trace) \
+                        if self._config.supports_clarification else Escalate("scope", (), trace)
                 per_verb[verb.name] = await self._device_round(prompt, result.entities, trace)
                 rounds += 1
                 if not per_verb[verb.name]:
@@ -3034,9 +2709,7 @@ class Engine:
             rounds += 1
         return resolve(shape, plan, round2, self._config, trace)
 
-    async def _device_round(
-        self, prompt: str, entities: tuple[Entity, ...], trace: Trace
-    ) -> tuple[Entity, ...]:
+    async def _device_round(self, prompt: str, entities: tuple[Entity, ...], trace: Trace) -> tuple[Entity, ...]:
         opts = target_options(entities)
         q = ChoiceQ("Which device does the request refer to?", tuple(o.label for o in opts))
         answers = await self._client.ask(
@@ -3044,9 +2717,7 @@ class Engine:
         )
         trace.record(2, answers)
         c = answers.choice("device_round")
-        if not trace.decide(
-            "device_round", c.confidence, self._config.thresholds.target_choice_conf
-        ):
+        if not trace.decide("device_round", c.confidence, self._config.thresholds.target_choice_conf):
             return ()
         opt = next((o for o in opts if o.label == c.choice), None)
         return opt.entities if opt else ()
@@ -3056,12 +2727,7 @@ Update `packages/hunch/src/hunch/__init__.py`:
 ```python
 """Hunch: code calculates, Jev judges."""
 
-from hunch.client import (
-    DecisionBackendError,
-    DecisionClient,
-    FakeDecisionClient,
-    TypeSafeDecisionClient,
-)
+from hunch.client import DecisionBackendError, DecisionClient, FakeDecisionClient, TypeSafeDecisionClient
 from hunch.config import EngineConfig, Thresholds
 from hunch.engine import Engine
 from hunch.model import Area, Entity, Floor, HomeModel
@@ -3080,31 +2746,10 @@ from hunch.vocabulary import DEFAULT_VOCABULARY, ChoiceSpec, Risk, ScoreSpec, Ve
 __version__ = "0.1.0"
 
 __all__ = [
-    "Action",
-    "Area",
-    "ChoiceSpec",
-    "Condition",
-    "DEFAULT_VOCABULARY",
-    "DecisionBackendError",
-    "DecisionClient",
-    "Engine",
-    "EngineConfig",
-    "Entity",
-    "Escalate",
-    "FakeDecisionClient",
-    "Floor",
-    "HomeModel",
-    "NeedsClarification",
-    "NeedsConfirmation",
-    "Resolution",
-    "Resolved",
-    "Risk",
-    "ScoreSpec",
-    "Thresholds",
-    "Trace",
-    "TypeSafeDecisionClient",
-    "Verb",
-    "Vocabulary",
+    "Action", "Area", "ChoiceSpec", "Condition", "DEFAULT_VOCABULARY", "DecisionBackendError",
+    "DecisionClient", "Engine", "EngineConfig", "Entity", "Escalate", "FakeDecisionClient", "Floor",
+    "HomeModel", "NeedsClarification", "NeedsConfirmation", "Resolution", "Resolved", "Risk",
+    "ScoreSpec", "Thresholds", "Trace", "TypeSafeDecisionClient", "Verb", "Vocabulary",
 ]
 ```
 
@@ -3226,21 +2871,14 @@ PRICE_PER_M_TOKENS = 0.042
 
 
 def load_home():
-    spec = importlib.util.spec_from_file_location(
-        "conftest", ROOT / "packages/hunch/tests/conftest.py"
-    )
+    spec = importlib.util.spec_from_file_location("conftest", ROOT / "packages/hunch/tests/conftest.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.home.__wrapped__()  # unwrap the pytest fixture
 
 
 def kind_of(r) -> str:
-    return {
-        Resolved: "resolved",
-        NeedsConfirmation: "confirm",
-        NeedsClarification: "clarify",
-        Escalate: "escalate",
-    }[type(r)]
+    return {Resolved: "resolved", NeedsConfirmation: "confirm", NeedsClarification: "clarify", Escalate: "escalate"}[type(r)]
 
 
 def check(row, r) -> list[str]:
@@ -3265,11 +2903,7 @@ def check(row, r) -> list[str]:
             problems.append(f"param {key}={vals} not in [{lo}, {hi}]")
     if "condition" in exp:
         c = getattr(r, "condition", None)
-        if (
-            c is None
-            or c.subject.entity_id != exp["condition"]["subject"]
-            or c.expected_state != exp["condition"]["state"]
-        ):
+        if c is None or c.subject.entity_id != exp["condition"]["subject"] or c.expected_state != exp["condition"]["state"]:
             problems.append(f"condition {c} != {exp['condition']}")
     return problems
 
@@ -3298,9 +2932,7 @@ async def main() -> int:
         r = await engine.decide(home, row["prompt"])
         ms = (time.perf_counter() - t0) * 1000
         latencies.append(ms)
-        toks = sum(
-            e.answer.probability * 0 for e in r.trace.entries
-        )  # placeholder-free: tokens come from trace notes below
+        toks = sum(e.answer.probability * 0 for e in r.trace.entries)  # placeholder-free: tokens come from trace notes below
         problems = check(row, r)
         ok += not problems
         mark = "PASS" if not problems else "FAIL"
@@ -3312,11 +2944,7 @@ async def main() -> int:
 
     agreement = ok / max(len(rows), 1)
     p50 = statistics.median(latencies)
-    p95 = (
-        sorted(latencies)[int(len(latencies) * 0.95) - 1]
-        if len(latencies) >= 20
-        else max(latencies)
-    )
+    p95 = sorted(latencies)[int(len(latencies) * 0.95) - 1] if len(latencies) >= 20 else max(latencies)
     print(f"\n{ok}/{len(rows)} agree ({agreement:.0%})  p50={p50:.0f} ms  p95={p95:.0f} ms")
     return 0 if agreement >= 0.8 else 1
 
