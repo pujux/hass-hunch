@@ -39,6 +39,8 @@ def _script(overrides):
         for qid, q in qs.items():
             if qid in overrides:
                 out[qid] = overrides[qid]
+            elif qid in ("verb_primary", "area_primary"):
+                out[qid] = ChoiceA("several", 0.9, {})
             elif isinstance(q, ChoiceQ):
                 out[qid] = ChoiceA("none" if "none" in q.options else q.options[0], 0.9, {})
             elif isinstance(q, ScoreQ):
@@ -59,22 +61,23 @@ async def test_soft_jev_areas_are_dropped_without_verbatim_support(home, vocab, 
         "area:bedroom": NoulA(0.75),
         "area:office": NoulA(0.72),
         "flag:collective": NoulA(0.35),
+        "area_primary": ChoiceA("none", 0.7, {}),
         "target:turn_off": ChoiceA(NO_MATCH, 0.45, {}),
         "all_of:turn_off": NoulA(0.85),
     }
     r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(home, "lights off")
     assert isinstance(r, Resolved) and len(r.actions[0].targets) == 9
     assert "all_of:turn_off" in r.trace.notes
-    assert any(n.startswith("soft_scope_dropped:") for n in r.trace.notes)
+    assert any(n.startswith("areas_dropped:no_place") for n in r.trace.notes)
 
 
-async def test_jev_areas_count_when_jev_says_a_place_was_named(home, vocab, config):
+async def test_jev_areas_count_when_the_comparison_keeps_them(home, vocab, config):
     ov = {
         "verb:turn_on": NoulA(0.95),
         "domain:light": NoulA(0.97),
         "area:bedroom": NoulA(0.96),
         "flag:collective": NoulA(0.9),
-        "flag:names_place": NoulA(0.9),
+        "area_primary": ChoiceA("several", 0.9, {}),
     }
     r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
         home, "lights on in the sleeping room"
@@ -103,16 +106,15 @@ async def test_a_named_area_beats_a_fired_floor(home, vocab, config):
         "area:bedroom": NoulA(0.99),
         "floor:upstairs": NoulA(0.72),
         "flag:collective": NoulA(0.9),
-        "flag:names_place": NoulA(0.9),
+        "area_primary": ChoiceA("several", 0.9, {}),
     }
     home2 = home
     r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
         home2, "close the blinds in the bedroom"
     )
-    # the fixture has no bedroom covers, so the verb is dropped -> but the scope must be the bedroom only
-    assert "soft_scope_dropped:office" in r.trace.notes or all(
-        "office" not in n for n in r.trace.notes
-    )
+    # the fixture has no bedroom covers, so the verb is dropped -> but the scope must be the
+    # bedroom only
+    assert "areas_dropped:named:office" in r.trace.notes
 
 
 async def test_whole_home_flag_lifts_the_area_scope(home, vocab, config):
@@ -121,8 +123,7 @@ async def test_whole_home_flag_lifts_the_area_scope(home, vocab, config):
         "verb:turn_off": NoulA(0.9),
         "domain:light": NoulA(0.95),
         "flag:collective": NoulA(0.92),
-        "flag:whole_home": NoulA(0.93),
-        "flag:names_place": NoulA(0.8),
+        "area_primary": ChoiceA("whole home", 0.9, {}),
         "area:kitchen": NoulA(0.85),
         "area:living": NoulA(0.88),
         "area:hallway": NoulA(0.8),
@@ -143,6 +144,7 @@ async def test_widened_verb_is_dropped_when_jev_says_it_was_not_meant(home, voca
         "area:bedroom": NoulA(0.99),
         "domain:light": NoulA(0.9),
         "flag:collective": NoulA(0.9),
+        "verb_primary": ChoiceA("several", 0.4, {}),  # hesitant: the Noul set stands, gate is asked
         "outside_scope:open": NoulA(0.1),
     }
     r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
@@ -169,3 +171,26 @@ async def test_out_of_room_verb_is_kept_when_jev_says_it_was_meant(home, vocab, 
     )
     assert isinstance(r, Resolved)
     assert sorted(a.verb.name for a in r.actions) == ["close", "turn_off"]
+
+
+async def test_second_action_is_not_second_guessed_when_jev_said_several(home, vocab, config):
+    # "turn off the kitchen lights and close the blinds": the comparison says several actions,
+    # so the blinds (outside the kitchen) are not re-asked with the out-of-room Noul.
+    ov = {
+        "verb:turn_off": NoulA(0.95),
+        "verb:close": NoulA(0.9),
+        "area:kitchen": NoulA(0.99),
+        "domain:light": NoulA(0.9),
+        "domain:cover": NoulA(0.9),
+        "flag:collective": NoulA(0.9),
+        "verb_primary": ChoiceA("several", 1.0, {}),
+        "area_primary": ChoiceA("Kitchen", 0.8, {}),
+        "outside_scope:close": NoulA(0.2),
+    }  # would have dropped it — must not be asked
+    client = FakeDecisionClient(_script(ov))
+    r = await Engine(client, vocab, config).decide(
+        home, "turn off the kitchen lights and close the blinds"
+    )
+    assert isinstance(r, Resolved)
+    assert sorted(a.verb.name for a in r.actions) == ["close", "turn_off"]
+    assert not any("outside_scope" in qid for _, qs in client.calls for qid in qs)

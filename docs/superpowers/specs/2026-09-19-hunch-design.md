@@ -412,6 +412,19 @@ loud or by a shared stem is the scope; otherwise Jev's rooms count when `names_p
 room is ≥ `scope_hard`; `whole_home` lifts the area restriction. Choice options may carry
 descriptions (sent as criteria); multi-entity devices are offered as the device and per entity.
 
+**Comparators (2026-09-21).** Round 1 adds two Choices next to the Nouls: `verb_primary`
+(all verbs + *several* + *none*) and `area_primary` (areas and floors + *several* + *whole
+home* + *none*). Nouls decide which options apply (sets); the Choices make Jev compare them.
+A single verb winner drops co-firing verbs; a verb under the Noul bar is promoted when the
+comparison agrees (its contribution is the max of both, so it ends in a confirmation);
+*none* means no device action; *several* leaves the Noul set and skips the out-of-room
+re-check. For places, *none* clears Jev's room guesses, *whole home* lifts the area scope, a
+pick ≥ `place_override` (0.85) narrows to that room or floor, *several* or a hesitant pick
+leaves the Noul set. The Round 1 state is the home as a hierarchy (floors → areas with
+aliases, then areas on no floor) plus `mentioned_devices` — the exposed devices whose name,
+alias or device name appears in the prompt, with type and room. Exclusive verb groups, the
+lone-leader rule and the `names_place`/`whole_home` flags are gone.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

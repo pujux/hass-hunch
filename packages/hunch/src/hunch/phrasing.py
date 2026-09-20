@@ -23,6 +23,11 @@ class Phrasebook:
     flags: Mapping[str, str]
     scene_question: str
     condition_domain_question: str
+    verb_primary_question: str
+    area_primary_question: str
+    special_descriptions: Mapping[
+        str, str
+    ]  # several_verbs, no_verb, several_places, whole_home, no_place
     exclusion_question: str  # {name} {area}
     target_question: str  # {phrasing}
     param_question: str  # {param}
@@ -84,15 +89,6 @@ EN = Phrasebook(
             "device ('light', 'blinds', 'Rollos') together with a room, floor or a word like "
             "'all'? A plural-looking proper name still counts as one device."
         ),
-        "names_place": (
-            "Does the request name a room, area or floor (by name, alias or a word like "
-            "'downstairs', 'unten', 'im Bad'), or the whole home? Answer no for a bare command "
-            "like 'lights off' that names no place at all."
-        ),
-        "whole_home": (
-            "Does the request apply to the WHOLE home — 'alles', 'everything', 'all the lights in "
-            "the house', 'überall' — rather than to one room, one floor or particular devices?"
-        ),
         "has_exception": (
             "Does the request exclude something, e.g. 'except', 'but not', 'apart from', "
             "'other than'?"
@@ -119,6 +115,24 @@ EN = Phrasebook(
     condition_domain_question=(
         "If the request contains a condition, which device type is the condition about?"
     ),
+    verb_primary_question=(
+        "Which ONE action does the request primarily ask for? Compare the options: a word like "
+        "'auf' or 'zu' can look like several verbs but the request means one. Choose 'several' "
+        "only if it clearly asks for more than one different action; 'none' if it asks for no "
+        "device action at all (a question about the world, a joke, a calculation, the time)."
+    ),
+    area_primary_question=(
+        "Which ONE room, area or floor does the request refer to? Choose 'several' if it names "
+        "more than one, 'whole home' for 'alles', 'everything', 'überall', 'im ganzen Haus', and "
+        "'none' if no place is named or implied (a bare 'Licht aus' names none)."
+    ),
+    special_descriptions={
+        "several_verbs": "more than one distinct action is requested",
+        "no_verb": "no device action is requested at all",
+        "several_places": "two or more rooms or floors are named",
+        "whole_home": "the whole house is meant",
+        "no_place": "no room, area or floor is named or implied",
+    },
     exclusion_question=(
         "The request in `request` names an exception — something that must NOT be affected. "
         "Is the candidate named '{name}' in area '{area}' that exception?"
@@ -223,15 +237,6 @@ DE = Phrasebook(
             "nur eine Geräteart ('Licht', 'Rollos') zusammen mit einem Raum, Stockwerk oder einem "
             "Wort wie 'alle'? Ein Eigenname in Pluralform zählt trotzdem als ein Gerät."
         ),
-        "names_place": (
-            "Nennt die Anfrage einen Raum, Bereich oder ein Stockwerk (mit Namen, Alias oder einem "
-            "Wort wie 'unten', 'oben', 'im Bad') oder das ganze Haus? Antworte nein bei einem "
-            "bloßen Befehl wie 'Licht aus', der gar keinen Ort nennt."
-        ),
-        "whole_home": (
-            "Bezieht sich die Anfrage auf das GANZE Haus — 'alles', 'überall', 'alle Lichter im "
-            "Haus' — statt auf einen Raum, ein Stockwerk oder bestimmte Geräte?"
-        ),
         "has_exception": (
             "Schließt die Anfrage etwas aus, z. B. mit 'außer', 'aber nicht', 'abgesehen von', "
             "'bis auf'?"
@@ -258,6 +263,25 @@ DE = Phrasebook(
     condition_domain_question=(
         "Falls die Anfrage eine Bedingung enthält: Um welche Geräteart geht es in der Bedingung?"
     ),
+    verb_primary_question=(
+        "Welche EINE Aktion verlangt die Anfrage in erster Linie? Vergleiche die Optionen: ein "
+        "Wort wie 'auf' oder 'zu' kann nach mehreren Verben aussehen, gemeint ist eines. Wähle "
+        "'several' nur, wenn eindeutig mehrere verschiedene Aktionen verlangt sind; 'none', wenn "
+        "gar keine Geräteaktion verlangt ist (eine Frage über die Welt, ein Witz, eine Rechnung, "
+        "die Uhrzeit)."
+    ),
+    area_primary_question=(
+        "Auf welchen EINEN Raum, Bereich oder welches Stockwerk bezieht sich die Anfrage? Wähle "
+        "'several' bei mehreren, 'whole home' bei 'alles', 'überall', 'im ganzen Haus', und "
+        "'none', wenn kein Ort genannt oder gemeint ist (ein bloßes 'Licht aus' nennt keinen)."
+    ),
+    special_descriptions={
+        "several_verbs": "mehr als eine verschiedene Aktion ist verlangt",
+        "no_verb": "es ist gar keine Geräteaktion verlangt",
+        "several_places": "zwei oder mehr Räume oder Stockwerke sind genannt",
+        "whole_home": "das ganze Haus ist gemeint",
+        "no_place": "kein Raum, Bereich oder Stockwerk ist genannt oder gemeint",
+    },
     exclusion_question=(
         "Die Anfrage in `request` nennt eine Ausnahme — etwas, das NICHT betroffen sein darf. "
         "Ist der Kandidat namens '{name}' im Raum '{area}' diese Ausnahme?"
@@ -299,7 +323,8 @@ DE = Phrasebook(
     ),
     param_value_descriptions={
         "none of these": (
-            "die Zahlen meinen etwas anderes: eine Uhrzeit, eine Anzahl, das Wetter, ein anderes Gerät"
+            "die Zahlen meinen etwas anderes: eine Uhrzeit, eine Anzahl, das Wetter, ein "
+            "anderes Gerät"
         )
     },
     cond_subject_question="Um welches Gerät geht es in der Bedingung der Anfrage?",

@@ -62,16 +62,6 @@ def verbs_for_domain(domain: str, vocabulary: Vocabulary) -> frozenset[str]:
     return frozenset(v.name for v in vocabulary.verbs if domain in v.domains or v.is_query)
 
 
-# Verbs that contradict each other on one request. When several fire in Round 1, only the
-# strongest survives — "Rollo auf" is open, not open AND turn_on.
-EXCLUSIVE_GROUPS: tuple[frozenset[str], ...] = (
-    frozenset({"open", "close", "set_position"}),
-    frozenset({"turn_on", "turn_off"}),
-    frozenset({"lock", "unlock"}),
-    frozenset({"arm", "disarm"}),
-    frozenset({"media_play", "media_pause"}),
-)
-
 _ON_OFF = frozenset({"light", "switch", "fan", "media_player", "climate"})
 _BRIGHTNESS = ScoreSpec(
     "brightness_pct",

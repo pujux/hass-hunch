@@ -64,6 +64,25 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-21 — comparators: Nouls say which apply, Choices make Jev compare
+
+Experiment first (`scratch exp_choices.py`, 60 prompts): a verb Choice (verbs + several + none)
+scored 38/38 vs the Nouls' 37/38 and resolved every co-fire ("auf" → open not turn_on, "zu" →
+close not turn_off, "Wie spät ist es?" → none); an area Choice (areas + floors + several + whole
+home + none) was worse than the Nouls as a scope source (27/33 vs 31/33 — it had no floors as
+options and hedges on stems) but is the only thing that can say "none" or "whole home" outright;
+a domain Choice added nothing. Adopted: `verb_primary` and `area_primary` in Round 1 alongside
+the Nouls. Deleted in exchange: exclusive verb groups, the lone-leader rule, the `names_place`
+and `whole_home` flags, the 0.9 hard bar. Also: the Round 1 state now shows the home as a
+hierarchy (floors → areas, with aliases) instead of two flat lists, and lists the exposed devices
+the prompt names by name (type + room) — that alone took "Kücheninsel auf 35%" from a hand-off
+(set_position 0.67 vs set_brightness 0.51, Jev could not know what a Kücheninsel is) to
+Resolved at 0.95. Rules that use the comparison: a single winner drops co-firing verbs; a verb
+the Nouls left under the bar is promoted when the comparison agrees (contribution stays low →
+confirmation); "several" skips the out-of-room re-check; a sure area pick (≥ 0.85) narrows the
+scope, a hesitant one leaves the Noul set. Result: **fixture 24/24, real home 35/36** ("Wie
+warm ist es im Vorzimmer?" open — see the trace notes in git history).
+
 ### 2026-09-20 (night) — Jev thinks, code fetches and computes
 
 Julian's principle, after reviewing the day's heuristics: Jev is the judgment engine; code only

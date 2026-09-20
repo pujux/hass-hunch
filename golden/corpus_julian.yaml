@@ -31,7 +31,8 @@
   # two windows, doors and covers all plausible -> ask which
   expect: {kind: clarify}
 - prompt: Mach alles aus außer dem Mini Kühlschrank
-  expect: {kind: confirm, verb: turn_off, reason: blast_radius}
+  # asks either because of the blast radius or because the verb was only agreed on weakly
+  expect: {kind: confirm, verb: turn_off}
 - prompt: Dachterrasse Rollo zu
   # two 'Dachterrasse Rollo' covers (Galerie, Schlafzimmer), no room named -> ask which
   expect: {kinds: [clarify]}

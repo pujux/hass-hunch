@@ -12,7 +12,7 @@ from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
 from hunch.round1 import Shape
 from hunch.scope import device_label
-from hunch.vocabulary import ScoreSpec
+from hunch.vocabulary import ChoiceSpec, ScoreSpec
 
 # Sentinel option appended to every Round 2 Choice so the model can say nothing fits,
 # rather than being forced to pick among options that all miss.
@@ -241,6 +241,7 @@ def plan_round2(
             v.name
             for v in shape.fired_verbs
             if v.name in widened
+            and not shape.several_verbs  # Jev already said: several distinct actions
             and (
                 not shape.scope_areas
                 or any(e.area_id not in shape.scope_areas for e in per_verb.get(v.name, ()))
@@ -307,7 +308,7 @@ def build_round2_questions(
             qs[f"param_value:{verb_name}"] = ChoiceQ(
                 pb.param_value_question.format(param=label),
                 plan.numeric[verb_name] + (NO_MATCH,),
-                {NO_MATCH: pb.param_value_descriptions.get(NO_MATCH, "")} or None,
+                {NO_MATCH: pb.param_value_descriptions.get(NO_MATCH, "")},
             )
             qs[f"param_relative:{verb_name}"] = NoulQ(pb.param_relative_question)
             if spec.name == "position":

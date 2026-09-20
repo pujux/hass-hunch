@@ -101,41 +101,23 @@ class Engine:
         if not shape.fired_verbs:
             return Escalate("no_intent", (), trace)
 
-        # Scope: Jev judges whether a place was named and whether the whole home is meant; code
-        # contributes only lookups — areas/floors whose names or aliases appear in the prompt.
+        # Scope. Jev already compared the places in Round 1 (one room, a floor, several, the
+        # whole home, or none). Code adds one lookup: a room or floor whose name or alias is in
+        # the prompt is the scope, whatever else half-fired.
         named_areas = verbatim_areas(home, prompt)
-        fired_floor_areas = tuple(
-            a
-            for f in home.floors
-            if shape.floor_probs.get(f.floor_id, 0.0) >= th.scope_fire
-            for a in f.area_ids
-        )
-        names_place = trace.decide("flag:names_place", shape.flag("names_place"), th.flag)
-        whole_home = trace.decide("flag:whole_home", shape.flag("whole_home"), th.flag)
-        if whole_home and not named_areas:
+        if shape.whole_home and not named_areas:
             kept: tuple[str, ...] = ()
             trace.note("whole_home")
         elif named_areas:
-            # A room said out loud (or matched by a shared stem) IS the scope. Jev's floor or
-            # room guesses on top of it are noise: "Rollos im Schlafzimmer" is not the floor.
-            kept = tuple(a for a in shape.scope_areas if a in named_areas)
+            kept = named_areas
+            dropped = tuple(a for a in shape.scope_areas if a not in named_areas)
+            if dropped:
+                trace.note("areas_dropped:named:" + ",".join(dropped))
+            trace.note("area_match:" + ",".join(named_areas))
         else:
-            # No room word in the prompt: Jev's rooms count if Jev says a place was named
-            # (aliases, 'unten', 'im Bad'), or if Jev is very sure of a room on its own
-            # ("bedside lamps" -> bedroom 0.97). Otherwise they are noise ("Licht aus").
-            kept = tuple(
-                a
-                for a in shape.scope_areas
-                if names_place or shape.area_probs.get(a, 0.0) >= th.scope_hard
-            )
-        dropped = tuple(a for a in shape.scope_areas if a not in kept)
-        added = tuple(a for a in named_areas if a not in kept)
-        if dropped and not whole_home:
-            trace.note("soft_scope_dropped:" + ",".join(dropped))
-        if added:
-            trace.note("area_match:" + ",".join(added))
-        if kept + added != shape.scope_areas:
-            shape = dataclasses.replace(shape, scope_areas=kept + added)
+            kept = shape.scope_areas
+        if kept != shape.scope_areas:
+            shape = dataclasses.replace(shape, scope_areas=kept)
 
         per_verb: dict[str, tuple[Entity, ...]] = {}
         widened: set[str] = set()

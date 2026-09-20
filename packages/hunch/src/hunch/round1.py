@@ -10,13 +10,11 @@ from hunch.model import Area, Entity, HomeModel
 from hunch.phrasing import EN, PHRASEBOOKS, Phrasebook
 from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
 from hunch.resolution import Trace
-from hunch.vocabulary import EXCLUSIVE_GROUPS, Verb, Vocabulary
+from hunch.vocabulary import Verb, Vocabulary
 
 FLAGS = (
     "collective",
     "names_specific",
-    "names_place",
-    "whole_home",
     "has_exception",
     "has_condition",
     "has_timing",
@@ -44,14 +42,39 @@ def build_round1_state(home: HomeModel, prompt: str) -> JSON:
         }
         for e in verbatim_matches(home.entities + home.scenes, prompt)[:10]
     ]
+    # The home as a hierarchy — floors with their areas, then areas on no floor — so Jev can see
+    # that "unten" is a floor holding these rooms rather than two flat lists to reconcile.
+    on_floor = {a for f in home.floors for a in f.area_ids}
+    hierarchy: list[JSON] = [
+        {
+            "floor": f.name,
+            "aliases": list(f.aliases),
+            "areas": [_label(a) for a in home.areas if a.area_id in f.area_ids],
+        }
+        for f in home.floors
+    ]
+    loose = [_label(a) for a in home.areas if a.area_id not in on_floor]
+    if loose:
+        hierarchy.append({"floor": None, "areas": loose})
     return {
         "request": prompt,
-        "floors": [f.name for f in home.floors],
-        "areas": [_label(a) for a in home.areas],
+        "home": hierarchy,
         "domains": list(home.domains),
         "scenes": [s.name for s in home.scenes],
         "mentioned_devices": mentioned,
     }
+
+
+def _place_options(home: HomeModel) -> list[str]:
+    """Area labels and floor names as Choice options (floors first so 'unten' has a home)."""
+    return [f.name for f in home.floors] + [_label(a) for a in home.areas]
+
+
+def _place_lookup(home: HomeModel) -> dict[str, tuple[str, ...]]:
+    """Option label -> the area ids it stands for."""
+    out: dict[str, tuple[str, ...]] = {f.name: tuple(f.area_ids) for f in home.floors}
+    out.update({_label(a): (a.area_id,) for a in home.areas})
+    return out
 
 
 def build_round1_questions(
@@ -81,6 +104,26 @@ def build_round1_questions(
             pb.scene_question,
             tuple(s.name for s in home.scenes) + ("none",),
         )
+    # Two comparators.
+    # COMPARE them — "auf" is open OR turn_on, not both — and say "none" or "whole home" outright.
+    qs["verb_primary"] = ChoiceQ(
+        pb.verb_primary_question,
+        tuple(v.name for v in vocab.verbs) + ("several", "none"),
+        {
+            **{v.name: pb.phrasing_for(v.name, v.phrasing) for v in vocab.verbs},
+            "several": pb.special_descriptions["several_verbs"],
+            "none": pb.special_descriptions["no_verb"],
+        },
+    )
+    qs["area_primary"] = ChoiceQ(
+        pb.area_primary_question,
+        tuple(_place_options(home)) + ("several", "whole home", "none"),
+        {
+            "several": pb.special_descriptions["several_places"],
+            "whole home": pb.special_descriptions["whole_home"],
+            "none": pb.special_descriptions["no_place"],
+        },
+    )
     if home.domains:
         qs["condition_domain"] = ChoiceQ(
             pb.condition_domain_question,
@@ -100,6 +143,9 @@ class Shape:
     scene: Entity | None
     condition_domain: str | None
     floor_probs: Mapping[str, float] = field(default_factory=dict)
+    whole_home: bool = False
+    primary_verb: str | None = None  # the verb Choice's pick, when it named one
+    several_verbs: bool = False  # the verb Choice said the request asks for several actions
 
     def flag(self, name: str) -> float:
         return self.flags.get(name, 0.0)
@@ -115,26 +161,44 @@ def interpret_round1(
         for v in vocab.verbs
         if trace.decide(f"verb:{v.name}", answers.noul(f"verb:{v.name}"), thresholds.verb_fire)
     ]
-    if not fired:
-        # "Mach alles aus": nothing reaches verb_fire, but one verb clearly leads and nothing
-        # else is even close. A lone leader is a decision; a crowded field is not.
-        probs = {v.name: answers.noul(f"verb:{v.name}") for v in vocab.verbs}
-        ranked = sorted(probs.items(), key=lambda kv: -kv[1])
-        leader, runner_up = ranked[0], ranked[1] if len(ranked) > 1 else (None, 0.0)
-        if (
-            leader[1] >= thresholds.verb_lone_leader
-            and leader[1] - runner_up[1] >= thresholds.verb_lone_margin
-        ):
-            trace.note(f"lone_leader:{leader[0]}")
-            fired = [vocab.by_name(leader[0])]
-    for group in EXCLUSIVE_GROUPS:
-        rivals = [v for v in fired if v.name in group]
-        if len(rivals) > 1:
-            winner = max(rivals, key=lambda v: answers.noul(f"verb:{v.name}"))
-            for v in rivals:
-                if v is not winner:
-                    trace.note(f"verb_conflict:{v.name}<{winner.name}")
+    primary_verb: str | None = None
+    several_verbs = False
+    if "verb_primary" in answers.answers:
+        # Jev compares. A single winner drops co-firing echoes ("auf" -> open, not turn_on)
+        # and can promote a verb the Nouls left just under the bar; "none" means no device
+        # action at all ("Wie spät ist es?"); "several" leaves the Noul set alone.
+        vp = answers.choice("verb_primary")
+        if vp.choice == "none":
+            if trace.decide("verb_primary:none", vp.confidence, thresholds.flag):
+                for v in fired:
+                    trace.note(f"verb_dropped:{v.name}:no_action")
+                fired = []
+        elif vp.choice == "several":
+            several_verbs = trace.decide("verb_primary:several", vp.confidence, thresholds.flag)
+        elif vp.choice in vocab.names:
+            primary = vocab.by_name(vp.choice)
+            primary_verb = primary.name
+            for v in list(fired):
+                if v is not primary:
+                    trace.note(f"verb_conflict:{v.name}<{primary.name}")
                     fired.remove(v)
+            if primary not in fired and trace.decide(
+                f"verb_primary:{primary.name}",
+                max(vp.confidence, answers.noul(f"verb:{primary.name}")),
+                thresholds.confirm_band,
+            ):
+                # The Noul and the comparison agree on this verb; neither is certain on its
+                # own ("Mach alles aus": 0.65 / 0.35). Fire it — its contribution stays low, so
+                # the request ends in a confirmation rather than silence.
+                trace.note(f"verb_promoted:{primary.name}")
+                fired = [primary]
+            if primary in fired:
+                # the verb's contribution is the stronger of its own Noul and the comparison
+                trace.decide(
+                    f"verb:{primary.name}",
+                    max(answers.noul(f"verb:{primary.name}"), vp.confidence),
+                    thresholds.verb_fire,
+                )
     fired_verbs = tuple(fired)
 
     area_probs: dict[str, float] = {
@@ -154,6 +218,32 @@ def interpret_round1(
         area_fires = trace.decide(f"area:{a.area_id}", area_probs[a.area_id], thresholds.scope_fire)
         if area_fires and a.area_id not in scope_areas:
             scope_areas.append(a.area_id)
+
+    whole_home = False
+    if "area_primary" in answers.answers:
+        ap = answers.choice("area_primary")
+        lookup = _place_lookup(home)
+        if ap.choice == "none":
+            if trace.decide("area_primary:none", ap.confidence, thresholds.flag) and scope_areas:
+                trace.note("areas_dropped:no_place:" + ",".join(scope_areas))
+                scope_areas = []
+        elif ap.choice == "whole home":
+            if trace.decide("area_primary:whole_home", ap.confidence, thresholds.flag):
+                whole_home = True
+                scope_areas = []
+        elif ap.choice in lookup and trace.decide(
+            "area_primary", ap.confidence, thresholds.place_override
+        ):
+            # Narrowing to one place removes options Jev could still compare in Round 2 (two
+            # "Dachterrassentür" doors), so it takes a sure pick; a hesitant one leaves the
+            # Noul set standing.
+            # Jev singled out one room or floor: that is the place, whatever else half-fired.
+            chosen = list(lookup[ap.choice])
+            dropped = [x for x in scope_areas if x not in chosen]
+            if dropped:
+                trace.note("areas_dropped:primary:" + ",".join(dropped))
+            scope_areas = chosen
+        # "several", or a hesitant pick: the Noul set stands
 
     domain_probs = {d: answers.noul(f"domain:{d}") for d in home.domains}
     scope_domains = tuple(
@@ -193,4 +283,7 @@ def interpret_round1(
         scene=scene,
         condition_domain=condition_domain,
         floor_probs=floor_probs,
+        whole_home=whole_home,
+        primary_verb=primary_verb,
+        several_verbs=several_verbs,
     )

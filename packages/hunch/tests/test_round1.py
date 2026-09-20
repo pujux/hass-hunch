@@ -6,13 +6,13 @@ from hunch.round1 import FLAGS, build_round1_questions, build_round1_state, inte
 def test_state_is_small_and_names_only(home):
     state = build_round1_state(home, "turn off the downstairs lights")
     assert state["request"] == "turn off the downstairs lights"
-    assert state["floors"] == ["Downstairs", "Upstairs"]
-    assert state["areas"] == [
-        "Kitchen",
-        "Living room (lounge)",
-        "Hallway",
-        "Bedroom",
-        "Office (study)",
+    assert state["home"] == [
+        {
+            "floor": "Downstairs",
+            "aliases": [],
+            "areas": ["Kitchen", "Living room (lounge)", "Hallway"],
+        },
+        {"floor": "Upstairs", "aliases": [], "areas": ["Bedroom", "Office (study)"]},
     ]
     assert state["domains"] == ["climate", "cover", "light", "lock", "switch"]
     assert state["scenes"] == ["Movie night", "Goodnight"]
@@ -58,6 +58,8 @@ def test_interpret_tolerates_a_missing_condition_domain_answer(home, vocab, thre
     qs = build_round1_questions(bare, vocab)
     base = {qid: NoulA(0.05) for qid in qs}
     base["flag:has_condition"] = NoulA(0.9)
+    base["verb_primary"] = ChoiceA("several", 0.9, {})
+    base["area_primary"] = ChoiceA("several", 0.9, {})
     shape = interpret_round1(bare, vocab, Answers("m", base, None), thresholds, Trace())
     assert shape.condition_domain is None
 
@@ -66,7 +68,9 @@ def _answers(home, vocab, **overrides):
     qs = build_round1_questions(home, vocab)
     base = {}
     for qid, q in qs.items():
-        if isinstance(q, ChoiceQ):
+        if qid in ("verb_primary", "area_primary"):
+            base[qid] = ChoiceA("several", 0.9, {})
+        elif isinstance(q, ChoiceQ):
             base[qid] = ChoiceA("none", 0.9, {o: (0.9 if o == "none" else 0.0) for o in q.options})
         else:
             base[qid] = NoulA(0.05)

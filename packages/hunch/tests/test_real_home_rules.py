@@ -256,6 +256,8 @@ async def test_collective_query_over_cap_escalates(home, vocab):
                 out[qid] = NoulA(0.9)
             elif qid == "flag:collective":
                 out[qid] = NoulA(0.8)
+            elif qid in ("verb_primary", "area_primary"):
+                out[qid] = ChoiceA("several", 0.9, {})
             elif isinstance(q, ChoiceQ):
                 out[qid] = ChoiceA("none" if "none" in q.options else q.options[0], 0.9, {})
             elif isinstance(q, ScoreQ):
@@ -305,7 +307,8 @@ def test_all_of_noul_selects_every_candidate(home, config):
 
 
 def test_named_unknown_device_is_not_all_of_them(home, config):
-    # "Wohnzimmer Stehlampe aufdrehen" with no Stehlampe exposed: Jev says not all, weak pick -> ask.
+    # "Wohnzimmer Stehlampe aufdrehen" with no Stehlampe exposed: Jev says not all, weak
+    # pick -> ask.
     shape, vp = _shape(["turn_on"], {"collective": 0.05}, {"turn_on": 0.97}, areas=("living",))
     cands = _ents(home, "light.living_main", "light.reading_lamp")
     plan = plan_round2(

@@ -212,10 +212,13 @@ def resolve(
                     # confidence. A lookup, not a judgement.
                     base = _base_label(opt.label)
                     same = [o for o in options if o is not opt and _base_label(o.label) == base]
+                    named = any(n.startswith("area_match:") for n in trace.notes)
                     in_scope = [
                         o
                         for o in same
-                        if not shape.scope_areas or o.entities[0].area_id in shape.scope_areas
+                        if not named
+                        or not shape.scope_areas
+                        or o.entities[0].area_id in shape.scope_areas
                     ]
                     twins = in_scope
                 if opt is not None and (weak or twins or verb.name in plan.ambiguous_by_area):

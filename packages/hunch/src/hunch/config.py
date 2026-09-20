@@ -11,10 +11,8 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Thresholds:
     verb_fire: float = 0.7
-    verb_lone_leader: float = 0.55  # below verb_fire, a single clear leader still fires ...
-    verb_lone_margin: float = 0.3  # ... if it leads the runner-up by at least this
     scope_fire: float = 0.7
-    scope_hard: float = 0.9  # a room Jev is this sure about counts even if no place word was said
+    place_override: float = 0.85  # the area comparison narrows to ONE place only when this sure
     # a Jev-only area/floor (not named verbatim) needs this to count  # floor / area / domain Nouls
     collective: float = 0.5
     target_choice_conf: float = 0.7
