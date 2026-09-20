@@ -186,9 +186,15 @@ class Thresholds:
     scope_fire: float = 0.7        # floor / area / domain Nouls
     collective: float = 0.5
     target_choice_conf: float = 0.7
-    auto_execute: float = 0.75
+    auto_execute: float = 0.70
     confirm_band: float = 0.5      # [confirm_band, auto_execute) → NeedsConfirmation
-    flag: float = 0.6              # has_exception / has_condition / has_timing / is_destructive
+    flag: float = 0.6
+    specific_device: float = 0.7
+    collective_fallback: float = 0.4
+    no_match_clarify: float = 0.6
+    scope_hard: float = 0.9
+    verb_lone_leader: float = 0.55
+    verb_lone_margin: float = 0.3              # has_exception / has_condition / has_timing / is_destructive
 
 @dataclass(frozen=True)
 class EngineConfig:
@@ -385,6 +391,11 @@ several rooms with no room said always clarify.
   `partial` for the fallback agent.
 - *Collective queries over the cap* ("Welche Fenster sind offen?") escalate instead of
   asking "which area?" — summarising state is the fallback agent's strength.
+
+**Thresholds settled on real prompts (2026-09-20).** A collective flag is replaced by
+`max(collective, scope strength)` when the area/floor was named or fired and every target
+lies inside it. When no verb reaches `verb_fire`, a single leader ≥ `verb_lone_leader` that
+beats the runner-up by ≥ `verb_lone_margin` fires (`lone_leader:` trace note).
 
 ### Step 5 — Resolve
 

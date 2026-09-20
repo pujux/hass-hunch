@@ -7,9 +7,9 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-19 (after the final-review fix wave)
-- **Agreement:** 22/24 (92%)
-- **Latency:** p50=377 ms, p95=720 ms
-- **Cost:** $0.0016 (37,419 input tokens) for the full 24-row corpus
+- **Agreement:** fixture 23–24/24; real German home (`corpus_julian.yaml`, 32 rows) 32/32
+- **Latency:** p50 ≈ 370–400 ms, p95 ≈ 800 ms (real home needs two rounds more often)
+- **Cost:** ≈ $0.0016 (fixture) / $0.0034 (real home) per full run
 
 2 rows fail. "turn everything off" is the long-standing model-variance row. "open the blinds
 halfway" is **newly reported, not newly broken**: the fix wave tightened `check()` so a
@@ -63,6 +63,16 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-20 (evening) — thresholds set on Julian's corpus
+
+Decided with Julian once his prompts were in: (1) a collective flag backed by a named area or
+floor counts as strong — `max(collective, scope strength)` — because two independent signals
+agree on "all of them"; (2) a lone-leader verb fires below `verb_fire` when it is ≥ 0.55 and
+leads the runner-up by ≥ 0.3 ("Mach alles aus": turn_off 0.68, close 0.33); (3) `auto_execute`
+0.75 → 0.70. Also: `has_condition` reworded so "außer"/"except" (an exception) no longer reads
+as a condition (0.07 vs 0.98 for real conditions). Result: **real home 32/32**, fixture 23/24
+("turn everything off" spreads turn_off/close/lock — escalation accepted as an outcome).
 
 ### 2026-09-20 (later) — Julian's own prompts: code matches names, Jev judges the rest
 
