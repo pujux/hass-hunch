@@ -1,0 +1,13 @@
+{
+  "domain": "hunch",
+  "name": "Hunch",
+  "codeowners": ["@julianpufler"],
+  "config_flow": true,
+  "dependencies": ["conversation", "homeassistant"],
+  "documentation": "https://github.com/julianpufler/hass-hunch",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/julianpufler/hass-hunch/issues",
+  "requirements": ["hunch-engine==0.2.0"],
+  "version": "0.1.0"
+}
