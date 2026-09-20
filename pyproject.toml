@@ -1,7 +1,7 @@
 [project]
 name = "hass-hunch-workspace"
 version = "0.0.0"
-requires-python = ">=3.13"
+requires-python = ">=3.14.2"
 dependencies = ["hunch-engine"]
 
 [tool.uv.workspace]
@@ -10,7 +10,6 @@ members = ["packages/*"]
 [tool.uv]
 package = false
 conflicts = [[{ group = "dev" }, { group = "ha" }]]
-environments = ["python_full_version >= '3.14.2'"]
 
 [tool.uv.sources]
 hunch-engine = { workspace = true }

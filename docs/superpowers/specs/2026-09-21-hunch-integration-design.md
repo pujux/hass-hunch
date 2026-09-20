@@ -1,6 +1,7 @@
 # Hunch — Home Assistant integration (sub-project 2) design
 
-Date: 2026-09-21. Status: implemented 2026-09-21 on branch `integration` (plan: docs/superpowers/plans/2026-09-21-hunch-integration.md).
+Date: 2026-09-21. Status: implemented and reviewed 2026-09-21 on branch `integration`; the
+review's fixes are in (plan: docs/superpowers/plans/2026-09-21-hunch-integration.md).
 
 Parent spec: [`2026-09-19-hunch-design.md`](2026-09-19-hunch-design.md) (the engine, §4.2 sketched the
 integration). Where this document and the parent disagree, this document wins for the
@@ -80,10 +81,10 @@ printed). The manifest pin is bumped by hand with each engine release.
 
 Python 3.13 (HA 2026.x). Target HA release: the one `pytest-homeassistant-custom-component`
 pins at implementation time (2026.9.3 as of this writing); `hacs.json` declares
-`homeassistant: "2026.8.0"` as the floor.
+`homeassistant: "2026.9.0"` as the floor.
 
 At implementation time, HA 2026.9 raised its own floor to Python 3.14, so the workspace
-(`pyproject.toml`) requires Python 3.14 as well. The `hunch-engine` distribution
+(`pyproject.toml`) requires Python 3.14.2 as well. The `hunch-engine` distribution
 (`packages/hunch/pyproject.toml`) keeps `requires-python = ">=3.13"` with no upper cap — it
 has no HA dependency and stays usable from older interpreters; the 3.14 floor is a
 workspace/integration-side requirement, not an engine one.
@@ -154,8 +155,9 @@ config entry, `_attr_name` from the entry title.
 5. **`NeedsClarification`.** Candidates capped at `clarify_max_candidates` (5); `verb` and
    `params` come from the result (see §1). Store `Clarify(verb, params, candidates, question)`;
    respond with
-   the `clarify` list, `continue_conversation=True`. `which_area` with nothing to list, or too
-   many candidates → step 7.
+   the `clarify` list, `continue_conversation=True`. No verb, no candidates, a `which_area` key
+   (an area question cannot be answered by listing devices) or more candidates than the cap →
+   step 7.
 6. **Reply to a pending turn** — one Jev call over state `{"question": …, "reply": …}`:
    - `Confirm`: `Choice{affirmative, negative, other}` with descriptions. `affirmative` with
      confidence ≥ 0.7 → execute the stored actions exactly (condition re-checked as in step 3).
@@ -225,6 +227,13 @@ other language falls back to `en`. Language = the option if pinned, else `user_i
 | `fallback_unavailable` | — | "I can't do that myself, and no other assistant is available." |
 | `execution_failed` | failed names | "Done, except: Spots (Küche)." |
 | `pending_context` (for `extra_system_prompt`, English only) | question, actions | "The assistant proposed: turn off 13 lights … The user was asked to confirm and instead replied with the following message." |
+
+`action_done` and `confirm` render **one clause per action**, joined with "; ": a plan with
+several verbs (`verb_primary` = "several") is described by all of them, never by the first
+verb with everyone's targets flattened behind it. The clause's word order follows the language
+(English verb first, German verb last), and the pre-joined clauses reach `render` in the
+`targets` slot with an empty `phrase`. A plan that both reads and commands answers with the
+query lines first, then the command sentence, separated by a newline.
 
 Verb phrases come from `hunch.phrasing.EN/DE` (`verb_phrasing`, `domain_labels`) so the
 integration adds no vocabulary. Binary sensor and cover states are rendered as words
