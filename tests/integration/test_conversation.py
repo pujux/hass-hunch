@@ -10,7 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import intent
-from hunch import DEFAULT_VOCABULARY, NeedsClarification, Trace
+from hunch import DEFAULT_VOCABULARY, Action, NeedsClarification, Resolved, Trace
 from hunch.questions import ChoiceA, NoulA
 from hunch.round2 import NO_MATCH
 from pytest_homeassistant_custom_component.common import async_mock_service
@@ -100,6 +100,20 @@ R2_WEAK_PICK = {
     "target:turn_on": ChoiceA("Spots", 0.45, {"Spots": 0.45, "Kücheninsel": 0.4}),
     "all_of:turn_on": NoulA(0.1),
 }
+
+
+async def _cover(hass: HomeAssistant):
+    """A Küche blind, for plans that mix verbs."""
+    areas = ar.async_get(hass)
+    kuche = areas.async_get_area_by_name("Küche")
+    reg = er.async_get(hass)
+    e = reg.async_get_or_create(
+        "cover", "test", "5", suggested_object_id="kuche_rollo", original_name="Rollo"
+    )
+    reg.async_update_entity(e.entity_id, area_id=kuche.id)
+    hass.states.async_set(e.entity_id, "open", {"device_class": "blind"})
+    async_expose_entity(hass, "conversation", e.entity_id, True)
+    return e.entity_id
 
 
 async def test_resolved_executes_and_answers_in_german(hass: HomeAssistant, setup_hunch):
@@ -192,7 +206,12 @@ async def test_confirmation_yes_executes(hass: HomeAssistant, setup_hunch):
     assert fake.await_count == 0
     assert second.continue_conversation is False
     assert [t["outcome"] for t in entry.runtime_data.traces] == ["NeedsConfirmation", "Confirmed"]
-    assert entry.runtime_data.traces[1]["trace"] is None
+    # the reply judgment is traced like any other Hunch-authored answer (spec §7.8)
+    reply_trace = entry.runtime_data.traces[1]["trace"]
+    assert [e["question_id"] for e in reply_trace["entries"]] == ["reply_confirm"]
+    assert reply_trace["decisions"] == [
+        {"name": "reply_confirm", "value": 0.95, "threshold": 0.7, "passed": True}
+    ]
 
 
 async def test_confirmation_no_cancels(hass: HomeAssistant, setup_hunch):
@@ -547,3 +566,69 @@ async def test_a_confirm_tier_verb_picked_by_clarification_asks_again(
     assert second.continue_conversation is True
     assert "?" in _speech(second)
     assert isinstance(rt.pending.take("c13"), PendingConfirm)
+
+
+R1_TWO_VERBS = {
+    "verb:turn_off": NoulA(0.95),
+    "verb:close": NoulA(0.95),
+    "domain:light": NoulA(0.95),
+    "domain:cover": NoulA(0.95),
+    "area:kuche": NoulA(0.99),
+    "flag:collective": NoulA(0.9),
+    "verb_primary": ChoiceA("several", 0.95, {}),
+    "area_primary": ChoiceA("Küche", 0.99, {}),
+}
+
+
+async def test_a_two_verb_plan_names_both_verbs_and_runs_both(hass: HomeAssistant, setup_hunch):
+    """`verb_primary` = "several": every action gets its own clause, not just the first."""
+    ids = await _home(hass)
+    rollo = await _cover(hass)
+    client, calls = scripted(R1_TWO_VERBS)
+    await setup_hunch(client, calls)
+    off = async_mock_service(hass, "homeassistant", "turn_off")
+    close = async_mock_service(hass, "cover", "close_cover")
+    result = await _say(hass, "Licht aus und Rollo zu in der Küche")
+    assert len(off) == 1 and sorted(off[0].data["entity_id"]) == sorted(ids[:2])
+    assert len(close) == 1 and close[0].data["entity_id"] == [rollo]
+    speech = _speech(result)
+    assert "ausgeschaltet" in speech and "geschlossen" in speech
+    assert "Rollo (Küche)" in speech and "Spots (Küche)" in speech
+    assert speech.startswith("Erledigt: ") and "; " in speech
+
+
+async def test_a_two_verb_confirmation_names_both_verbs(hass: HomeAssistant, setup_hunch):
+    """A mixed plan's confirmation question must not label one action with the other's verb."""
+    await _home(hass)
+    await _cover(hass)
+    client, calls = scripted(R1_TWO_VERBS, reply={"reply_confirm": ChoiceA("negative", 0.95, {})})
+    await setup_hunch(client, calls, options={"max_silent_targets": 1})
+    first = await _say(hass, "Licht aus und Rollo zu in der Küche", conversation_id="c20")
+    question = _speech(first)
+    assert first.continue_conversation is True
+    assert "ausschalten" in question and "schließen" in question
+    assert "Rollo (Küche)" in question and "; " in question
+
+
+async def test_a_query_beside_a_command_is_answered_and_executed(hass: HomeAssistant, setup_hunch):
+    """A plan that both reads and commands says the reading *and* the command sentence."""
+    ids = await _home(hass)
+    client, calls = scripted(R1_TURN_OFF_KITCHEN)
+    entry, _ = await setup_hunch(client, calls)
+    svc = async_mock_service(hass, "homeassistant", "turn_off")
+    rt = entry.runtime_data
+    home = rt.builder.build()
+    by_id = {e.entity_id: e for e in home.entities}
+    mixed = Resolved(
+        (
+            Action(DEFAULT_VOCABULARY.by_name("turn_off"), (by_id[ids[0]],), {}),
+            Action(DEFAULT_VOCABULARY.by_name("query_state"), (by_id[ids[3]],), {}),
+        ),
+        None,
+        0.9,
+        Trace(),
+    )
+    with patch.object(rt.engine, "decide", AsyncMock(return_value=mixed)):
+        result = await _say(hass, "Spots aus, und ist die Tür offen?", conversation_id="c21")
+    assert len(svc) == 1 and svc[0].data["entity_id"] == ["light.kuche_spots"]
+    assert _speech(result) == "Tür (Galerie): offen\nErledigt: Spots (Küche) ausgeschaltet."

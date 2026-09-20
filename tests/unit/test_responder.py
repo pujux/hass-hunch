@@ -6,6 +6,7 @@ from hunch import Entity
 
 from custom_components.hunch.responder import (
     OUTCOMES,
+    action_clause,
     condition_clause,
     describe_state,
     describe_targets,
@@ -178,3 +179,58 @@ def test_pending_context():
     text = pending_context(question, description)
     assert question in text
     assert description in text
+
+
+@pytest.mark.parametrize("language", ["en", "de"])
+def test_a_single_action_sentence_reads_as_before(language):
+    """The one-clause form is what the slots produce on their own, unchanged."""
+    clause = action_clause(
+        verb_phrase("turn_off", language, done=True), "Lampe (Wohnzimmer)", language
+    )
+    text = render("action_done", language, phrase="", targets=clause)
+    expected = {
+        "de": "Erledigt: Lampe (Wohnzimmer) ausgeschaltet.",
+        "en": "Done: turned off Lampe (Wohnzimmer).",
+    }
+    assert text == expected[language]
+    # the same sentence via the plain slots
+    assert (
+        render(
+            "action_done",
+            language,
+            phrase=verb_phrase("turn_off", language, done=True),
+            targets="Lampe (Wohnzimmer)",
+        )
+        == expected[language]
+    )
+
+
+def _clauses(*pairs, done, language):
+    return "; ".join(
+        action_clause(verb_phrase(verb, language, done=done), targets, language)
+        for verb, targets in pairs
+    )
+
+
+def test_multi_verb_clauses_join_with_a_semicolon():
+    plan = (("turn_off", "Lampe (Wohnzimmer)"), ("close", "Rollo (Wohnzimmer)"))
+    assert render(
+        "action_done", "de", phrase="", targets=_clauses(*plan, done=True, language="de")
+    ) == ("Erledigt: Lampe (Wohnzimmer) ausgeschaltet; Rollo (Wohnzimmer) geschlossen.")
+    assert render(
+        "confirm",
+        "de",
+        phrase="",
+        targets=_clauses(*plan, done=False, language="de"),
+        reason="",
+        condition=None,
+    ) == ("Soll ich Lampe (Wohnzimmer) ausschalten; Rollo (Wohnzimmer) schließen?")
+    assert render(
+        "action_done", "en", phrase="", targets=_clauses(*plan, done=True, language="en")
+    ) == ("Done: turned off Lampe (Wohnzimmer); closed Rollo (Wohnzimmer).")
+
+
+def test_targets_without_a_known_area_render_the_bare_count():
+    many = [_e(f"light.{i}", f"L{i}", None) for i in range(5)]
+    assert describe_targets(many, AREAS, "en") == "5 devices"
+    assert describe_targets(many, AREAS, "de") == "5 Geräte"

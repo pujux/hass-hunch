@@ -61,9 +61,9 @@ VERB_PHRASES: dict[str, dict[str, tuple[str, str]]] = {
 
 TEMPLATES: dict[str, dict[str, str]] = {
     "en": {
-        "action_done": "Done: {phrase} {targets}.",
+        "action_done": "Done: {body}.",
         "query_answer": "{lines}",
-        "confirm": "Shall I {phrase} {targets}{condition}?{why}",
+        "confirm": "Shall I {body}{condition}?{why}",
         "clarify": "Which one did you mean: {options}?",
         "cancelled": "Okay, I didn't change anything.",
         "condition_not_met": "{subject} is not {expected}, so I left everything as it is.",
@@ -72,9 +72,9 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "execution_failed": "Done, except: {failed}.",
     },
     "de": {
-        "action_done": "Erledigt: {targets} {phrase}.",
+        "action_done": "Erledigt: {body}.",
         "query_answer": "{lines}",
-        "confirm": "Soll ich {targets} {phrase}{condition}?{why}",
+        "confirm": "Soll ich {body}{condition}?{why}",
         "clarify": "Welches meinst du: {options}?",
         "cancelled": "Okay, ich habe nichts geändert.",
         "condition_not_met": "{subject} ist nicht {expected}, darum habe ich nichts geändert.",
@@ -131,6 +131,7 @@ DOOR_WORDS = {"en": {"on": "open", "off": "closed"}, "de": {"on": "offen", "off"
 DOOR_CLASSES = {"door", "window", "garage_door", "opening"}
 CONDITION_WORD = {"en": " if {subject} is {state}", "de": ", wenn {subject} {state} ist"}
 MANY = {"en": "{n} devices in {places}", "de": "{n} Geräte in {places}"}
+MANY_NOWHERE = {"en": "{n} devices", "de": "{n} Geräte"}
 
 
 def resolve_language(option: str, request_language: str | None) -> str:
@@ -156,7 +157,9 @@ def describe_targets(
             for e in targets
         )
     places = sorted({area_names[e.area_id] for e in targets if e.area_id in area_names})
-    return MANY.get(language, MANY["en"]).format(n=len(targets), places=", ".join(places) or "—")
+    if not places:  # "5 devices in —" says nothing; the bare count is the honest form
+        return MANY_NOWHERE.get(language, MANY_NOWHERE["en"]).format(n=len(targets))
+    return MANY.get(language, MANY["en"]).format(n=len(targets), places=", ".join(places))
 
 
 def describe_state(reading: Any, language: str) -> str:
@@ -179,6 +182,18 @@ def describe_state(reading: Any, language: str) -> str:
     return state
 
 
+def action_clause(phrase: str, targets: str, language: str) -> str:
+    """One "<verb> <targets>" clause in the word order of the language.
+
+    English puts the verb first ("turn off Spots (Küche)"), German last
+    ("Spots (Küche) ausschalten"). Either slot may be empty: callers that already hold a
+    finished, multi-action description pass it as `targets` with an empty `phrase`.
+    """
+    lang = language if language in TEMPLATES else "en"
+    parts = (phrase, targets) if lang == "en" else (targets, phrase)
+    return " ".join(p for p in parts if p)
+
+
 def condition_clause(subject: str, state: str, language: str) -> str:
     """A trailing "if <subject> is <state>" clause, for use as `confirm`'s `condition` slot."""
     return CONDITION_WORD.get(language, CONDITION_WORD["en"]).format(subject=subject, state=state)
@@ -193,10 +208,14 @@ def render(outcome: str, language: str, **slots: Any) -> str:
         return tpl.format(options=", ".join(slots["options"]))
     if outcome == "execution_failed":
         return tpl.format(failed=", ".join(slots["failed"]))
-    if outcome == "confirm":
+    if outcome in ("action_done", "confirm"):
+        # `phrase`/`targets` are one clause; a multi-verb plan arrives pre-joined in
+        # `targets` with an empty `phrase` (spec §9).
+        body = action_clause(slots.get("phrase") or "", slots.get("targets") or "", lang)
+        if outcome == "action_done":
+            return tpl.format(body=body)
         return tpl.format(
-            phrase=slots["phrase"],
-            targets=slots["targets"],
+            body=body,
             condition=slots.get("condition") or "",
             why=REASONS[lang].get(slots.get("reason") or "", ""),
         )

@@ -32,6 +32,7 @@ from . import HunchConfigEntry, HunchRuntime
 from .executor import Executor
 from .pending import PendingClarify, PendingConfirm
 from .responder import (
+    action_clause,
     condition_clause,
     describe_state,
     describe_targets,
@@ -120,7 +121,9 @@ class HunchConversationEntity(conversation.ConversationEntity):
         out: list[str] = []
         for entity in entities:
             label = self._label(entity, areas)
-            out.append(label if label not in out else f"{label} [{entity.entity_id}]")
+            while label in out:  # the same id twice would otherwise repeat an option
+                label = f"{label} [{entity.entity_id}]"
+            out.append(label)
         return tuple(out)
 
     def _result(
@@ -187,18 +190,34 @@ class HunchConversationEntity(conversation.ConversationEntity):
             turn, render("fallback_unavailable", turn.lang), trace, outcome, error=True
         )
 
-    def _describe_actions(
-        self, actions: Sequence[Action], areas: Mapping[str, str], language: str
+    def _action_clauses(
+        self,
+        actions: Sequence[Action],
+        areas: Mapping[str, str],
+        language: str,
+        *,
+        done: bool,
+        params: bool = False,
     ) -> str:
-        """English description of a proposal, for the fallback's extra_system_prompt."""
+        """One clause per action, joined with "; ".
+
+        A plan with several verbs (`verb_primary` = "several") is described by all of them,
+        never by the first verb with everyone's targets flattened behind it (spec §9).
+        """
         parts = []
         for action in actions:
-            phrase = verb_phrase(action.verb.name, language, done=False)
-            targets = describe_targets(action.targets, areas, language)
-            params = " ".join(
-                f"{v:g}" if isinstance(v, float) else str(v) for v in action.params.values()
+            clause = action_clause(
+                verb_phrase(action.verb.name, language, done=done),
+                describe_targets(action.targets, areas, language),
+                language,
             )
-            parts.append(f"{phrase} {targets}" + (f" -> {params}" if params else ""))
+            if params:
+                values = " ".join(
+                    f"{v:g}" if isinstance(v, float) else str(v) for v in action.params.values()
+                )
+                if values:
+                    clause += f" -> {values}"
+            parts.append(clause)
         return "; ".join(parts)
 
     # ---- executing -------------------------------------------------------------------
@@ -224,19 +243,22 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 expected=condition.expected_state,
             )
             return self._result(turn, text, trace, outcome)
-        if all(a.verb.is_query for a in actions):  # an empty plan reads nothing, safely
-            lines = []
-            for action in actions:
-                for reading in executor.read_states(action.targets):
-                    room = areas.get(reading.area_id or "")
-                    label = f"{reading.name} ({room})" if room else reading.name
-                    lines.append(f"{label}: {describe_state(reading, lang)}")
+        # A mixed plan reads its query targets *and* runs its commands; neither may swallow
+        # the other (spec §9).
+        queries = tuple(a for a in actions if a.verb.is_query)
+        commands = tuple(a for a in actions if not a.verb.is_query)
+        lines = []
+        for action in queries:
+            for reading in executor.read_states(action.targets):
+                room = areas.get(reading.area_id or "")
+                label = f"{reading.name} ({room})" if room else reading.name
+                lines.append(f"{label}: {describe_state(reading, lang)}")
+        if not commands:  # an empty plan reads nothing, safely
             return self._result(turn, render("query_answer", lang, lines=lines), trace, outcome)
-        results = await executor.execute(actions, turn.user_input.context)
+        results = await executor.execute(commands, turn.user_input.context)
         failed = [r.entity_id for r in results if not r.ok]
-        targets = tuple(e for a in actions for e in a.targets)
         if failed:
-            by_id = {e.entity_id: e for e in targets}
+            by_id = {e.entity_id: e for a in commands for e in a.targets}
             text = render(
                 "execution_failed",
                 lang,
@@ -246,9 +268,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
             text = render(
                 "action_done",
                 lang,
-                phrase=verb_phrase(actions[0].verb.name, lang, done=True),
-                targets=describe_targets(targets, areas, lang),
+                phrase="",
+                targets=self._action_clauses(commands, areas, lang, done=True),
             )
+        if lines:
+            text = "\n".join([*lines, text])
         return self._result(turn, text, trace, outcome)
 
     # ---- the turn --------------------------------------------------------------------
@@ -331,27 +355,36 @@ class HunchConversationEntity(conversation.ConversationEntity):
         return render(
             "confirm",
             lang,
-            phrase=verb_phrase(actions[0].verb.name, lang, done=False),
-            targets=describe_targets(tuple(e for a in actions for e in a.targets), areas, lang),
+            phrase="",
+            targets=self._action_clauses(actions, areas, lang, done=False),
             reason=reason,
             condition=clause,
         )
 
     # ---- step 6: the reply to a pending question --------------------------------------
 
-    async def _judge(self, state: dict, question_id: str, question: ChoiceQ) -> ChoiceA | None:
+    async def _judge(
+        self, state: dict, question_id: str, question: ChoiceQ
+    ) -> tuple[ChoiceA | None, Trace | None]:
         """The one Jev call of a reply turn, and the only thing a reply turn guards.
 
         Everything the answer then leads to — service calls, the hand-off — must fail on its
         own terms: swallowing a later KeyError/TypeError here would hand the fallback a
         proposal it might execute a second time.
+
+        The judgment is traced like any other Hunch-authored answer (spec §7.8): the reply
+        question and the confidence gate it was held to.
         """
+        trace = Trace()
         try:
             answers = await self._rt.client.ask(state, {question_id: question})
-            return answers.choice(question_id)
+            trace.record(1, answers)
+            choice = answers.choice(question_id)
         except (DecisionBackendError, KeyError, TypeError) as err:
             _LOGGER.warning("Reply judgment failed: %s", err)
-            return None
+            return None, (trace if trace.entries else None)
+        trace.decide(question_id, choice.confidence, REPLY_CONF)
+        return choice, trace
 
     async def _handle_reply(
         self, turn: _Turn, home: HomeModel, pending: PendingConfirm | PendingClarify
@@ -368,46 +401,56 @@ class HunchConversationEntity(conversation.ConversationEntity):
         else:
             question_id = CLARIFY_QID
             question = ChoiceQ(CLARIFY_INSTRUCTIONS, (*pending.labels, NO_MATCH))
-        answer = await self._judge(state, question_id, question)
+        answer, trace = await self._judge(state, question_id, question)
         if answer is None:
             return await self._escalate(
                 turn,
-                None,
+                trace,
                 "ReplyJudgmentFailed",
                 pending_context(pending.question, self._pending_description(home, pending)),
             )
         if confirming:
-            return await self._handle_confirm_reply(turn, home, pending, answer)
-        return await self._handle_clarify_reply(turn, home, pending, answer)
+            return await self._handle_confirm_reply(turn, home, pending, answer, trace)
+        return await self._handle_clarify_reply(turn, home, pending, answer, trace)
 
     def _pending_description(
         self, home: HomeModel, pending: PendingConfirm | PendingClarify
     ) -> str:
         areas = self._area_names(home)
         if isinstance(pending, PendingConfirm):
-            return self._describe_actions(pending.actions, areas, "en")
+            return self._action_clauses(pending.actions, areas, "en", done=False, params=True)
         phrase = verb_phrase(pending.verb.name, "en", done=False)
         return f"{phrase} one of: {', '.join(pending.labels)}"
 
     async def _handle_confirm_reply(
-        self, turn: _Turn, home: HomeModel, pending: PendingConfirm, answer: ChoiceA
+        self,
+        turn: _Turn,
+        home: HomeModel,
+        pending: PendingConfirm,
+        answer: ChoiceA,
+        trace: Trace | None,
     ) -> conversation.ConversationResult:
         if answer.confidence >= REPLY_CONF and answer.choice == "affirmative":
             # Exactly the stored actions; the reply text is never re-parsed into actions.
             return await self._run(
-                turn, home, pending.actions, pending.condition, None, "Confirmed"
+                turn, home, pending.actions, pending.condition, trace, "Confirmed"
             )
         if answer.confidence >= REPLY_CONF and answer.choice == "negative":
-            return self._result(turn, render("cancelled", turn.lang), None, "Cancelled")
+            return self._result(turn, render("cancelled", turn.lang), trace, "Cancelled")
         return await self._escalate(
             turn,
-            None,
+            trace,
             "ConfirmOther",
             pending_context(pending.question, self._pending_description(home, pending)),
         )
 
     async def _handle_clarify_reply(
-        self, turn: _Turn, home: HomeModel, pending: PendingClarify, answer: ChoiceA
+        self,
+        turn: _Turn,
+        home: HomeModel,
+        pending: PendingClarify,
+        answer: ChoiceA,
+        trace: Trace | None,
     ) -> conversation.ConversationResult:
         areas = self._area_names(home)
         if answer.confidence >= REPLY_CONF and answer.choice in pending.labels:
@@ -417,7 +460,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 phrase = verb_phrase(pending.verb.name, "en", done=False)
                 return await self._escalate(
                     turn,
-                    None,
+                    trace,
                     "ClarifyNeedsParam",
                     pending_context(pending.question, f"{phrase} {self._label(target, areas)}"),
                 )
@@ -428,11 +471,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
                     turn.chat_log.conversation_id,
                     PendingConfirm((action,), None, question, self._rt.pending.now()),
                 )
-                return self._result(turn, question, None, "NeedsConfirmation", cont=True)
-            return await self._run(turn, home, (action,), None, None, "Clarified")
+                return self._result(turn, question, trace, "NeedsConfirmation", cont=True)
+            return await self._run(turn, home, (action,), None, trace, "Clarified")
         return await self._escalate(
             turn,
-            None,
+            trace,
             "ClarifyOther",
             pending_context(pending.question, self._pending_description(home, pending)),
         )
