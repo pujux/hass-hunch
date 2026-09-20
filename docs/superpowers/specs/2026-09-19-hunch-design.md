@@ -419,7 +419,7 @@ A single verb winner drops co-firing verbs; a verb under the Noul bar is promote
 comparison agrees (its contribution is the max of both, so it ends in a confirmation);
 *none* means no device action; *several* leaves the Noul set and skips the out-of-room
 re-check. For places, *none* clears Jev's room guesses, *whole home* lifts the area scope, a
-pick ≥ `place_override` (0.85) narrows to that room or floor, *several* or a hesitant pick
+pick ≥ `place_override` (0.9; was 0.85 until 2026-09-21, when a baseless "Galerie" pick at 0.86 for "Ist die Dachterrassentür offen?" narrowed a two-room ambiguity — named rooms score 0.96–1.0) narrows to that room or floor, *several* or a hesitant pick
 leaves the Noul set. The Round 1 state is the home as a hierarchy (floors → areas with
 aliases, then areas on no floor) plus `mentioned_devices` — the exposed devices whose name,
 alias or device name appears in the prompt, with type and room. Exclusive verb groups, the
@@ -444,6 +444,13 @@ meanings ("on — a door or window IS open …") plus *none of these*, and `cond
 these* is described too; the subject is looked for in the controlled room first and then in the
 whole home ("Rollos in der Galerie zu wenn die Klimaanlage läuft"). Measured 4/4 stable on the
 numeric, door-state and thermostat prompts; negatives flat.
+
+**Questions about a set go to the fallback agent (2026-09-21).** A query verb that Jev flags
+as collective ("Welche Fenster sind offen?", "Wie viele Lichter sind an?") escalates before
+Round 2 with reason `query_collective`. Reading and summarising many states is the LLM agent's
+strength; a device-level answer or a "confirm reading 26 lights?" is wrong for a question. This
+generalises the earlier over-cap rule (`query_over_cap`). Singular queries ("Wie warm ist es im
+Wohnzimmer?", "Ist die Dachterrassentür offen?") are unchanged.
 
 ### Step 5 — Resolve
 

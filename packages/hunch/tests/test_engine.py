@@ -447,3 +447,18 @@ async def test_state_none_of_these_means_no_condition(home, vocab, config):
     r = await Engine(client, vocab, config).decide(home, "lock the door if the blinds are weird")
     assert isinstance(r, Escalate) and r.reason == "condition"
     assert "no_match:cond_state" in r.trace.notes
+
+
+async def test_a_question_about_a_set_goes_to_the_fallback_agent(home, vocab, config):
+    # "which windows are open?": Jev says collective + query; summarising is the LLM's job.
+    client, calls = _scripted(
+        {
+            "verb:query_state": NoulA(0.95),
+            "domain:cover": NoulA(0.9),
+            "flag:collective": NoulA(0.8),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "which blinds are open?")
+    assert isinstance(r, Escalate) and r.reason == "query_collective"
+    assert "query_collective:query_state" in r.trace.notes
+    assert calls["n"] == 1  # no Round 2 spent on it

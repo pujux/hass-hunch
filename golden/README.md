@@ -6,8 +6,8 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 ## Latest result
 
 - **Model:** `jev-1.13.0`
-- **Date:** 2026-09-21 (floor aliases; scope in Round 2; decisive conditions)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 40 rows) 40/40 (39–40 across runs) — the
+- **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 41 rows) 41/41 (40–41 across runs) — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,27 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (late) — Julian trimmed Assist exposure to 153 entities; questions about a set hand off
+
+Re-export: 188 → 153 exposed. Gone: the Klimaanlage climate unit and its switches, the kiosk
+screen-brightness "lights", the washer/dryer LEDs, the lamp-contact `_offnung` binary sensors,
+the Eve plant sensor, weather-service sensors, Vorzimmer light switches. New: a Loggia light,
+washer/dryer running sensors, virtual Fenster/Tür status groups. Corpus lists updated (5 rows).
+Two climate units remain, both without a room ('Mobile Klimaanlage', 'Midea PortaSplit'): "Stell
+die Klimaanlage auf 22 Grad" now asks which — Julian: that is right; both Klimaanlage rows expect
+`clarify`. "Welche Fenster sind offen?" resolved to the Küche's contact, which is literally named
+"Fenster" and pulls Jev to that room (`area:kuche` 0.83) — Julian: hand it to the LLM. Rule: a
+query verb Jev flags collective escalates before Round 2 (`query_collective`), generalising the
+over-cap rule; "Wie viele Lichter sind an?" (was a blast-radius confirmation over 26 lights)
+added as a row. The generic-name pull itself (a device named like its own kind — "Fenster",
+"Rollos") is still open for commands. **Fixture 24/24, real home 41/41.**
+
+Same pass, threshold: `place_override` 0.85 → **0.9**. "Ist die Dachterrassentür offen?" (a door in
+the Galerie AND one in the Schlafzimmer, no room said) flipped to Resolved on the Galerie door
+whenever `area_primary` picked Galerie at 0.86 — a baseless pick. Named rooms score 0.96–1.0 in
+both corpora, so 0.9 keeps every real narrowing and drops this one. Measured 1 flip in 10 at
+0.85; 41/41 and 24/24 at 0.9.
 
 ### 2026-09-21 (night) — conditions: the flip was `condition_domain`, not `has_condition`
 
@@ -115,7 +136,7 @@ the prompt names by name (type + room) — that alone took "Kücheninsel auf 35%
 (set_position 0.67 vs set_brightness 0.51, Jev could not know what a Kücheninsel is) to
 Resolved at 0.95. Rules that use the comparison: a single winner drops co-firing verbs; a verb
 the Nouls left under the bar is promoted when the comparison agrees (contribution stays low →
-confirmation); "several" skips the out-of-room re-check; a sure area pick (≥ 0.85) narrows the
+confirmation); "several" skips the out-of-room re-check; a sure area pick (≥ 0.85, raised to 0.9 later that day) narrows the
 scope, a hesitant one leaves the Noul set. Result: **fixture 24/24, real home 35/36** ("Wie
 warm ist es im Vorzimmer?" open — see the trace notes in git history).
 

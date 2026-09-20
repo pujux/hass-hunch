@@ -179,6 +179,21 @@ class Engine:
         plan = plan_round2(
             home, shape, per_verb, th, self._config.scope_cap, prompt, frozenset(widened)
         )
+        collective_queries = [
+            v.name
+            for v in shape.fired_verbs
+            if v.is_query
+            and v.name in per_verb
+            and shape.flag("collective")
+            >= th.collective  # Jev's judgment, not the planner's bucket
+        ]
+        if collective_queries:
+            # "Welche Fenster sind offen?", "Wie viele Lichter sind an?": Jev says the question is
+            # about a set. Reading and summarising many states is the fallback agent's strength;
+            # a device-level answer or a "confirm reading 26 lights?" would be wrong here.
+            for name in collective_queries:
+                trace.note(f"query_collective:{name}")
+            return Escalate("query_collective", (), trace)
         if shape.flag("has_condition") >= th.flag and not plan.condition_candidates:
             # The request carried a condition but nothing in scope can express it.
             trace.note("condition:unresolvable")

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 class Thresholds:
     verb_fire: float = 0.7
     scope_fire: float = 0.7
-    place_override: float = 0.85  # the area comparison narrows to ONE place only when this sure
+    place_override: float = 0.9  # the area comparison narrows to ONE place only when this sure
     # a Jev-only area/floor (not named verbatim) needs this to count  # floor / area / domain Nouls
     collective: float = 0.5
     target_choice_conf: float = 0.7
