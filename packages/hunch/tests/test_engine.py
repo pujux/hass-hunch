@@ -494,11 +494,13 @@ async def test_clarification_carries_the_verb_and_params(home, vocab, config):
 
 
 async def test_scope_time_clarification_has_verb_but_no_params(home, vocab):
-    # device_round on with max_rounds=3 but budget spent -> DeviceRound turns into a clarification
+    # scope_cap=1 with two bedroom lights and no device round: strict candidates (2) exceed
+    # the cap, widening can't shrink them, and with device_round off the scope chain clarifies
+    # before Round 2 ever runs -> verb is known, params never had a chance to resolve.
     from hunch.config import EngineConfig
 
-    cfg = EngineConfig(model="m", device_round=True, max_rounds=3, scope_cap=1)
-    client, _ = _scripted(
+    cfg = EngineConfig(model="m", scope_cap=1, device_round=False)
+    client, calls = _scripted(
         {
             "verb:turn_on": NoulA(0.95),
             "domain:light": NoulA(0.95),
@@ -508,6 +510,7 @@ async def test_scope_time_clarification_has_verb_but_no_params(home, vocab):
         }
     )
     r = await Engine(client, vocab, cfg).decide(home, "bedside lamp on")
-    if isinstance(r, NeedsClarification):
-        assert r.verb is not None and r.verb.name == "turn_on"
-        assert r.params == {}
+    assert isinstance(r, NeedsClarification)
+    assert r.verb is not None and r.verb.name == "turn_on"
+    assert r.params == {}
+    assert calls["n"] == 1  # scope-time clarification: no Round 2 spent
