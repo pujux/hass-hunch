@@ -5,6 +5,11 @@ description = "Typed-decision fast path for Home Assistant requests, powered by 
 requires-python = ">=3.13"
 dependencies = ["typesafe-sdk>=0.7,<0.8"]
 
+[project.urls]
+Homepage = "https://github.com/pujux/hass-hunch"
+Repository = "https://github.com/pujux/hass-hunch"
+Issues = "https://github.com/pujux/hass-hunch/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
