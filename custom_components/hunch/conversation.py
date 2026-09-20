@@ -22,6 +22,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
 
     def __init__(self, entry: ConfigEntry) -> None:
         self._entry = entry
+        self._attr_unique_id = entry.entry_id
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:

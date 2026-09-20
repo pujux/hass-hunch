@@ -1,7 +1,7 @@
 [project]
 name = "hass-hunch-workspace"
 version = "0.0.0"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13"
 dependencies = ["hunch-engine"]
 
 [tool.uv.workspace]
@@ -9,6 +9,8 @@ members = ["packages/*"]
 
 [tool.uv]
 package = false
+conflicts = [[{ group = "dev" }, { group = "ha" }]]
+environments = ["python_full_version >= '3.14.2'"]
 
 [tool.uv.sources]
 hunch-engine = { workspace = true }
@@ -21,6 +23,17 @@ dev = [
     "ruff>=0.6",
     "pyyaml>=6.0",
     "websockets>=17.1",
+]
+ha = [
+    "homeassistant==2026.9.3",
+    "pytest-homeassistant-custom-component==0.13.366",
+    # Runtime requirements of homeassistant.components.conversation (our test harness
+    # sets up "conversation"); HA normally installs these on demand when the component
+    # first loads, but pytest-homeassistant-custom-component doesn't, so pin them
+    # explicitly, matching the conversation component's own manifest.json for 2026.9.3.
+    "gazetteer-matcher==1.1.0",
+    "hassil==3.12.1",
+    "home-assistant-intents==2026.8.28",
 ]
 
 [tool.pytest.ini_options]
