@@ -20,7 +20,7 @@ from hunch.resolution import (
 )
 from hunch.round1 import Shape
 from hunch.round2 import NO_MATCH, Round2Plan, parse_number
-from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec
+from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec, Verb
 
 
 def score_to_value(spec: ScoreSpec, score: float) -> float:
@@ -102,6 +102,8 @@ def resolve(
     contributions: list[float] = []
     reasons: list[str] = []
     pending_clarify: tuple[Entity, ...] | None = None  # only used if no verb yields an action
+    pending_clarify_verb: Verb | None = None
+    pending_clarify_params: dict[str, float | str] = {}
     exception_unresolved = False
     relative_change = False
 
@@ -202,6 +204,7 @@ def resolve(
                     trace.note(f"clarify:target:{verb.name}")
                     if pending_clarify is None:
                         pending_clarify = candidates[: config.clarify_max_candidates]
+                        pending_clarify_verb = verb
                 else:
                     local.append(c.confidence)
             else:
@@ -235,6 +238,7 @@ def resolve(
                     trace.note(f"clarify:weak_pick:{verb.name}")
                     if pending_clarify is None:
                         pending_clarify = candidates[: config.clarify_max_candidates]
+                        pending_clarify_verb = verb
                 else:
                     targets = opt.entities if opt else ()
                     local.append(c.confidence)
@@ -285,6 +289,9 @@ def resolve(
                 params[spec.name] = cc.choice
                 local.append(cc.confidence)
 
+        if pending_clarify_verb is verb and not pending_clarify_params:
+            pending_clarify_params = dict(params)
+
         if not targets:
             trace.note(f"dropped:{verb.name}")
             continue
@@ -325,7 +332,9 @@ def resolve(
     if not actions:
         if pending_clarify:
             # Nothing resolved and one target Choice spread its mass over real options: ask.
-            return NeedsClarification("which_device", pending_clarify, trace)
+            return NeedsClarification(
+                "which_device", pending_clarify, trace, pending_clarify_verb, pending_clarify_params
+            )
         return Escalate("low_confidence", (), trace)
     if pending_clarify:
         trace.note("clarify_suppressed:other_verbs_resolved")

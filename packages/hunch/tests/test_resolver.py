@@ -137,6 +137,9 @@ def test_weak_pick_among_alternatives_clarifies(home, config):
     r = resolve(shape, plan, r2, config, _trace_with_verbs(vp))
     assert isinstance(r, NeedsClarification)
     assert [e.entity_id for e in r.candidates] == ["light.reading_lamp", "light.living_main"]
+    # turn_on takes no param: the verb is still surfaced, params stay empty.
+    assert r.verb is not None and r.verb.name == "turn_on"
+    assert r.params == {}
 
 
 def test_destructive_flag_escalates_before_anything(home, config):

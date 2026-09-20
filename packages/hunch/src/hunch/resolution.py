@@ -119,6 +119,10 @@ class NeedsClarification:
     question_key: str  # "which_area" | "which_device"
     candidates: tuple[Entity, ...]
     trace: Trace
+    # the verb being clarified and the params already resolved for it ({} when the
+    # clarification happened before Round 2). Lets a caller act on the user's pick.
+    verb: Verb | None = None
+    params: Mapping[str, float | str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,7 @@ requires-python = "==3.13.*"
 [manifest]
 members = [
     "hass-hunch-workspace",
-    "hunch",
+    "hunch-engine",
 ]
 
 [[package]]
@@ -53,7 +53,7 @@ name = "hass-hunch-workspace"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "hunch" },
+    { name = "hunch-engine" },
 ]
 
 [package.dev-dependencies]
@@ -67,7 +67,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hunch", editable = "packages/hunch" }]
+requires-dist = [{ name = "hunch-engine", editable = "packages/hunch" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -118,8 +118,8 @@ wheels = [
 ]
 
 [[package]]
-name = "hunch"
-version = "0.1.0"
+name = "hunch-engine"
+version = "0.2.0"
 source = { editable = "packages/hunch" }
 dependencies = [
     { name = "typesafe-sdk" },

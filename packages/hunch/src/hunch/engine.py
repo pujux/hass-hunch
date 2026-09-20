@@ -27,7 +27,7 @@ from hunch.scope import (
     scope_candidates,
     verbatim_areas,
 )
-from hunch.vocabulary import Vocabulary
+from hunch.vocabulary import Verb, Vocabulary
 
 
 class Engine:
@@ -51,8 +51,10 @@ class Engine:
         - `Resolved(actions, condition, confidence, trace)` — execute as-is.
         - `NeedsConfirmation(actions, condition, reason, trace)` — ask the user first.
           `reason` is `"risk:confirm"`, `"blast_radius"` or `"confidence"`.
-        - `NeedsClarification(question_key, candidates, trace)` — ask which one.
-          `question_key` is `"which_area"` or `"which_device"`.
+        - `NeedsClarification(question_key, candidates, trace, verb, params)` — ask which one.
+          `question_key` is `"which_area"` or `"which_device"`. `verb` is the verb being
+          clarified and `params` are the params already resolved for it in Round 2, or `{}`
+          when the clarification happened before Round 2.
         - `Escalate(reason, partial, trace)` — hand the unchanged prompt to the fallback
           agent. `reason` is drawn from a closed set:
 
@@ -130,6 +132,7 @@ class Engine:
         per_verb: dict[str, tuple[Entity, ...]] = {}
         widened: set[str] = set()
         pending_clarify: Clarify | None = None
+        pending_clarify_verb: Verb | None = None
         for verb in shape.fired_verbs:
             if shape.scene is not None and verb.name == "activate":
                 per_verb[verb.name] = (shape.scene,)
@@ -147,6 +150,8 @@ class Engine:
                     continue
                 # Ask only if no other verb has anything to act on; a co-firing verb that had
                 # to widen past the cap is noise next to one that found its targets in scope.
+                if pending_clarify is None:
+                    pending_clarify_verb = verb
                 pending_clarify = pending_clarify or result
             elif isinstance(result, ScopeEscalate):
                 # One verb with nothing to apply to does not abort the turn; the others may
@@ -155,7 +160,7 @@ class Engine:
             elif isinstance(result, DeviceRound):
                 if rounds >= self._config.max_rounds:
                     return (
-                        NeedsClarification("which_device", result.entities, trace)
+                        NeedsClarification("which_device", result.entities, trace, verb)
                         if self._config.supports_clarification
                         else Escalate("scope", (), trace)
                     )
@@ -168,7 +173,10 @@ class Engine:
         if not per_verb:
             if pending_clarify is not None:
                 return NeedsClarification(
-                    pending_clarify.question_key, pending_clarify.candidates, trace
+                    pending_clarify.question_key,
+                    pending_clarify.candidates,
+                    trace,
+                    pending_clarify_verb,
                 )
             return Escalate("scope", (), trace)
         if pending_clarify is not None:

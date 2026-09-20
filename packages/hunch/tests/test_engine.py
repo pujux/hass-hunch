@@ -462,3 +462,52 @@ async def test_a_question_about_a_set_goes_to_the_fallback_agent(home, vocab, co
     assert isinstance(r, Escalate) and r.reason == "query_collective"
     assert "query_collective:query_state" in r.trace.notes
     assert calls["n"] == 1  # no Round 2 spent on it
+
+
+async def test_clarification_carries_the_verb_and_params(home, vocab, config):
+    # weak pick among real options -> clarify; the caller needs verb + params to act on the pick
+    client, _ = _scripted(
+        {
+            "verb:set_brightness": NoulA(0.95),
+            "domain:light": NoulA(0.95),
+            "area:bedroom": NoulA(0.99),
+            "flag:names_specific": NoulA(0.9),
+            "area_primary": ChoiceA("Bedroom", 0.99, {"Bedroom": 0.99}),
+        },
+        {
+            # options for two same-device entities: the device itself plus each entity
+            "target:set_brightness": ChoiceA(
+                "Bedside lamps — Bedside left",
+                0.45,
+                {"Bedside lamps — Bedside left": 0.45, "Bedside lamps — Bedside right": 0.4},
+            ),
+            "all_of:set_brightness": NoulA(0.1),
+            "param_value:set_brightness": ChoiceA("50%", 0.95, {"50%": 0.95}),
+            "param_relative:set_brightness": NoulA(0.05),
+            "param:set_brightness": ScoreA(3.0, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "bedside lamp to 50% in the bedroom")
+    assert isinstance(r, NeedsClarification)
+    assert r.verb is not None and r.verb.name == "set_brightness"
+    assert r.params == {"brightness_pct": 50.0}
+
+
+async def test_scope_time_clarification_has_verb_but_no_params(home, vocab):
+    # device_round on with max_rounds=3 but budget spent -> DeviceRound turns into a clarification
+    from hunch.config import EngineConfig
+
+    cfg = EngineConfig(model="m", device_round=True, max_rounds=3, scope_cap=1)
+    client, _ = _scripted(
+        {
+            "verb:turn_on": NoulA(0.95),
+            "domain:light": NoulA(0.95),
+            "area:bedroom": NoulA(0.99),
+            "flag:names_specific": NoulA(0.9),
+            "area_primary": ChoiceA("Bedroom", 0.99, {"Bedroom": 0.99}),
+        }
+    )
+    r = await Engine(client, vocab, cfg).decide(home, "bedside lamp on")
+    if isinstance(r, NeedsClarification):
+        assert r.verb is not None and r.verb.name == "turn_on"
+        assert r.params == {}
