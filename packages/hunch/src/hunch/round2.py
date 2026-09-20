@@ -252,21 +252,49 @@ def plan_round2(
     )
 
 
-def build_round2_state(prompt: str, plan: Round2Plan, home: HomeModel) -> JSON:
-    return {
-        "request": prompt,
-        "candidates": [
-            {
-                "name": e.name,
-                "aliases": list(e.aliases),
-                "area": _area_name(home, e),
-                "device": e.device_name,
-                "type": e.domain,
-                "state": e.state,
-            }
-            for e in plan.all_candidates()
-        ],
+def scope_description(home: HomeModel, shape: Shape) -> JSON:
+    """What place the request resolved to, in Jev's terms: the floors it covers completely
+    (with their aliases, so 'oben' reads as the whole Obergeschoss), the rooms, or the whole
+    home. Round 2 candidates come from this place; without it Jev cannot tell 'Licht oben aus'
+    (every light up there) from 'Licht an' (one light, somewhere)."""
+    areas = set(shape.scope_areas)
+    if not areas:
+        return {"place": "the whole home" if shape.whole_home else "no place named"}
+    floors = [
+        {"name": f.name, "aliases": list(f.aliases)}
+        for f in home.floors
+        if f.area_ids and set(f.area_ids) <= areas
+    ]
+    covered = {
+        a for f in home.floors if f.area_ids and set(f.area_ids) <= areas for a in f.area_ids
     }
+    rooms = [a.name for a in home.areas if a.area_id in areas and a.area_id not in covered]
+    out: dict[str, JSON] = {"place": "the floors and rooms named in the request"}
+    if floors:
+        out["whole_floors"] = floors
+    if rooms:
+        out["rooms"] = rooms
+    return out
+
+
+def build_round2_state(
+    prompt: str, plan: Round2Plan, home: HomeModel, shape: Shape | None = None
+) -> JSON:
+    state: dict[str, JSON] = {"request": prompt}
+    if shape is not None:
+        state["scope"] = scope_description(home, shape)
+    state["candidates"] = [
+        {
+            "name": e.name,
+            "aliases": list(e.aliases),
+            "area": _area_name(home, e),
+            "device": e.device_name,
+            "type": e.domain,
+            "state": e.state,
+        }
+        for e in plan.all_candidates()
+    ]
+    return state
 
 
 def build_round2_questions(

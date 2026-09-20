@@ -154,8 +154,9 @@ EN = Phrasebook(
     ),
     all_of_question=(
         "Looking at `candidates`: does the request mean ALL of these devices (a plural like "
-        "'die Rollos', 'the lights', or a room/floor named with no particular device), rather "
-        "than one particular device among them?"
+        "'die Rollos', 'the lights', or only a place named with no particular device — `scope` "
+        "says which floors or rooms the request named, with their aliases), rather than one "
+        "particular device among them?"
     ),
     outside_scope_question=(
         "The devices listed in `candidates` are NOT of the kind or in the place the request "
@@ -318,8 +319,8 @@ DE = Phrasebook(
     ),
     all_of_question=(
         "Mit Blick auf `candidates`: meint die Anfrage ALLE diese Geräte (ein Plural wie 'die "
-        "Rollos', 'die Lichter', oder ein Raum/Stockwerk ohne bestimmtes Gerät), statt eines "
-        "bestimmten Geräts darunter?"
+        "Rollos', 'die Lichter', oder nur ein Ort ohne bestimmtes Gerät — `scope` nennt die "
+        "Stockwerke oder Räume der Anfrage samt Aliasen), statt eines bestimmten Geräts darunter?"
     ),
     outside_scope_question=(
         "Die Geräte in `candidates` sind NICHT von der Art oder an dem Ort, auf die sich die "

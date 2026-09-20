@@ -94,3 +94,12 @@
 - prompt: Stell die Klimaanlage wärmer, draußen sind 5 Grad
   # the 5 is the weather, not the setpoint: rubric decides, never 5°C
   expect: {kinds: [resolved, confirm, clarify], verb: set_temperature, params: {temperature: [16, 26]}}
+
+# ---- floor aliases set in HA 2026-09-21 ('oben' / 'unten') ----
+- prompt: Licht oben aus
+  expect: {kind: resolved, verb: turn_off, targets: [light.ankleide_deckenlampe_lichtschalter, light.ankleide_spiegel, light.badezimmer_oben_lichtschalter_deckenlampe, light.badezimmer_oben_lichtschalter_spiegel, light.badezimmer_oben_trockner_led, light.badezimmer_oben_waschmaschine_led, light.galerie_dachterrasse_lichtschalter, light.galerie_deckenlampe_lichtschalter, light.galerie_stiegenlampe, light.galerie_stiegenlampe_1, light.galerie_stiegenlampe_2, light.galerie_stiegenlampe_3, light.schlafzimmer_lichtschalter, light.schlafzimmer_wandlicht]}
+- prompt: Mach unten das Licht an
+  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+- prompt: Rollos oben runter
+  # 10 upstairs blinds; asking to confirm is fine
+  expect: {kinds: [resolved, confirm], verb: close, targets: [cover.badezimmer_oben_fenster_rollo_links, cover.badezimmer_oben_fenster_rollo_mitte, cover.badezimmer_oben_fenster_rollo_rechts, cover.galerie_dachterrasse_rollo, cover.galerie_fenster_rollo_links, cover.galerie_fenster_rollo_mitte, cover.galerie_fenster_rollo_rechts, cover.galerie_stiege_fenster_rollo, cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}

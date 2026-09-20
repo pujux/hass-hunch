@@ -1,21 +1,17 @@
 # Golden corpus
 
-24 prompts run against the real Jev API. This is the regression net for future model bumps —
+24 fixture prompts (plus 39 German rows against Julian's export) run against the real Jev API. This is the regression net for future model bumps —
 when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 ## Latest result
 
 - **Model:** `jev-1.13.0`
-- **Date:** 2026-09-19 (after the final-review fix wave)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 32 rows) 32/32 (one row, "Mach alles aus außer …", is variance-prone)
-- **Latency:** p50 ≈ 370–400 ms, p95 ≈ 800 ms (real home needs two rounds more often)
-- **Cost:** ≈ $0.0016 (fixture) / $0.0034 (real home) per full run
-
-2 rows fail. "turn everything off" is the long-standing model-variance row. "open the blinds
-halfway" is **newly reported, not newly broken**: the fix wave tightened `check()` so a
-spurious extra action fails the row, and this prompt fires `open` (0.98) *and* `set_position`
-(0.99), producing two actions where the corpus expects one. Both are described under "Known
-issues" below.
+- **Date:** 2026-09-21 (after Julian set the floor aliases; the resolved place goes into Round 2)
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 39 rows) 38–39/39 — the
+  one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
+  5/5 in isolation)
+- **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
+- **Cost:** ≈ $0.0034 (fixture) / $0.0077 (real home) per full run
 
 ## How to run
 
@@ -63,6 +59,22 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (later) — floor aliases: tell Jev what place the request resolved to
+
+Julian set the floor aliases in HA (Obergeschoss → "oben", Untergeschoss → "unten"); re-export
+unchanged otherwise (188 exposed). Three alias rows added ("Licht oben aus", "Mach unten das
+Licht an", "Rollos oben runter"). The first two failed: the alias resolved the scope perfectly in
+code (`area_match:` lists every room of the floor), but the Round 2 state only had the prompt and
+the candidates — Jev saw "Licht oben aus" against 14 lights with no way to know that "oben" *is*
+all of them. `all_of` hovered at 0.41/0.44 (vs 0.68–0.75 when the floor is spelled out as
+"im Untergeschoss"), so one request confirmed a single bathroom light and the other went to the
+collective fallback at 0.48. Fix in the Jev-first spirit: the Round 2 state now carries `scope` —
+whole floors the request covers (name + aliases), remaining rooms, or "the whole home" / "no
+place named" — and the `all_of` question points at it. Result: `all_of` 0.87 / 0.82, both rows
+Resolved at 1.0; "Rollos oben runter" resolves at 0.77 (plural carries it). No threshold moved.
+**Fixture 24/24, real home 39/39** (with the Vorzimmer variance row flipping on one of three
+full runs).
 
 ### 2026-09-21 — comparators: Nouls say which apply, Choices make Jev compare
 

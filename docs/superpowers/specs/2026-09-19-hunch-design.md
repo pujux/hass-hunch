@@ -425,6 +425,13 @@ aliases, then areas on no floor) plus `mentioned_devices` — the exposed device
 alias or device name appears in the prompt, with type and room. Exclusive verb groups, the
 lone-leader rule and the `names_place`/`whole_home` flags are gone.
 
+**The resolved place goes into Round 2 (2026-09-21).** The Round 2 state carries `scope`: the
+floors the request covers completely (name + aliases), the remaining rooms, or *the whole home*
+/ *no place named*. Without it Jev sees "Licht oben aus" against 14 candidates and has no way to
+know that "oben" *is* every one of them — `all_of` hovered at 0.4 and the request ended in a
+confirmation on one bathroom light. With the scope named, `all_of` reads 0.82–0.87 and the whole
+floor resolves. Code did the lookup (alias → floor → rooms); Jev still makes the judgment.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

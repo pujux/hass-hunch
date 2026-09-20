@@ -180,7 +180,9 @@ class Engine:
             if rounds >= self._config.max_rounds:
                 trace.note("max_rounds_reached_before_round2")
                 return Escalate("round_budget", (), trace)
-            round2 = await self._client.ask(build_round2_state(prompt, plan, home), questions)
+            round2 = await self._client.ask(
+                build_round2_state(prompt, plan, home, shape), questions
+            )
             rounds += 1
         return resolve(shape, plan, round2, self._config, trace, self._pb)
 

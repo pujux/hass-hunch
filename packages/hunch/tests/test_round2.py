@@ -166,3 +166,29 @@ def test_condition_candidates_over_the_cap_are_dropped_not_truncated(home, thres
     plan = plan_round2(home, shape, {"arm": ()}, thresholds, 2)
     assert plan.condition_candidates == ()
     assert "cond_subject" not in build_round2_questions(shape, plan, home)
+
+
+def test_round2_state_tells_jev_what_place_the_request_named(home, thresholds):
+    # 'Licht oben aus': the alias resolved to every upstairs room in code; Jev must learn that the
+    # candidates ARE the whole floor, or "all of these?" hovers near 0.4.
+    upstairs = next(f for f in home.floors if f.floor_id == "upstairs")
+    shape = _shape(home, ["turn_off"], {"collective": 0.3}, areas=upstairs.area_ids)
+    plan = plan_round2(home, shape, {"turn_off": _ents(home, "light.bedroom_left")}, thresholds, 60)
+    state = build_round2_state("Licht oben aus", plan, home, shape)
+    assert state["scope"]["whole_floors"] == [
+        {"name": upstairs.name, "aliases": list(upstairs.aliases)}
+    ]
+    assert "rooms" not in state["scope"]
+    # a single room is listed as a room, not as a floor
+    shape = _shape(home, ["turn_off"], {"collective": 0.3}, areas=("kitchen",))
+    state = build_round2_state("Licht in der Küche aus", plan, home, shape)
+    assert state["scope"] == {
+        "place": "the floors and rooms named in the request",
+        "rooms": ["Kitchen"],
+    }
+    # no place at all: say so (the whole home when Jev said so)
+    shape = _shape(home, ["turn_off"], {"collective": 0.3})
+    assert build_round2_state("Licht aus", plan, home, shape)["scope"] == {
+        "place": "no place named"
+    }
+    assert "scope" not in build_round2_state("Licht aus", plan, home)
