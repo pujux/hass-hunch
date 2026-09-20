@@ -1,6 +1,6 @@
 # Hunch — Home Assistant integration (sub-project 2) design
 
-Date: 2026-09-21. Status: approved in brainstorming, awaiting Julian's review of this file.
+Date: 2026-09-21. Status: implemented 2026-09-21 on branch `integration` (plan: docs/superpowers/plans/2026-09-21-hunch-integration.md).
 
 Parent spec: [`2026-09-19-hunch-design.md`](2026-09-19-hunch-design.md) (the engine, §4.2 sketched the
 integration). Where this document and the parent disagree, this document wins for the
@@ -81,6 +81,12 @@ printed). The manifest pin is bumped by hand with each engine release.
 Python 3.13 (HA 2026.x). Target HA release: the one `pytest-homeassistant-custom-component`
 pins at implementation time (2026.9.3 as of this writing); `hacs.json` declares
 `homeassistant: "2026.8.0"` as the floor.
+
+At implementation time, HA 2026.9 raised its own floor to Python 3.14, so the workspace
+(`pyproject.toml`) requires Python 3.14 as well. The `hunch-engine` distribution
+(`packages/hunch/pyproject.toml`) keeps `requires-python = ">=3.13"` with no upper cap — it
+has no HA dependency and stays usable from older interpreters; the 3.14 floor is a
+workspace/integration-side requirement, not an engine one.
 
 ## 5. Runtime object
 

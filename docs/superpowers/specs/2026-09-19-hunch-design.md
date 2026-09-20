@@ -112,6 +112,7 @@ class Floor:
     name: str
     area_ids: tuple[str, ...]
 
+
 @dataclass(frozen=True)
 class Area:
     area_id: str
@@ -119,17 +120,19 @@ class Area:
     aliases: tuple[str, ...]
     floor_id: str | None
 
+
 @dataclass(frozen=True)
 class Entity:
-    entity_id: str            # "light.reading_lamp"
-    domain: str               # "light"
-    name: str                 # friendly name
+    entity_id: str  # "light.reading_lamp"
+    domain: str  # "light"
+    name: str  # friendly name
     aliases: tuple[str, ...]  # Assist aliases
     area_id: str | None
     device_id: str | None
     device_name: str | None
-    verbs: frozenset[str]     # vocabulary verbs applicable to this entity
-    state: str | None         # current state, for queries and conditions
+    verbs: frozenset[str]  # vocabulary verbs applicable to this entity
+    state: str | None  # current state, for queries and conditions
+
 
 @dataclass(frozen=True)
 class HomeModel:
@@ -146,18 +149,19 @@ integration, not a setting.
 
 ```python
 class Risk(Enum):
-    SAFE = auto()         # auto-executes above threshold
-    CONFIRM = auto()      # always asks first
+    SAFE = auto()  # auto-executes above threshold
+    CONFIRM = auto()  # always asks first
     DESTRUCTIVE = auto()  # never executes from the fast path; escalates
+
 
 @dataclass(frozen=True)
 class Verb:
-    name: str                    # "turn_off"
+    name: str  # "turn_off"
     domains: frozenset[str]
-    param: ParamSpec | None      # None | ScoreSpec(levels) | ChoiceSpec(options)
+    param: ParamSpec | None  # None | ScoreSpec(levels) | ChoiceSpec(options)
     risk: Risk
-    intent: str                  # "HassTurnOff"
-    phrasing: str                # "turn something off" — used in the Noul instruction
+    intent: str  # "HassTurnOff"
+    phrasing: str  # "turn something off" — used in the Noul instruction
 ```
 
 Built-in defaults cover roughly twenty verbs across light, switch, fan, cover,
@@ -175,37 +179,40 @@ class Action:
     targets: tuple[Entity, ...]
     params: Mapping[str, float | str]
 
+
 @dataclass(frozen=True)
 class Condition:
     subject: Entity
-    expected_state: str    # evaluated by the Executor against live state
+    expected_state: str  # evaluated by the Executor against live state
+
 
 @dataclass(frozen=True)
 class Thresholds:
     verb_fire: float = 0.7
-    scope_fire: float = 0.7        # floor / area / domain Nouls
+    scope_fire: float = 0.7  # floor / area / domain Nouls
     collective: float = 0.5
     target_choice_conf: float = 0.7
     auto_execute: float = 0.70
-    confirm_band: float = 0.5      # [confirm_band, auto_execute) → NeedsConfirmation
+    confirm_band: float = 0.5  # [confirm_band, auto_execute) → NeedsConfirmation
     flag: float = 0.6
     specific_device: float = 0.7
     collective_fallback: float = 0.4
     no_match_clarify: float = 0.6
     scope_hard: float = 0.9
     verb_lone_leader: float = 0.55
-    verb_lone_margin: float = 0.3              # has_exception / has_condition / has_timing / is_destructive
+    verb_lone_margin: float = 0.3  # has_exception / has_condition / has_timing / is_destructive
+
 
 @dataclass(frozen=True)
 class EngineConfig:
-    model: str                     # pinned Jev model id, e.g. "jev-1.13.0"
+    model: str  # pinned Jev model id, e.g. "jev-1.13.0"
     thresholds: Thresholds = Thresholds()
-    max_rounds: int = 2            # device_round requires >= 3
+    max_rounds: int = 2  # device_round requires >= 3
     max_silent_targets: int = 20
     scope_cap: int = 60
     device_round: bool = False
     supports_clarification: bool = True
-    max_prompt_chars: int = 500    # longer prompts → Escalate("prompt_invalid")
+    max_prompt_chars: int = 500  # longer prompts → Escalate("prompt_invalid")
 ```
 
 `scope_fire`, `collective` and `flag` carry the values from the 2026-09-19

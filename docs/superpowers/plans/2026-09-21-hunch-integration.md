@@ -81,7 +81,9 @@ async def test_clarification_carries_the_verb_and_params(home, vocab, config):
             "area_primary": ChoiceA("Bedroom", 0.99, {"Bedroom": 0.99}),
         },
         {
-            "target:set_brightness": ChoiceA("Bedside left", 0.45, {"Bedside left": 0.45, "Bedside right": 0.4}),
+            "target:set_brightness": ChoiceA(
+                "Bedside left", 0.45, {"Bedside left": 0.45, "Bedside right": 0.4}
+            ),
             "all_of:set_brightness": NoulA(0.1),
             "param_value:set_brightness": ChoiceA("50%", 0.95, {"50%": 0.95}),
             "param_relative:set_brightness": NoulA(0.05),
@@ -388,8 +390,16 @@ Expected: FAIL (integration `hunch` not found / import errors).
 
 ```python
 THRESHOLD_FIELDS = (
-    "verb_fire", "scope_fire", "place_override", "collective", "target_choice_conf",
-    "auto_execute", "confirm_band", "flag", "specific_device", "collective_fallback",
+    "verb_fire",
+    "scope_fire",
+    "place_override",
+    "collective",
+    "target_choice_conf",
+    "auto_execute",
+    "confirm_band",
+    "flag",
+    "specific_device",
+    "collective_fallback",
     "no_match_clarify",
 )
 ```
@@ -417,9 +427,19 @@ from hunch import DEFAULT_VOCABULARY, DecisionClient, Engine, EngineConfig, Thre
 from hunch.client import TypeSafeDecisionClient
 
 from .const import (
-    CONF_API_KEY, DEFAULT_MODEL, DEFAULT_RESPONSE_LANGUAGE, DEFAULT_TIMEOUT_MS, OPT_DEVICE_ROUND,
-    OPT_FALLBACK_AGENT, OPT_MAX_ROUNDS, OPT_MAX_SILENT_TARGETS, OPT_MODEL, OPT_RESPONSE_LANGUAGE,
-    OPT_THRESHOLDS, OPT_TIMEOUT_MS, TRACE_BUFFER,
+    CONF_API_KEY,
+    DEFAULT_MODEL,
+    DEFAULT_RESPONSE_LANGUAGE,
+    DEFAULT_TIMEOUT_MS,
+    OPT_DEVICE_ROUND,
+    OPT_FALLBACK_AGENT,
+    OPT_MAX_ROUNDS,
+    OPT_MAX_SILENT_TARGETS,
+    OPT_MODEL,
+    OPT_RESPONSE_LANGUAGE,
+    OPT_THRESHOLDS,
+    OPT_TIMEOUT_MS,
+    TRACE_BUFFER,
 )
 from .home_model import HomeModelBuilder
 from .pending import PendingStore
@@ -445,7 +465,12 @@ def build_engine_config(options: Mapping[str, Any]) -> EngineConfig:
     defaults = Thresholds()
     raw = options.get(OPT_THRESHOLDS) or {}
     th = dataclasses.replace(
-        defaults, **{k: float(v) for k, v in raw.items() if k in {f.name for f in dataclasses.fields(defaults)}}
+        defaults,
+        **{
+            k: float(v)
+            for k, v in raw.items()
+            if k in {f.name for f in dataclasses.fields(defaults)}
+        },
     )
     device_round = bool(options.get(OPT_DEVICE_ROUND, False))
     max_rounds = int(options.get(OPT_MAX_ROUNDS, 2))
@@ -574,9 +599,14 @@ class HunchConversationEntity(conversation.ConversationEntity):
         self, user_input: conversation.ConversationInput, chat_log: conversation.ChatLog
     ) -> conversation.ConversationResult:
         return await conversation.async_converse(
-            self.hass, user_input.text, user_input.conversation_id, user_input.context,
-            language=user_input.language, agent_id=None,
-            device_id=user_input.device_id, satellite_id=user_input.satellite_id,
+            self.hass,
+            user_input.text,
+            user_input.conversation_id,
+            user_input.context,
+            language=user_input.language,
+            agent_id=None,
+            device_id=user_input.device_id,
+            satellite_id=user_input.satellite_id,
         )
 ```
 
@@ -626,10 +656,14 @@ from custom_components.hunch.const import DOMAIN
 
 
 async def test_user_step_creates_the_entry(hass: HomeAssistant):
-    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     assert result["type"] is FlowResultType.FORM
-    with patch("custom_components.hunch.config_flow.async_validate_api_key", return_value=None), \
-         patch("custom_components.hunch.async_setup_entry", return_value=True):
+    with (
+        patch("custom_components.hunch.config_flow.async_validate_api_key", return_value=None),
+        patch("custom_components.hunch.async_setup_entry", return_value=True),
+    ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {"api_key": "k"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Hunch"
@@ -637,10 +671,18 @@ async def test_user_step_creates_the_entry(hass: HomeAssistant):
 
 
 async def test_errors_map_to_form_errors(hass: HomeAssistant):
-    for exc, key in ((InvalidAuth, "invalid_auth"), (UnknownModel, "unknown_model"), (CannotConnect, "cannot_connect")):
-        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    for exc, key in (
+        (InvalidAuth, "invalid_auth"),
+        (UnknownModel, "unknown_model"),
+        (CannotConnect, "cannot_connect"),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
         with patch("custom_components.hunch.config_flow.async_validate_api_key", side_effect=exc):
-            result = await hass.config_entries.flow.async_configure(result["flow_id"], {"api_key": "k"})
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {"api_key": "k"}
+            )
         assert result["type"] is FlowResultType.FORM
         assert result["errors"] == {"base": key}
 
@@ -650,7 +692,9 @@ async def test_single_instance(hass: HomeAssistant, setup_hunch):
 
     client, calls = scripted({})
     await setup_hunch(client, calls)
-    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "single_instance_allowed"
 ```
@@ -672,7 +716,12 @@ from typing import Any
 
 import probatio  # noqa: F401  (HA re-exports voluptuous as `voluptuous`; use the import HA uses)
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
@@ -737,7 +786,9 @@ class HunchConfigFlow(ConfigFlow, domain=DOMAIN):
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             else:
-                return self.async_create_entry(title="Hunch", data={CONF_API_KEY: user_input[CONF_API_KEY]})
+                return self.async_create_entry(
+                    title="Hunch", data={CONF_API_KEY: user_input[CONF_API_KEY]}
+                )
         return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors)
 
     @staticmethod
@@ -840,20 +891,54 @@ from hunch import home_from_export
 
 def test_export_shape_matches_the_exporter():
     floors = [NS(floor_id="ug", name="Untergeschoss", aliases={"unten"})]
-    areas = [NS(id="kuche", name="Küche", aliases=set(), floor_id="ug"),
-             NS(id="loose", name="Virtuell", aliases={"virtual"}, floor_id=None)]
+    areas = [
+        NS(id="kuche", name="Küche", aliases=set(), floor_id="ug"),
+        NS(id="loose", name="Virtuell", aliases={"virtual"}, floor_id=None),
+    ]
     devices = [NS(id="d1", name="Hue island", name_by_user="Kücheninsel", area_id="kuche")]
     entities = [
-        NS(entity_id="light.kuche_kucheninsel", name=None, original_name="Kücheninsel", aliases=set(),
-           area_id=None, device_id="d1"),
-        NS(entity_id="light.hidden", name="Hidden", original_name=None, aliases=set(), area_id="kuche", device_id=None),
-        NS(entity_id="scene.abend", name="Abend", original_name=None, aliases=set(), area_id=None, device_id=None),
+        NS(
+            entity_id="light.kuche_kucheninsel",
+            name=None,
+            original_name="Kücheninsel",
+            aliases=set(),
+            area_id=None,
+            device_id="d1",
+        ),
+        NS(
+            entity_id="light.hidden",
+            name="Hidden",
+            original_name=None,
+            aliases=set(),
+            area_id="kuche",
+            device_id=None,
+        ),
+        NS(
+            entity_id="scene.abend",
+            name="Abend",
+            original_name=None,
+            aliases=set(),
+            area_id=None,
+            device_id=None,
+        ),
     ]
-    shape = export_shape(floors, areas, devices, entities, {"light.kuche_kucheninsel", "scene.abend"})
+    shape = export_shape(
+        floors, areas, devices, entities, {"light.kuche_kucheninsel", "scene.abend"}
+    )
     assert shape["floors"] == [{"floor_id": "ug", "name": "Untergeschoss", "aliases": ["unten"]}]
-    assert shape["areas"][0] == {"area_id": "kuche", "name": "Küche", "aliases": [], "floor_id": "ug"}
-    assert shape["devices"] == [{"id": "d1", "name": "Hue island", "name_by_user": "Kücheninsel", "area_id": "kuche"}]
-    assert [e["entity_id"] for e in shape["entities"]] == ["light.kuche_kucheninsel", "scene.abend"]  # exposed only
+    assert shape["areas"][0] == {
+        "area_id": "kuche",
+        "name": "Küche",
+        "aliases": [],
+        "floor_id": "ug",
+    }
+    assert shape["devices"] == [
+        {"id": "d1", "name": "Hue island", "name_by_user": "Kücheninsel", "area_id": "kuche"}
+    ]
+    assert [e["entity_id"] for e in shape["entities"]] == [
+        "light.kuche_kucheninsel",
+        "scene.abend",
+    ]  # exposed only
     assert shape["exposed"] == ["light.kuche_kucheninsel", "scene.abend"]
     shape["states"] = {"light.kuche_kucheninsel": {"state": "off", "friendly_name": "Kücheninsel"}}
     home = home_from_export(shape)
@@ -884,24 +969,40 @@ from collections.abc import Iterable
 from typing import Any
 
 
-def export_shape(floors: Iterable[Any], areas: Iterable[Any], devices: Iterable[Any],
-                 entities: Iterable[Any], exposed_ids: set[str]) -> dict[str, Any]:
+def export_shape(
+    floors: Iterable[Any],
+    areas: Iterable[Any],
+    devices: Iterable[Any],
+    entities: Iterable[Any],
+    exposed_ids: set[str],
+) -> dict[str, Any]:
     exposed = [e.entity_id for e in entities if e.entity_id in exposed_ids]
     return {
         "floors": [
-            {"floor_id": f.floor_id, "name": f.name, "aliases": sorted(f.aliases or ())} for f in floors
+            {"floor_id": f.floor_id, "name": f.name, "aliases": sorted(f.aliases or ())}
+            for f in floors
         ],
         "areas": [
-            {"area_id": a.id, "name": a.name, "aliases": sorted(a.aliases or ()), "floor_id": a.floor_id}
+            {
+                "area_id": a.id,
+                "name": a.name,
+                "aliases": sorted(a.aliases or ()),
+                "floor_id": a.floor_id,
+            }
             for a in areas
         ],
         "devices": [
-            {"id": d.id, "name": d.name, "name_by_user": d.name_by_user, "area_id": d.area_id} for d in devices
+            {"id": d.id, "name": d.name, "name_by_user": d.name_by_user, "area_id": d.area_id}
+            for d in devices
         ],
         "entities": [
             {
-                "entity_id": e.entity_id, "name": e.name, "original_name": e.original_name,
-                "aliases": sorted(e.aliases or ()), "area_id": e.area_id, "device_id": e.device_id,
+                "entity_id": e.entity_id,
+                "name": e.name,
+                "original_name": e.original_name,
+                "aliases": sorted(e.aliases or ()),
+                "area_id": e.area_id,
+                "device_id": e.device_id,
             }
             for e in entities
             if e.entity_id in exposed_ids
@@ -921,11 +1022,17 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.homeassistant.exposed_entities import (
-    async_get_assistant_settings, async_listen_entity_updates,
+    async_get_assistant_settings,
+    async_listen_entity_updates,
 )
 from homeassistant.const import EVENT_STATE_CHANGED  # noqa: F401  (not used: states are read live)
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
-from homeassistant.helpers import area_registry as ar, device_registry as dr, entity_registry as er, floor_registry as fr
+from homeassistant.helpers import (
+    area_registry as ar,
+    device_registry as dr,
+    entity_registry as er,
+    floor_registry as fr,
+)
 
 from hunch import HomeModel, Vocabulary, home_from_export
 
@@ -944,8 +1051,12 @@ class HomeModelBuilder:
     @callback
     def async_start(self) -> None:
         bus = self._hass.bus
-        for event in (ar.EVENT_AREA_REGISTRY_UPDATED, fr.EVENT_FLOOR_REGISTRY_UPDATED,
-                      er.EVENT_ENTITY_REGISTRY_UPDATED, dr.EVENT_DEVICE_REGISTRY_UPDATED):
+        for event in (
+            ar.EVENT_AREA_REGISTRY_UPDATED,
+            fr.EVENT_FLOOR_REGISTRY_UPDATED,
+            er.EVENT_ENTITY_REGISTRY_UPDATED,
+            dr.EVENT_DEVICE_REGISTRY_UPDATED,
+        ):
             self._unsubs.append(bus.async_listen(event, self._on_event))
         self._unsubs.append(async_listen_entity_updates(self._hass, ASSISTANT, self.invalidate))
 
@@ -996,7 +1107,12 @@ Remove the unused `EVENT_STATE_CHANGED` import. `async_get_assistant_settings` i
 ```python
 from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import area_registry as ar, device_registry as dr, entity_registry as er, floor_registry as fr
+from homeassistant.helpers import (
+    area_registry as ar,
+    device_registry as dr,
+    entity_registry as er,
+    floor_registry as fr,
+)
 from homeassistant.setup import async_setup_component
 
 from custom_components.hunch.home_model import HomeModelBuilder
@@ -1011,9 +1127,18 @@ async def _populate(hass: HomeAssistant):
     )
     dr.async_get(hass).async_update_device(dev.id, area_id=area.id, name_by_user="Kücheninsel")
     reg = er.async_get(hass)
-    e1 = reg.async_get_or_create("light", "test", "1", suggested_object_id="kuche_kucheninsel",
-                                 original_name="Kücheninsel", device_id=dev.id, config_entry=None)
-    e2 = reg.async_get_or_create("light", "test", "2", suggested_object_id="hidden", original_name="Hidden")
+    e1 = reg.async_get_or_create(
+        "light",
+        "test",
+        "1",
+        suggested_object_id="kuche_kucheninsel",
+        original_name="Kücheninsel",
+        device_id=dev.id,
+        config_entry=None,
+    )
+    e2 = reg.async_get_or_create(
+        "light", "test", "2", suggested_object_id="hidden", original_name="Hidden"
+    )
     hass.states.async_set(e1.entity_id, "off")
     hass.states.async_set(e2.entity_id, "on")
     return e1, e2
@@ -1102,13 +1227,19 @@ def test_turn_off_groups_everything_into_one_homeassistant_call():
 
 
 def test_params_are_converted():
-    assert plan_calls(Action(V.by_name("set_brightness"), (_e("light.a"),), {"brightness_pct": 35.0}))[0].data == {
-        "entity_id": ["light.a"], "brightness_pct": 35}
-    assert plan_calls(Action(V.by_name("set_position"), (_e("cover.a"),), {"position": 85.0}))[0] .data == {
-        "entity_id": ["cover.a"], "position": 85}
-    vol = plan_calls(Action(V.by_name("set_volume"), (_e("media_player.a"),), {"volume_level": 20.0}))[0]
+    assert plan_calls(
+        Action(V.by_name("set_brightness"), (_e("light.a"),), {"brightness_pct": 35.0})
+    )[0].data == {"entity_id": ["light.a"], "brightness_pct": 35}
+    assert plan_calls(Action(V.by_name("set_position"), (_e("cover.a"),), {"position": 85.0}))[
+        0
+    ].data == {"entity_id": ["cover.a"], "position": 85}
+    vol = plan_calls(
+        Action(V.by_name("set_volume"), (_e("media_player.a"),), {"volume_level": 20.0})
+    )[0]
     assert vol.service == "volume_set" and vol.data["volume_level"] == pytest.approx(0.2)
-    t = plan_calls(Action(V.by_name("set_temperature"), (_e("climate.a"),), {"temperature": 22.0}))[0]
+    t = plan_calls(Action(V.by_name("set_temperature"), (_e("climate.a"),), {"temperature": 22.0}))[
+        0
+    ]
     assert (t.domain, t.service, t.data["temperature"]) == ("climate", "set_temperature", 22.0)
 
 
@@ -1123,12 +1254,17 @@ def test_every_vocabulary_verb_has_a_mapping():
             assert plan_calls(Action(verb, (_e("sensor.x"),), {})) == []
             continue
         domain = sorted(verb.domains)[0]
-        calls = plan_calls(Action(verb, (_e(f"{domain}.x"),), {verb.param.name: 50.0} if verb.param else {}))
+        calls = plan_calls(
+            Action(verb, (_e(f"{domain}.x"),), {verb.param.name: 50.0} if verb.param else {})
+        )
         assert calls, verb.name
 
 
 def test_arm_means_arm_away_and_lock_uses_lock_services():
-    assert plan_calls(Action(V.by_name("arm"), (_e("alarm_control_panel.a"),), {}))[0].service == "alarm_arm_away"
+    assert (
+        plan_calls(Action(V.by_name("arm"), (_e("alarm_control_panel.a"),), {}))[0].service
+        == "alarm_arm_away"
+    )
     assert plan_calls(Action(V.by_name("unlock"), (_e("lock.a"),), {}))[0].service == "unlock"
 ```
 
@@ -1200,7 +1336,11 @@ def plan_calls(action: Action) -> list[ServiceCall]:
     domain, service, build = SERVICE_MAP[action.verb.name]
     extra = build(action.params)
     if domain is not None:
-        return [ServiceCall(domain, service, {"entity_id": [e.entity_id for e in action.targets], **extra})]
+        return [
+            ServiceCall(
+                domain, service, {"entity_id": [e.entity_id for e in action.targets], **extra}
+            )
+        ]
     groups: dict[str, list[str]] = defaultdict(list)
     for e in action.targets:
         groups[e.domain].append(e.entity_id)
@@ -1276,10 +1416,16 @@ class Executor:
         for e in entities:
             st = self._hass.states.get(e.entity_id)
             attrs = st.attributes if st is not None else {}
-            out.append(StateReading(
-                e.entity_id, e.name, e.area_id, st.state if st else None,
-                attrs.get("unit_of_measurement"), attrs.get("device_class"),
-            ))
+            out.append(
+                StateReading(
+                    e.entity_id,
+                    e.name,
+                    e.area_id,
+                    st.state if st else None,
+                    attrs.get("unit_of_measurement"),
+                    attrs.get("device_class"),
+                )
+            )
         return out
 ```
 
@@ -1294,14 +1440,25 @@ from hunch import DEFAULT_VOCABULARY as V, Action, Condition, Entity
 
 
 def _e(eid, name="x", area=None):
-    return Entity(entity_id=eid, domain=eid.split(".")[0], name=name, aliases=(), area_id=area,
-                  device_id=None, device_name=None, verbs=frozenset(), state=None)
+    return Entity(
+        entity_id=eid,
+        domain=eid.split(".")[0],
+        name=name,
+        aliases=(),
+        area_id=area,
+        device_id=None,
+        device_name=None,
+        verbs=frozenset(),
+        state=None,
+    )
 
 
 async def test_execute_calls_services_with_context_and_reports_per_target(hass: HomeAssistant):
     calls = async_mock_service(hass, "homeassistant", "turn_off")
     ctx = Context(user_id="u1")
-    res = await Executor(hass).execute([Action(V.by_name("turn_off"), (_e("light.a"), _e("switch.b")), {})], ctx)
+    res = await Executor(hass).execute(
+        [Action(V.by_name("turn_off"), (_e("light.a"), _e("switch.b")), {})], ctx
+    )
     assert len(calls) == 1 and calls[0].data["entity_id"] == ["light.a", "switch.b"]
     assert calls[0].context is ctx
     assert all(r.ok for r in res) and [r.entity_id for r in res] == ["light.a", "switch.b"]
@@ -1310,7 +1467,10 @@ async def test_execute_calls_services_with_context_and_reports_per_target(hass: 
 async def test_missing_service_marks_targets_failed_and_continues(hass: HomeAssistant):
     ok_calls = async_mock_service(hass, "cover", "close_cover")
     res = await Executor(hass).execute(
-        [Action(V.by_name("lock"), (_e("lock.front"),), {}), Action(V.by_name("close"), (_e("cover.a"),), {})],
+        [
+            Action(V.by_name("lock"), (_e("lock.front"),), {}),
+            Action(V.by_name("close"), (_e("cover.a"),), {}),
+        ],
         Context(),
     )
     assert [r.ok for r in res] == [False, True] and res[0].error == "ServiceNotFound"
@@ -1368,14 +1528,29 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 import pytest
 
 from custom_components.hunch.responder import (
-    OUTCOMES, describe_state, describe_targets, pending_context, render, resolve_language, verb_phrase,
+    OUTCOMES,
+    describe_state,
+    describe_targets,
+    pending_context,
+    render,
+    resolve_language,
+    verb_phrase,
 )
 from hunch import DEFAULT_VOCABULARY as V, Entity
 
 
 def _e(eid, name, area):
-    return Entity(entity_id=eid, domain=eid.split(".")[0], name=name, aliases=(), area_id=area,
-                  device_id=None, device_name=None, verbs=frozenset(), state=None)
+    return Entity(
+        entity_id=eid,
+        domain=eid.split(".")[0],
+        name=name,
+        aliases=(),
+        area_id=area,
+        device_id=None,
+        device_name=None,
+        verbs=frozenset(),
+        state=None,
+    )
 
 
 AREAS = {"kuche": "Küche", "wohnzimmer": "Wohnzimmer"}
@@ -1392,12 +1567,22 @@ def test_language_resolution():
 @pytest.mark.parametrize("language", ["en", "de"])
 def test_every_outcome_renders_in_both_languages(language):
     slots = {
-        "action_done": dict(phrase=verb_phrase("turn_off", language, done=True), targets="13 lights"),
+        "action_done": dict(
+            phrase=verb_phrase("turn_off", language, done=True), targets="13 lights"
+        ),
         "query_answer": dict(lines=["Temperatur (Wohnzimmer): 23.6 °C"]),
-        "confirm": dict(phrase=verb_phrase("turn_off", language, done=False), targets="26 lights", reason="blast_radius", condition=None),
+        "confirm": dict(
+            phrase=verb_phrase("turn_off", language, done=False),
+            targets="26 lights",
+            reason="blast_radius",
+            condition=None,
+        ),
         "clarify": dict(options=["Tür (Galerie)", "Tür (Schlafzimmer)"]),
-        "cancelled": {}, "condition_not_met": dict(subject="Dachterrassentür", expected="open"),
-        "expired": {}, "fallback_unavailable": {}, "execution_failed": dict(failed=["Spots (Küche)"]),
+        "cancelled": {},
+        "condition_not_met": dict(subject="Dachterrassentür", expected="open"),
+        "expired": {},
+        "fallback_unavailable": {},
+        "execution_failed": dict(failed=["Spots (Küche)"]),
     }
     for outcome in OUTCOMES:
         text = render(outcome, language, **slots[outcome])
@@ -1419,7 +1604,9 @@ def test_targets_short_and_long():
 
 
 def test_state_words():
-    from custom_components.hunch.executor import StateReading  # only the dataclass; the test env has HA? -> see note
+    from custom_components.hunch.executor import (
+        StateReading,
+    )  # only the dataclass; the test env has HA? -> see note
 ```
 
 Replace the last test with a version that does not import `executor.py` (which imports HA): define `StateReading` in `responder.py`'s expectations via a tiny protocol — `describe_state` takes anything with `.domain`-derivable `entity_id`, `.state`, `.unit`, `.device_class`. Test with `SimpleNamespace(entity_id="binary_sensor.d", state="on", unit=None, device_class="door")` → `"offen"` (de) / `"open"` (en); `SimpleNamespace(entity_id="sensor.t", state="23.6", unit="°C", device_class=None)` → `"23.6 °C"`; cover `closed` → `"geschlossen"`; unknown domain/state → the raw state.
@@ -1441,36 +1628,54 @@ from typing import Any
 from hunch import Entity
 
 OUTCOMES = (
-    "action_done", "query_answer", "confirm", "clarify", "cancelled", "condition_not_met",
-    "expired", "fallback_unavailable", "execution_failed",
+    "action_done",
+    "query_answer",
+    "confirm",
+    "clarify",
+    "cancelled",
+    "condition_not_met",
+    "expired",
+    "fallback_unavailable",
+    "execution_failed",
 )
 
 # verb -> (past participle / done form, infinitive / question form)
 VERB_PHRASES: dict[str, dict[str, tuple[str, str]]] = {
     "en": {
-        "turn_on": ("turned on", "turn on"), "turn_off": ("turned off", "turn off"),
+        "turn_on": ("turned on", "turn on"),
+        "turn_off": ("turned off", "turn off"),
         "set_brightness": ("set the brightness of", "set the brightness of"),
-        "open": ("opened", "open"), "close": ("closed", "close"),
+        "open": ("opened", "open"),
+        "close": ("closed", "close"),
         "set_position": ("set the position of", "set the position of"),
-        "lock": ("locked", "lock"), "unlock": ("unlocked", "unlock"),
+        "lock": ("locked", "lock"),
+        "unlock": ("unlocked", "unlock"),
         "set_temperature": ("set the temperature of", "set the temperature of"),
         "set_volume": ("set the volume of", "set the volume of"),
-        "media_play": ("resumed", "resume"), "media_pause": ("paused", "pause"),
-        "arm": ("armed (away)", "arm (away mode)"), "disarm": ("disarmed", "disarm"),
-        "activate": ("activated", "activate"), "query_state": ("read", "read"),
+        "media_play": ("resumed", "resume"),
+        "media_pause": ("paused", "pause"),
+        "arm": ("armed (away)", "arm (away mode)"),
+        "disarm": ("disarmed", "disarm"),
+        "activate": ("activated", "activate"),
+        "query_state": ("read", "read"),
     },
     "de": {
-        "turn_on": ("eingeschaltet", "einschalten"), "turn_off": ("ausgeschaltet", "ausschalten"),
+        "turn_on": ("eingeschaltet", "einschalten"),
+        "turn_off": ("ausgeschaltet", "ausschalten"),
         "set_brightness": ("Helligkeit gesetzt für", "Helligkeit setzen für"),
-        "open": ("geöffnet", "öffnen"), "close": ("geschlossen", "schließen"),
+        "open": ("geöffnet", "öffnen"),
+        "close": ("geschlossen", "schließen"),
         "set_position": ("Position gesetzt für", "Position setzen für"),
-        "lock": ("abgesperrt", "absperren"), "unlock": ("aufgesperrt", "aufsperren"),
+        "lock": ("abgesperrt", "absperren"),
+        "unlock": ("aufgesperrt", "aufsperren"),
         "set_temperature": ("Temperatur gesetzt für", "Temperatur setzen für"),
         "set_volume": ("Lautstärke gesetzt für", "Lautstärke setzen für"),
-        "media_play": ("fortgesetzt", "fortsetzen"), "media_pause": ("pausiert", "pausieren"),
+        "media_play": ("fortgesetzt", "fortsetzen"),
+        "media_pause": ("pausiert", "pausieren"),
         "arm": ("scharfgeschaltet (abwesend)", "scharfschalten (Modus abwesend)"),
         "disarm": ("unscharf geschaltet", "unscharf schalten"),
-        "activate": ("aktiviert", "aktivieren"), "query_state": ("abgelesen", "ablesen"),
+        "activate": ("aktiviert", "aktivieren"),
+        "query_state": ("abgelesen", "ablesen"),
     },
 }
 
@@ -1500,21 +1705,45 @@ TEMPLATES: dict[str, dict[str, str]] = {
 }
 
 REASONS = {
-    "en": {"blast_radius": "That is a lot at once.", "risk:confirm": "This needs a confirmation.",
-           "confidence": "I'm not completely sure that's what you meant.", "": ""},
-    "de": {"blast_radius": "Das ist viel auf einmal.", "risk:confirm": "Das braucht eine Bestätigung.",
-           "confidence": "Ich bin nicht ganz sicher, ob du das meinst.", "": ""},
+    "en": {
+        "blast_radius": "That is a lot at once.",
+        "risk:confirm": "This needs a confirmation.",
+        "confidence": "I'm not completely sure that's what you meant.",
+        "": "",
+    },
+    "de": {
+        "blast_radius": "Das ist viel auf einmal.",
+        "risk:confirm": "Das braucht eine Bestätigung.",
+        "confidence": "Ich bin nicht ganz sicher, ob du das meinst.",
+        "": "",
+    },
 }
 
 STATE_WORDS: dict[str, dict[tuple[str, str], str]] = {
-    "en": {("binary_sensor", "on"): "open / active", ("binary_sensor", "off"): "closed / clear",
-           ("cover", "open"): "open", ("cover", "closed"): "closed", ("lock", "locked"): "locked",
-           ("lock", "unlocked"): "unlocked", ("light", "on"): "on", ("light", "off"): "off",
-           ("switch", "on"): "on", ("switch", "off"): "off"},
-    "de": {("binary_sensor", "on"): "offen / aktiv", ("binary_sensor", "off"): "geschlossen / inaktiv",
-           ("cover", "open"): "offen", ("cover", "closed"): "geschlossen", ("lock", "locked"): "abgesperrt",
-           ("lock", "unlocked"): "aufgesperrt", ("light", "on"): "an", ("light", "off"): "aus",
-           ("switch", "on"): "an", ("switch", "off"): "aus"},
+    "en": {
+        ("binary_sensor", "on"): "open / active",
+        ("binary_sensor", "off"): "closed / clear",
+        ("cover", "open"): "open",
+        ("cover", "closed"): "closed",
+        ("lock", "locked"): "locked",
+        ("lock", "unlocked"): "unlocked",
+        ("light", "on"): "on",
+        ("light", "off"): "off",
+        ("switch", "on"): "on",
+        ("switch", "off"): "off",
+    },
+    "de": {
+        ("binary_sensor", "on"): "offen / aktiv",
+        ("binary_sensor", "off"): "geschlossen / inaktiv",
+        ("cover", "open"): "offen",
+        ("cover", "closed"): "geschlossen",
+        ("lock", "locked"): "abgesperrt",
+        ("lock", "unlocked"): "aufgesperrt",
+        ("light", "on"): "an",
+        ("light", "off"): "aus",
+        ("switch", "on"): "an",
+        ("switch", "off"): "aus",
+    },
 }
 DOOR_WORDS = {"en": {"on": "open", "off": "closed"}, "de": {"on": "offen", "off": "geschlossen"}}
 DOOR_CLASSES = {"door", "window", "garage_door", "opening"}
@@ -1533,10 +1762,13 @@ def verb_phrase(verb_name: str, language: str, *, done: bool) -> str:
     return pair[0] if done else pair[1]
 
 
-def describe_targets(targets: Sequence[Entity], area_names: Mapping[str, str], language: str) -> str:
+def describe_targets(
+    targets: Sequence[Entity], area_names: Mapping[str, str], language: str
+) -> str:
     if len(targets) <= 3:
         return ", ".join(
-            f"{e.name} ({area_names[e.area_id]})" if e.area_id in area_names else e.name for e in targets
+            f"{e.name} ({area_names[e.area_id]})" if e.area_id in area_names else e.name
+            for e in targets
         )
     places = sorted({area_names[e.area_id] for e in targets if e.area_id in area_names})
     return MANY.get(language, MANY["en"]).format(n=len(targets), places=", ".join(places) or "—")
@@ -1545,7 +1777,11 @@ def describe_targets(targets: Sequence[Entity], area_names: Mapping[str, str], l
 def describe_state(reading: Any, language: str) -> str:
     domain = reading.entity_id.split(".", 1)[0]
     state = reading.state if reading.state is not None else "?"
-    if domain == "binary_sensor" and reading.device_class in DOOR_CLASSES and state in DOOR_WORDS["en"]:
+    if (
+        domain == "binary_sensor"
+        and reading.device_class in DOOR_CLASSES
+        and state in DOOR_WORDS["en"]
+    ):
         return DOOR_WORDS.get(language, DOOR_WORDS["en"])[state]
     words = STATE_WORDS.get(language, STATE_WORDS["en"])
     if (domain, state) in words:
@@ -1568,8 +1804,10 @@ def render(outcome: str, language: str, **slots: Any) -> str:
     if outcome == "confirm":
         cond = slots.get("condition")
         return tpl.format(
-            phrase=slots["phrase"], targets=slots["targets"],
-            condition=cond or "", why=REASONS[lang].get(slots.get("reason", ""), ""),
+            phrase=slots["phrase"],
+            targets=slots["targets"],
+            condition=cond or "",
+            why=REASONS[lang].get(slots.get("reason", ""), ""),
         ).strip()
     return tpl.format(**slots)
 
@@ -1581,7 +1819,7 @@ def condition_clause(subject: str, state: str, language: str) -> str:
 def pending_context(question: str, description: str) -> str:
     return (
         "Context from the Hunch assistant: it proposed to " + description + " and asked the user: "
-        f"\"{question}\". The user did not simply confirm or decline; their reply follows. "
+        f'"{question}". The user did not simply confirm or decline; their reply follows. '
         "Handle the reply as a modification or a new request about that proposal."
     )
 ```
@@ -1676,7 +1914,9 @@ class PendingClarify:
 
 
 class PendingStore:
-    def __init__(self, ttl_seconds: float = 120.0, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self, ttl_seconds: float = 120.0, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         self._ttl = ttl_seconds
         self._clock = clock
         self._turns: dict[str, PendingConfirm | PendingClarify] = {}
@@ -1708,7 +1948,8 @@ class PendingStore:
 - Consumes: `HunchRuntime` (Task 2), `HomeModelBuilder.build()` (Task 4), `Executor` (Task 5), `responder.*` (Task 6), `PendingStore/PendingConfirm/PendingClarify` (Task 7), engine results incl. `NeedsClarification.verb/params` (Task 1).
 - Produces: `HunchConversationEntity._async_handle_message` implementing spec §7. Reply-judgment questions:
   ```python
-  CONFIRM_QID = "reply_confirm"; CLARIFY_QID = "reply_pick"
+  CONFIRM_QID = "reply_confirm"
+  CLARIFY_QID = "reply_pick"
   ```
 
 - [ ] **Step 1: Failing tests**
@@ -1741,10 +1982,20 @@ async def _home(hass: HomeAssistant):
     for domain, uid, obj, name, area, state, attrs in (
         ("light", "1", "kuche_spots", "Spots", kuche.id, "on", {}),
         ("light", "2", "kuche_kucheninsel", "Kücheninsel", kuche.id, "off", {}),
-        ("binary_sensor", "3", "kuche_fenster", "Fenster", kuche.id, "off", {"device_class": "window"}),
+        (
+            "binary_sensor",
+            "3",
+            "kuche_fenster",
+            "Fenster",
+            kuche.id,
+            "off",
+            {"device_class": "window"},
+        ),
         ("binary_sensor", "4", "galerie_tur", "Tür", galerie.id, "on", {"device_class": "door"}),
     ):
-        e = reg.async_get_or_create(domain, "test", uid, suggested_object_id=obj, original_name=name)
+        e = reg.async_get_or_create(
+            domain, "test", uid, suggested_object_id=obj, original_name=name
+        )
         reg.async_update_entity(e.entity_id, area_id=area)
         hass.states.async_set(e.entity_id, state, attrs)
         async_expose_entity(hass, "conversation", e.entity_id, True)
@@ -1759,8 +2010,11 @@ async def _say(hass, text, conversation_id=None, language="de"):
 
 
 R1_TURN_OFF_KITCHEN = {
-    "verb:turn_off": NoulA(0.95), "domain:light": NoulA(0.95), "area:kuche": NoulA(0.99),
-    "flag:collective": NoulA(0.9), "verb_primary": ChoiceA("turn_off", 0.95, {}),
+    "verb:turn_off": NoulA(0.95),
+    "domain:light": NoulA(0.95),
+    "area:kuche": NoulA(0.99),
+    "flag:collective": NoulA(0.9),
+    "verb_primary": ChoiceA("turn_off", 0.95, {}),
     "area_primary": ChoiceA("Küche", 0.99, {}),
 }
 
@@ -1778,14 +2032,22 @@ async def test_resolved_executes_and_answers_in_german(hass: HomeAssistant, setu
     assert result.continue_conversation is False
 
 
-async def test_escalation_passes_the_unchanged_text_to_the_fallback(hass: HomeAssistant, setup_hunch):
+async def test_escalation_passes_the_unchanged_text_to_the_fallback(
+    hass: HomeAssistant, setup_hunch
+):
     await _home(hass)
-    client, calls = scripted({"flag:has_timing": NoulA(0.95), "verb:turn_off": NoulA(0.9), "domain:light": NoulA(0.9)})
+    client, calls = scripted(
+        {"flag:has_timing": NoulA(0.95), "verb:turn_off": NoulA(0.9), "domain:light": NoulA(0.9)}
+    )
     await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
-    fake = AsyncMock(return_value=conversation.ConversationResult(
-        response=__import__("homeassistant.helpers.intent", fromlist=["x"]).IntentResponse(language="de"),
-        conversation_id="c9",
-    ))
+    fake = AsyncMock(
+        return_value=conversation.ConversationResult(
+            response=__import__("homeassistant.helpers.intent", fromlist=["x"]).IntentResponse(
+                language="de"
+            ),
+            conversation_id="c9",
+        )
+    )
     with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
         result = await _say(hass, "Licht in 10 Minuten aus", conversation_id="c9")
     assert fake.await_count == 1
@@ -1795,7 +2057,9 @@ async def test_escalation_passes_the_unchanged_text_to_the_fallback(hass: HomeAs
     assert result.conversation_id == "c9"
 
 
-async def test_confirmation_yes_executes_no_cancels_other_escalates_with_context(hass: HomeAssistant, setup_hunch):
+async def test_confirmation_yes_executes_no_cancels_other_escalates_with_context(
+    hass: HomeAssistant, setup_hunch
+):
     ids = await _home(hass)
     # 2 lights but max_silent_targets=1 -> blast radius confirmation
     for reply, expect_calls, expect_escalate in (
@@ -1807,7 +2071,9 @@ async def test_confirmation_yes_executes_no_cancels_other_escalates_with_context
         entry, _ = await setup_hunch(client, calls, options={"max_silent_targets": 1})
         svc = async_mock_service(hass, "homeassistant", "turn_off")
         first = await _say(hass, "Licht in der Küche aus", conversation_id="c1")
-        assert first.continue_conversation is True and "?" in first.response.speech["plain"]["speech"]
+        assert (
+            first.continue_conversation is True and "?" in first.response.speech["plain"]["speech"]
+        )
         fake = AsyncMock(return_value=first)
         with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
             second = await _say(hass, "hm, eigentlich nur die Spots", conversation_id="c1")
@@ -1825,25 +2091,40 @@ async def test_confirmation_yes_executes_no_cancels_other_escalates_with_context
 async def test_clarification_pick_executes_that_device(hass: HomeAssistant, setup_hunch):
     ids = await _home(hass)
     r1 = {
-        "verb:turn_on": NoulA(0.95), "domain:light": NoulA(0.95), "area:kuche": NoulA(0.99),
-        "flag:names_specific": NoulA(0.9), "verb_primary": ChoiceA("turn_on", 0.95, {}),
+        "verb:turn_on": NoulA(0.95),
+        "domain:light": NoulA(0.95),
+        "area:kuche": NoulA(0.99),
+        "flag:names_specific": NoulA(0.9),
+        "verb_primary": ChoiceA("turn_on", 0.95, {}),
         "area_primary": ChoiceA("Küche", 0.99, {}),
     }
-    r2 = {"target:turn_on": ChoiceA("Spots", 0.45, {"Spots": 0.45, "Kücheninsel": 0.4}), "all_of:turn_on": NoulA(0.1)}
+    r2 = {
+        "target:turn_on": ChoiceA("Spots", 0.45, {"Spots": 0.45, "Kücheninsel": 0.4}),
+        "all_of:turn_on": NoulA(0.1),
+    }
     client, calls = scripted(r1, r2, reply={"reply_pick": ChoiceA("Kücheninsel (Küche)", 0.9, {})})
     await setup_hunch(client, calls)
     svc = async_mock_service(hass, "homeassistant", "turn_on")
     first = await _say(hass, "Lampe in der Küche an", conversation_id="c2")
-    assert first.continue_conversation is True and "Kücheninsel (Küche)" in first.response.speech["plain"]["speech"]
+    assert (
+        first.continue_conversation is True
+        and "Kücheninsel (Küche)" in first.response.speech["plain"]["speech"]
+    )
     await _say(hass, "die Insel", conversation_id="c2")
     assert len(svc) == 1 and svc[0].data["entity_id"] == ["light.kuche_kucheninsel"]
 
 
 async def test_condition_not_met_executes_nothing(hass: HomeAssistant, setup_hunch):
     await _home(hass)
-    r1 = {**R1_TURN_OFF_KITCHEN, "flag:has_condition": NoulA(0.95),
-          "condition_domain": ChoiceA("binary_sensor", 0.95, {})}
-    r2 = {"cond_subject": ChoiceA("Fenster (Küche)", 0.95, {}), "cond_state": ChoiceA("on", 0.9, {})}
+    r1 = {
+        **R1_TURN_OFF_KITCHEN,
+        "flag:has_condition": NoulA(0.95),
+        "condition_domain": ChoiceA("binary_sensor", 0.95, {}),
+    }
+    r2 = {
+        "cond_subject": ChoiceA("Fenster (Küche)", 0.95, {}),
+        "cond_state": ChoiceA("on", 0.9, {}),
+    }
     client, calls = scripted(r1, r2)
     await setup_hunch(client, calls)
     svc = async_mock_service(hass, "homeassistant", "turn_off")
@@ -1854,9 +2135,14 @@ async def test_condition_not_met_executes_nothing(hass: HomeAssistant, setup_hun
 
 async def test_query_answers_with_state_words(hass: HomeAssistant, setup_hunch):
     await _home(hass)
-    r1 = {"verb:query_state": NoulA(0.95), "domain:binary_sensor": NoulA(0.95), "area:galerie": NoulA(0.99),
-          "flag:names_specific": NoulA(0.9), "verb_primary": ChoiceA("query_state", 0.95, {}),
-          "area_primary": ChoiceA("Galerie", 0.99, {})}
+    r1 = {
+        "verb:query_state": NoulA(0.95),
+        "domain:binary_sensor": NoulA(0.95),
+        "area:galerie": NoulA(0.99),
+        "flag:names_specific": NoulA(0.9),
+        "verb_primary": ChoiceA("query_state", 0.95, {}),
+        "area_primary": ChoiceA("Galerie", 0.99, {}),
+    }
     r2 = {"target:query_state": ChoiceA("Tür", 0.95, {})}
     client, calls = scripted(r1, r2)
     await setup_hunch(client, calls)
@@ -1897,8 +2183,16 @@ from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from hunch import (
-    Action, Condition, DecisionBackendError, Entity, Escalate, HomeModel, NeedsClarification,
-    NeedsConfirmation, Resolved, Trace,
+    Action,
+    Condition,
+    DecisionBackendError,
+    Entity,
+    Escalate,
+    HomeModel,
+    NeedsClarification,
+    NeedsConfirmation,
+    Resolved,
+    Trace,
 )
 from hunch.questions import ChoiceQ
 from hunch.round2 import NO_MATCH
@@ -1908,7 +2202,12 @@ from . import HunchConfigEntry
 from .executor import Executor
 from .pending import PendingClarify, PendingConfirm
 from .responder import (
-    condition_clause, describe_state, describe_targets, pending_context, render, resolve_language,
+    condition_clause,
+    describe_state,
+    describe_targets,
+    pending_context,
+    render,
+    resolve_language,
     verb_phrase,
 )
 
@@ -1960,57 +2259,111 @@ class HunchConversationEntity(conversation.ConversationEntity):
     def _label(self, e: Entity, areas: Mapping[str, str]) -> str:
         return f"{e.name} ({areas[e.area_id]})" if e.area_id in areas else e.name
 
-    def _result(self, user_input, chat_log, text: str, trace: Trace | None, outcome: str,
-                *, cont: bool = False, error: bool = False) -> conversation.ConversationResult:
+    def _result(
+        self,
+        user_input,
+        chat_log,
+        text: str,
+        trace: Trace | None,
+        outcome: str,
+        *,
+        cont: bool = False,
+        error: bool = False,
+    ) -> conversation.ConversationResult:
         if trace is not None:
             payload = trace.to_dict()
             chat_log.async_add_assistant_content_without_tools(
                 conversation.AssistantContent(agent_id=self.entity_id, content=text, native=payload)
             )
-            self._rt.traces.append({"prompt": user_input.text, "outcome": outcome, "trace": payload})
+            self._rt.traces.append(
+                {"prompt": user_input.text, "outcome": outcome, "trace": payload}
+            )
         return conversation.ConversationResult(
             response=_speech(user_input.language, text, error=error),
             conversation_id=chat_log.conversation_id,
             continue_conversation=cont,
         )
 
-    async def _escalate(self, user_input, chat_log, trace: Trace | None, outcome: str,
-                        extra_system_prompt: str | None = None) -> conversation.ConversationResult:
+    async def _escalate(
+        self,
+        user_input,
+        chat_log,
+        trace: Trace | None,
+        outcome: str,
+        extra_system_prompt: str | None = None,
+    ) -> conversation.ConversationResult:
         agent_id = self._rt.fallback_agent_id
         if trace is not None:
-            self._rt.traces.append({"prompt": user_input.text, "outcome": outcome, "trace": trace.to_dict()})
+            self._rt.traces.append(
+                {"prompt": user_input.text, "outcome": outcome, "trace": trace.to_dict()}
+            )
         if agent_id == self.entity_id:
-            return self._result(user_input, chat_log, render("fallback_unavailable", self._lang(user_input)), None, outcome, error=True)
+            return self._result(
+                user_input,
+                chat_log,
+                render("fallback_unavailable", self._lang(user_input)),
+                None,
+                outcome,
+                error=True,
+            )
         try:
             return await conversation.async_converse(
-                self.hass, user_input.text, chat_log.conversation_id, user_input.context,
-                language=user_input.language, agent_id=agent_id,
-                device_id=user_input.device_id, satellite_id=user_input.satellite_id,
+                self.hass,
+                user_input.text,
+                chat_log.conversation_id,
+                user_input.context,
+                language=user_input.language,
+                agent_id=agent_id,
+                device_id=user_input.device_id,
+                satellite_id=user_input.satellite_id,
                 extra_system_prompt=extra_system_prompt,
             )
         except (ValueError, HomeAssistantError) as err:
             _LOGGER.warning("Fallback agent %s failed: %s", agent_id, err)
-            return self._result(user_input, chat_log, render("fallback_unavailable", self._lang(user_input)), None, outcome, error=True)
+            return self._result(
+                user_input,
+                chat_log,
+                render("fallback_unavailable", self._lang(user_input)),
+                None,
+                outcome,
+                error=True,
+            )
 
-    def _describe_actions(self, actions: tuple[Action, ...], areas: Mapping[str, str], lang: str, *, done: bool) -> str:
+    def _describe_actions(
+        self, actions: tuple[Action, ...], areas: Mapping[str, str], lang: str, *, done: bool
+    ) -> str:
         parts = []
         for a in actions:
             phrase = verb_phrase(a.verb.name, lang, done=done)
             targets = describe_targets(a.targets, areas, lang)
-            param = " ".join(f"{v:g}" if isinstance(v, float) else str(v) for v in a.params.values())
+            param = " ".join(
+                f"{v:g}" if isinstance(v, float) else str(v) for v in a.params.values()
+            )
             parts.append(f"{phrase} {targets}" + (f" → {param}" if param else ""))
         return "; ".join(parts)
 
     # ---- executing -----------------------------------------------------------------------
 
-    async def _run(self, user_input, chat_log, home: HomeModel, actions: tuple[Action, ...],
-                   condition: Condition | None, trace: Trace | None, outcome: str) -> conversation.ConversationResult:
+    async def _run(
+        self,
+        user_input,
+        chat_log,
+        home: HomeModel,
+        actions: tuple[Action, ...],
+        condition: Condition | None,
+        trace: Trace | None,
+        outcome: str,
+    ) -> conversation.ConversationResult:
         lang = self._lang(user_input)
         areas = self._area_names(home)
         ex = Executor(self.hass)
         if condition is not None and ex.condition_holds(condition) is not True:
-            text = render("condition_not_met", lang, subject=self._label(condition.subject, areas),
-                          expected=condition.expected_state)
+            text = render(
+                "condition_not_met",
+                lang,
+                subject=self._label(condition.subject, areas),
+                expected=condition.expected_state,
+            )
             return self._result(user_input, chat_log, text, trace, outcome)
         if all(a.verb.is_query for a in actions):
             lines = []
@@ -2019,15 +2372,25 @@ class HunchConversationEntity(conversation.ConversationEntity):
                     room = areas.get(r.area_id or "", None)
                     label = f"{r.name} ({room})" if room else r.name
                     lines.append(f"{label}: {describe_state(r, lang)}")
-            return self._result(user_input, chat_log, render("query_answer", lang, lines=lines), trace, outcome)
+            return self._result(
+                user_input, chat_log, render("query_answer", lang, lines=lines), trace, outcome
+            )
         results = await ex.execute(actions, user_input.context)
         failed = [r.entity_id for r in results if not r.ok]
         if failed:
             by_id = {e.entity_id: e for a in actions for e in a.targets}
-            text = render("execution_failed", lang, failed=[self._label(by_id[i], areas) for i in failed if i in by_id])
+            text = render(
+                "execution_failed",
+                lang,
+                failed=[self._label(by_id[i], areas) for i in failed if i in by_id],
+            )
         else:
-            text = render("action_done", lang, phrase=verb_phrase(actions[0].verb.name, lang, done=True),
-                          targets=describe_targets(tuple(e for a in actions for e in a.targets), areas, lang))
+            text = render(
+                "action_done",
+                lang,
+                phrase=verb_phrase(actions[0].verb.name, lang, done=True),
+                targets=describe_targets(tuple(e for a in actions for e in a.targets), areas, lang),
+            )
         return self._result(user_input, chat_log, text, trace, outcome)
 
     # ---- the turn ------------------------------------------------------------------------
@@ -2046,81 +2409,180 @@ class HunchConversationEntity(conversation.ConversationEntity):
         areas = self._area_names(home)
 
         if isinstance(result, Resolved):
-            return await self._run(user_input, chat_log, home, result.actions, result.condition, result.trace, "Resolved")
+            return await self._run(
+                user_input,
+                chat_log,
+                home,
+                result.actions,
+                result.condition,
+                result.trace,
+                "Resolved",
+            )
 
         if isinstance(result, NeedsConfirmation):
             cond = ""
             if result.condition is not None:
-                cond = condition_clause(self._label(result.condition.subject, areas), result.condition.expected_state, lang)
+                cond = condition_clause(
+                    self._label(result.condition.subject, areas),
+                    result.condition.expected_state,
+                    lang,
+                )
             first = result.actions[0]
-            question = render("confirm", lang, phrase=verb_phrase(first.verb.name, lang, done=False),
-                              targets=describe_targets(tuple(e for a in result.actions for e in a.targets), areas, lang),
-                              reason=result.reason, condition=cond)
-            rt.pending.put(chat_log.conversation_id, PendingConfirm(result.actions, result.condition, question, rt.pending.now()))
-            return self._result(user_input, chat_log, question, result.trace, "NeedsConfirmation", cont=True)
+            question = render(
+                "confirm",
+                lang,
+                phrase=verb_phrase(first.verb.name, lang, done=False),
+                targets=describe_targets(
+                    tuple(e for a in result.actions for e in a.targets), areas, lang
+                ),
+                reason=result.reason,
+                condition=cond,
+            )
+            rt.pending.put(
+                chat_log.conversation_id,
+                PendingConfirm(result.actions, result.condition, question, rt.pending.now()),
+            )
+            return self._result(
+                user_input, chat_log, question, result.trace, "NeedsConfirmation", cont=True
+            )
 
         if isinstance(result, NeedsClarification):
             if result.verb is None or not result.candidates:
-                return await self._escalate(user_input, chat_log, result.trace, "NeedsClarification")
-            candidates = result.candidates[: rt.engine._config.clarify_max_candidates] if hasattr(rt.engine, "_config") else result.candidates[:5]
+                return await self._escalate(
+                    user_input, chat_log, result.trace, "NeedsClarification"
+                )
+            candidates = (
+                result.candidates[: rt.engine._config.clarify_max_candidates]
+                if hasattr(rt.engine, "_config")
+                else result.candidates[:5]
+            )
             labels = []
             for e in candidates:
                 label = self._label(e, areas)
                 labels.append(label if label not in labels else f"{label} [{e.entity_id}]")
             question = render("clarify", lang, options=labels)
-            rt.pending.put(chat_log.conversation_id, PendingClarify(result.verb, dict(result.params), tuple(candidates), tuple(labels), question, rt.pending.now()))
-            return self._result(user_input, chat_log, question, result.trace, "NeedsClarification", cont=True)
+            rt.pending.put(
+                chat_log.conversation_id,
+                PendingClarify(
+                    result.verb,
+                    dict(result.params),
+                    tuple(candidates),
+                    tuple(labels),
+                    question,
+                    rt.pending.now(),
+                ),
+            )
+            return self._result(
+                user_input, chat_log, question, result.trace, "NeedsClarification", cont=True
+            )
 
         assert isinstance(result, Escalate)
         return await self._escalate(user_input, chat_log, result.trace, f"Escalate:{result.reason}")
 
-    async def _handle_reply(self, user_input, chat_log, home: HomeModel, pending: PendingConfirm | PendingClarify):
+    async def _handle_reply(
+        self, user_input, chat_log, home: HomeModel, pending: PendingConfirm | PendingClarify
+    ):
         rt = self._rt
         lang = self._lang(user_input)
         areas = self._area_names(home)
         state = {"question": pending.question, "reply": user_input.text}
         try:
             if isinstance(pending, PendingConfirm):
-                answers = await rt.client.ask(state, {CONFIRM_QID: ChoiceQ(
-                    "The assistant asked the user `question` and the user replied `reply`. Does the "
-                    "reply agree to go ahead, decline, or say something else (a change, a different "
-                    "request, a question)?",
-                    ("affirmative", "negative", "other"),
-                    {"affirmative": "yes, go ahead, do it, ja, mach, passt",
-                     "negative": "no, stop, don't, cancel, nein, lass",
-                     "other": "anything that is not a plain yes or no: a modification, a new request, a question"},
-                )})
+                answers = await rt.client.ask(
+                    state,
+                    {
+                        CONFIRM_QID: ChoiceQ(
+                            "The assistant asked the user `question` and the user replied `reply`. Does the "
+                            "reply agree to go ahead, decline, or say something else (a change, a different "
+                            "request, a question)?",
+                            ("affirmative", "negative", "other"),
+                            {
+                                "affirmative": "yes, go ahead, do it, ja, mach, passt",
+                                "negative": "no, stop, don't, cancel, nein, lass",
+                                "other": "anything that is not a plain yes or no: a modification, a new request, a question",
+                            },
+                        )
+                    },
+                )
                 c = answers.choice(CONFIRM_QID)
                 if c.choice == "affirmative" and c.confidence >= REPLY_CONF:
-                    return await self._run(user_input, chat_log, home, pending.actions, pending.condition, None, "Confirmed")
+                    return await self._run(
+                        user_input,
+                        chat_log,
+                        home,
+                        pending.actions,
+                        pending.condition,
+                        None,
+                        "Confirmed",
+                    )
                 if c.choice == "negative" and c.confidence >= REPLY_CONF:
-                    return self._result(user_input, chat_log, render("cancelled", lang), None, "Cancelled")
+                    return self._result(
+                        user_input, chat_log, render("cancelled", lang), None, "Cancelled"
+                    )
                 desc = self._describe_actions(pending.actions, areas, "en", done=False)
-                return await self._escalate(user_input, chat_log, None, "ConfirmOther", pending_context(pending.question, desc))
+                return await self._escalate(
+                    user_input,
+                    chat_log,
+                    None,
+                    "ConfirmOther",
+                    pending_context(pending.question, desc),
+                )
 
-            answers = await rt.client.ask(state, {CLARIFY_QID: ChoiceQ(
-                "The assistant asked `question`, listing options. Which option does the user's `reply` pick?",
-                pending.labels + (NO_MATCH,),
-            )})
+            answers = await rt.client.ask(
+                state,
+                {
+                    CLARIFY_QID: ChoiceQ(
+                        "The assistant asked `question`, listing options. Which option does the user's `reply` pick?",
+                        pending.labels + (NO_MATCH,),
+                    )
+                },
+            )
             c = answers.choice(CLARIFY_QID)
             if c.choice != NO_MATCH and c.confidence >= REPLY_CONF and c.choice in pending.labels:
                 target = pending.candidates[pending.labels.index(c.choice)]
                 if pending.verb.param is not None and not pending.params:
                     desc = f"{verb_phrase(pending.verb.name, 'en', done=False)} {self._label(target, areas)}"
-                    return await self._escalate(user_input, chat_log, None, "ClarifyNeedsParam", pending_context(pending.question, desc))
+                    return await self._escalate(
+                        user_input,
+                        chat_log,
+                        None,
+                        "ClarifyNeedsParam",
+                        pending_context(pending.question, desc),
+                    )
                 action = Action(pending.verb, (target,), pending.params)
                 if pending.verb.risk is Risk.CONFIRM:
-                    question = render("confirm", lang, phrase=verb_phrase(pending.verb.name, lang, done=False),
-                                      targets=self._label(target, areas), reason="risk:confirm", condition=None)
-                    rt.pending.put(chat_log.conversation_id, PendingConfirm((action,), None, question, rt.pending.now()))
-                    return self._result(user_input, chat_log, question, None, "NeedsConfirmation", cont=True)
-                return await self._run(user_input, chat_log, home, (action,), None, None, "Clarified")
+                    question = render(
+                        "confirm",
+                        lang,
+                        phrase=verb_phrase(pending.verb.name, lang, done=False),
+                        targets=self._label(target, areas),
+                        reason="risk:confirm",
+                        condition=None,
+                    )
+                    rt.pending.put(
+                        chat_log.conversation_id,
+                        PendingConfirm((action,), None, question, rt.pending.now()),
+                    )
+                    return self._result(
+                        user_input, chat_log, question, None, "NeedsConfirmation", cont=True
+                    )
+                return await self._run(
+                    user_input, chat_log, home, (action,), None, None, "Clarified"
+                )
             desc = f"{verb_phrase(pending.verb.name, 'en', done=False)} one of: {', '.join(pending.labels)}"
-            return await self._escalate(user_input, chat_log, None, "ClarifyOther", pending_context(pending.question, desc))
+            return await self._escalate(
+                user_input, chat_log, None, "ClarifyOther", pending_context(pending.question, desc)
+            )
         except (DecisionBackendError, KeyError, TypeError) as err:
             _LOGGER.warning("Reply judgment failed: %s", err)
             desc = pending.question
-            return await self._escalate(user_input, chat_log, None, "ReplyJudgmentFailed", pending_context(pending.question, desc))
+            return await self._escalate(
+                user_input,
+                chat_log,
+                None,
+                "ReplyJudgmentFailed",
+                pending_context(pending.question, desc),
+            )
 ```
 
 Notes for the implementer:
@@ -2161,22 +2623,43 @@ from homeassistant.data_entry_flow import FlowResultType
 from tests.integration.conftest import scripted
 
 
-async def test_options_reload_the_engine_and_reject_self_as_fallback(hass: HomeAssistant, setup_hunch):
+async def test_options_reload_the_engine_and_reject_self_as_fallback(
+    hass: HomeAssistant, setup_hunch
+):
     client, calls = scripted({})
     entry, _ = await setup_hunch(client, calls)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.FORM
     bad = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"fallback_agent": "conversation.hunch", "model": "jev-1.13.0", "response_language": "de",
-                            "timeout_ms": 1500, "max_silent_targets": 5, "device_round": True, "max_rounds": 2,
-                            "threshold_auto_execute": 0.8}
+        result["flow_id"],
+        {
+            "fallback_agent": "conversation.hunch",
+            "model": "jev-1.13.0",
+            "response_language": "de",
+            "timeout_ms": 1500,
+            "max_silent_targets": 5,
+            "device_round": True,
+            "max_rounds": 2,
+            "threshold_auto_execute": 0.8,
+        },
     )
-    assert bad["type"] is FlowResultType.FORM and bad["errors"] == {"fallback_agent": "cannot_select_self"}
+    assert bad["type"] is FlowResultType.FORM and bad["errors"] == {
+        "fallback_agent": "cannot_select_self"
+    }
     from unittest.mock import patch
+
     with patch("custom_components.hunch.build_client", return_value=client):
         ok = await hass.config_entries.options.async_configure(
-            bad["flow_id"], {"model": "jev-1.13.0", "response_language": "de", "timeout_ms": 1500,
-                             "max_silent_targets": 5, "device_round": True, "max_rounds": 2, "threshold_auto_execute": 0.8}
+            bad["flow_id"],
+            {
+                "model": "jev-1.13.0",
+                "response_language": "de",
+                "timeout_ms": 1500,
+                "max_silent_targets": 5,
+                "device_round": True,
+                "max_rounds": 2,
+                "threshold_auto_execute": 0.8,
+            },
         )
         await hass.async_block_till_done()
     assert ok["type"] is FlowResultType.CREATE_ENTRY
@@ -2186,6 +2669,7 @@ async def test_options_reload_the_engine_and_reject_self_as_fallback(hass: HomeA
     assert entry.options["max_rounds"] == 2 and entry.options["device_round"] is True
     # build_engine_config forces max_rounds to 3 with device_round on
     from custom_components.hunch import build_engine_config
+
     assert build_engine_config(entry.options).max_rounds == 3
     assert build_engine_config(entry.options).thresholds.auto_execute == 0.8
 ```
@@ -2198,13 +2682,28 @@ In `config_flow.py`, replace `HunchOptionsFlow`:
 
 ```python
 from homeassistant.helpers.selector import (
-    BooleanSelector, ConversationAgentSelector, NumberSelector, NumberSelectorConfig, NumberSelectorMode,
-    SelectSelector, SelectSelectorConfig, SelectSelectorMode, TextSelector,
+    BooleanSelector,
+    ConversationAgentSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
 )
 from hunch import Thresholds
 from .const import (
-    DEFAULT_RESPONSE_LANGUAGE, DEFAULT_TIMEOUT_MS, OPT_DEVICE_ROUND, OPT_FALLBACK_AGENT, OPT_MAX_ROUNDS,
-    OPT_MAX_SILENT_TARGETS, OPT_MODEL, OPT_RESPONSE_LANGUAGE, OPT_TIMEOUT_MS, THRESHOLD_FIELDS,
+    DEFAULT_RESPONSE_LANGUAGE,
+    DEFAULT_TIMEOUT_MS,
+    OPT_DEVICE_ROUND,
+    OPT_FALLBACK_AGENT,
+    OPT_MAX_ROUNDS,
+    OPT_MAX_SILENT_TARGETS,
+    OPT_MODEL,
+    OPT_RESPONSE_LANGUAGE,
+    OPT_TIMEOUT_MS,
+    THRESHOLD_FIELDS,
 )
 
 
@@ -2214,12 +2713,22 @@ def _options_schema() -> vol.Schema:
         vol.Optional(OPT_FALLBACK_AGENT): ConversationAgentSelector(),
         vol.Optional(OPT_MODEL, default=DEFAULT_MODEL): TextSelector(),
         vol.Optional(OPT_RESPONSE_LANGUAGE, default=DEFAULT_RESPONSE_LANGUAGE): SelectSelector(
-            SelectSelectorConfig(options=["auto", "en", "de"], mode=SelectSelectorMode.DROPDOWN, translation_key="response_language")
+            SelectSelectorConfig(
+                options=["auto", "en", "de"],
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key="response_language",
+            )
         ),
-        vol.Optional(OPT_TIMEOUT_MS, default=DEFAULT_TIMEOUT_MS): NumberSelector(NumberSelectorConfig(min=300, max=10000, step=100, mode=NumberSelectorMode.BOX)),
-        vol.Optional(OPT_MAX_SILENT_TARGETS, default=20): NumberSelector(NumberSelectorConfig(min=1, max=200, step=1, mode=NumberSelectorMode.BOX)),
+        vol.Optional(OPT_TIMEOUT_MS, default=DEFAULT_TIMEOUT_MS): NumberSelector(
+            NumberSelectorConfig(min=300, max=10000, step=100, mode=NumberSelectorMode.BOX)
+        ),
+        vol.Optional(OPT_MAX_SILENT_TARGETS, default=20): NumberSelector(
+            NumberSelectorConfig(min=1, max=200, step=1, mode=NumberSelectorMode.BOX)
+        ),
         vol.Optional(OPT_DEVICE_ROUND, default=False): BooleanSelector(),
-        vol.Optional(OPT_MAX_ROUNDS, default=2): NumberSelector(NumberSelectorConfig(min=2, max=4, step=1, mode=NumberSelectorMode.BOX)),
+        vol.Optional(OPT_MAX_ROUNDS, default=2): NumberSelector(
+            NumberSelectorConfig(min=2, max=4, step=1, mode=NumberSelectorMode.BOX)
+        ),
     }
     for name in THRESHOLD_FIELDS:
         fields[vol.Optional(f"threshold_{name}", default=getattr(defaults, name))] = NumberSelector(
@@ -2240,11 +2749,14 @@ class HunchOptionsFlow(OptionsFlowWithReload):
                     if key in user_input:
                         user_input[key] = int(user_input[key])
                 return self.async_create_entry(data=user_input)
-        schema = self.add_suggested_values_to_schema(_options_schema(), user_input or self.config_entry.options)
+        schema = self.add_suggested_values_to_schema(
+            _options_schema(), user_input or self.config_entry.options
+        )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
 
     def _own_entity_id(self) -> str | None:
         from homeassistant.helpers import entity_registry as er
+
         reg = er.async_get(self.hass)
         return reg.async_get_entity_id("conversation", DOMAIN, self.config_entry.entry_id)
 ```
@@ -2252,8 +2764,12 @@ class HunchOptionsFlow(OptionsFlowWithReload):
 Update `build_engine_config` in `__init__.py` to read `threshold_<name>` keys:
 
 ```python
-    raw = {name: options[f"threshold_{name}"] for name in THRESHOLD_FIELDS if f"threshold_{name}" in options}
-    th = dataclasses.replace(Thresholds(), **{k: float(v) for k, v in raw.items()})
+raw = {
+    name: options[f"threshold_{name}"]
+    for name in THRESHOLD_FIELDS
+    if f"threshold_{name}" in options
+}
+th = dataclasses.replace(Thresholds(), **{k: float(v) for k, v in raw.items()})
 ```
 
 and remove `OPT_THRESHOLDS` from `const.py`. Also add `clarify_max_candidates` to the runtime if Task 8 needed it.
@@ -2284,7 +2800,9 @@ from tests.integration.conftest import scripted
 async def test_diagnostics_have_counts_and_traces_but_no_key(hass: HomeAssistant, setup_hunch):
     client, calls = scripted({})
     entry, _ = await setup_hunch(client, calls)
-    entry.runtime_data.traces.append({"prompt": "x", "outcome": "Escalate:no_intent", "trace": {"entries": []}})
+    entry.runtime_data.traces.append(
+        {"prompt": "x", "outcome": "Escalate:no_intent", "trace": {"entries": []}}
+    )
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert "test-key" not in str(diag)
     assert diag["home"].keys() == {"floors", "areas", "entities", "scenes"}
@@ -2305,12 +2823,19 @@ from homeassistant.core import HomeAssistant
 from . import HunchConfigEntry
 
 
-async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: HunchConfigEntry) -> dict[str, Any]:
+async def async_get_config_entry_diagnostics(
+    hass: HomeAssistant, entry: HunchConfigEntry
+) -> dict[str, Any]:
     rt = entry.runtime_data
     home = rt.builder.build()
     return {
         "options": dict(entry.options),
-        "home": {"floors": len(home.floors), "areas": len(home.areas), "entities": len(home.entities), "scenes": len(home.scenes)},
+        "home": {
+            "floors": len(home.floors),
+            "areas": len(home.areas),
+            "entities": len(home.entities),
+            "scenes": len(home.scenes),
+        },
         "traces": list(rt.traces),
     }
 ```

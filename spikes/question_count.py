@@ -26,7 +26,9 @@ def entity_name(i: int) -> str:
 def build_questions(n: int) -> dict[str, Noul]:
     return {
         f"exclude:{i}": Noul(
-            instructions=f"Should the device named '{entity_name(i)}' be excluded from this request?"
+            instructions=(
+                f"Should the device named '{entity_name(i)}' be excluded from this request?"
+            )
         )
         for i in range(n)
     }
@@ -122,9 +124,9 @@ async def probe_scoped(client: AsyncTypeSafeClient, n: int) -> None:
     dt = (time.perf_counter() - t0) * 1000
     tokens = resp.usage.input_tokens
     hallway_p = resp.answers["exception:0"].noul  # candidates[0] is always "Hallway light"
-    others_p = sum(
-        resp.answers[f"exception:{i}"].noul for i in range(1, len(candidates))
-    ) / max(len(candidates) - 1, 1)
+    others_p = sum(resp.answers[f"exception:{i}"].noul for i in range(1, len(candidates))) / max(
+        len(candidates) - 1, 1
+    )
     print(
         f"[scoped] n={n:4d}  {dt:7.0f} ms  tokens={tokens}  model={resp.model}  "
         f"p(exception|Hallway light)={hallway_p:.2f}  mean p(exception|other)={others_p:.2f}"
