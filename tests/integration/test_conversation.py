@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from homeassistant.components import conversation
 from homeassistant.components.homeassistant.exposed_entities import async_expose_entity
 from homeassistant.core import Context, HomeAssistant
@@ -402,11 +403,11 @@ async def test_trace_is_attached_to_the_chat_log(hass: HomeAssistant, setup_hunc
     assert "entries" in assistant[0].native
 
 
-def _clarification(home, candidates, verb_name="turn_on"):
+def _clarification(home, candidates, verb_name="turn_on", question_key="which_device"):
     """A NeedsClarification the engine itself would not produce, to reach step 5's edges."""
     by_id = {e.entity_id: e for e in home.entities}
     return NeedsClarification(
-        "which_device",
+        question_key,
         tuple(by_id[i] for i in candidates),
         Trace(),
         DEFAULT_VOCABULARY.by_name(verb_name) if verb_name else None,
@@ -414,23 +415,100 @@ def _clarification(home, candidates, verb_name="turn_on"):
     )
 
 
-async def test_clarification_caps_the_candidates_and_disambiguates_labels(
-    hass: HomeAssistant, setup_hunch
-):
-    ids = await _home(hass)
-    client, calls = scripted(R1_TURN_ON_ONE, reply={"reply_pick": ChoiceA(NO_MATCH, 0.9, {})})
-    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
-    rt = entry.runtime_data
-    rt.clarify_max_candidates = 2
-    home = rt.builder.build()
-    # the same entity three times: capped to two, and the duplicate label gets its entity id
-    result = _clarification(home, [ids[0], ids[0], ids[0]])
+async def _clarify_from(hass, rt, result, conversation_id):
     with patch.object(rt.engine, "decide", AsyncMock(return_value=result)):
-        first = await _say(hass, "Lampe in der Küche an", conversation_id="c11")
+        return await _say(hass, "Lampe in der Küche an", conversation_id=conversation_id)
+
+
+async def test_clarification_disambiguates_duplicate_labels(hass: HomeAssistant, setup_hunch):
+    ids = await _home(hass)
+    client, calls = scripted(R1_TURN_ON_ONE)
+    entry, _ = await setup_hunch(client, calls)
+    rt = entry.runtime_data
+    # the same entity twice: the duplicate label gets its entity id appended
+    result = _clarification(rt.builder.build(), [ids[0], ids[0]])
+    first = await _clarify_from(hass, rt, result, "c11")
     assert first.continue_conversation is True
     pending = rt.pending.take("c11")
     assert pending.labels == ("Spots (Küche)", f"Spots (Küche) [{ids[0]}]")
     assert f"Spots (Küche) [{ids[0]}]" in _speech(first)
+
+
+async def test_more_candidates_than_the_cap_escalates_instead_of_truncating(
+    hass: HomeAssistant, setup_hunch
+):
+    ids = await _home(hass)
+    client, calls = scripted(R1_TURN_ON_ONE)
+    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    rt = entry.runtime_data
+    rt.clarify_max_candidates = 1
+    result = _clarification(rt.builder.build(), [ids[0], ids[1]])
+    fake = AsyncMock(return_value=_fallback_result("c14"))
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _clarify_from(hass, rt, result, "c14")
+    assert fake.await_count == 1
+    assert fake.await_args.kwargs.get("extra_system_prompt") is None
+    assert rt.pending.take("c14") is None
+
+
+async def test_which_area_clarification_escalates(hass: HomeAssistant, setup_hunch):
+    ids = await _home(hass)
+    client, calls = scripted(R1_TURN_ON_ONE)
+    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    rt = entry.runtime_data
+    result = _clarification(rt.builder.build(), [ids[0]], question_key="which_area")
+    fake = AsyncMock(return_value=_fallback_result("c15"))
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _clarify_from(hass, rt, result, "c15")
+    assert fake.await_count == 1
+    assert fake.await_args.kwargs.get("extra_system_prompt") is None
+    assert rt.pending.take("c15") is None
+    assert [t["outcome"] for t in rt.traces] == ["NeedsClarification"]
+
+
+async def test_a_picked_target_whose_verb_still_needs_a_value_escalates(
+    hass: HomeAssistant, setup_hunch
+):
+    ids = await _home(hass)
+    client, calls = scripted(
+        R1_TURN_ON_ONE, reply={"reply_pick": ChoiceA("Spots (Küche)", 0.9, {})}
+    )
+    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    rt = entry.runtime_data
+    svc = async_mock_service(hass, "light", "turn_on")
+    # the engine builds scope-time clarifications with params={}, so a param verb lands here
+    result = _clarification(rt.builder.build(), [ids[0]], verb_name="set_brightness")
+    await _clarify_from(hass, rt, result, "c16")
+    fake = AsyncMock(return_value=_fallback_result("c16"))
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _say(hass, "die Spots", conversation_id="c16")
+    assert len(svc) == 0
+    assert fake.await_count == 1
+    prompt = fake.await_args.kwargs["extra_system_prompt"]
+    assert "Spots (Küche)" in prompt and "brightness" in prompt
+
+
+async def test_a_failure_after_the_judgment_is_not_mistaken_for_a_judgment_failure(
+    hass: HomeAssistant, setup_hunch
+):
+    """Only the Jev call is guarded; a later KeyError must not re-offer the proposal."""
+    await _home(hass)
+    client, calls = scripted(
+        R1_TURN_OFF_KITCHEN, reply={"reply_confirm": ChoiceA("affirmative", 0.95, {})}
+    )
+    await setup_hunch(client, calls, options={"max_silent_targets": 1})
+    async_mock_service(hass, "homeassistant", "turn_off")
+    await _say(hass, "Licht in der Küche aus", conversation_id="c17")
+    fake = AsyncMock(return_value=_fallback_result("c17"))
+    with (
+        patch(
+            "custom_components.hunch.conversation.verb_phrase", side_effect=KeyError("no phrase")
+        ),
+        patch("custom_components.hunch.conversation.conversation.async_converse", fake),
+        pytest.raises(KeyError),
+    ):
+        await _say(hass, "ja", conversation_id="c17")
+    assert fake.await_count == 0
 
 
 async def test_clarification_without_a_verb_escalates(hass: HomeAssistant, setup_hunch):

@@ -67,6 +67,22 @@ def test_every_outcome_renders_in_both_languages(language):
 
 
 @pytest.mark.parametrize("language", ["en", "de"])
+def test_every_reason_the_resolver_emits_renders_a_why_clause(language):
+    # hunch.resolver emits exactly these four; a missing one silently drops the "why".
+    for reason in ("blast_radius", "risk:confirm", "confidence", "collective_fallback"):
+        text = render(
+            "confirm",
+            language,
+            phrase=verb_phrase("turn_off", language, done=False),
+            targets="26 lights",
+            reason=reason,
+            condition=None,
+        )
+        assert text and "{" not in text, (reason, text)
+        assert text.count("?") == 1 and not text.endswith("?"), (reason, text)
+
+
+@pytest.mark.parametrize("language", ["en", "de"])
 def test_confirm_tolerates_missing_condition_and_unknown_reason(language):
     text = render(
         "confirm",

@@ -25,7 +25,7 @@ from hunch import (
     Risk,
     Trace,
 )
-from hunch.questions import ChoiceQ
+from hunch.questions import ChoiceA, ChoiceQ
 from hunch.round2 import NO_MATCH
 
 from . import HunchConfigEntry, HunchRuntime
@@ -287,7 +287,14 @@ class HunchConversationEntity(conversation.ConversationEntity):
             return self._result(turn, question, result.trace, "NeedsConfirmation", cont=True)
 
         if isinstance(result, NeedsClarification):  # step 5
-            if result.verb is None or not result.candidates:
+            if (
+                result.verb is None
+                or not result.candidates
+                # "which area?" is the wrong question to read out, and a set larger than the
+                # cap cannot be asked about without hiding the right answer (§7.5).
+                or result.question_key == "which_area"
+                or len(result.candidates) > rt.clarify_max_candidates
+            ):
                 return await self._escalate(turn, result.trace, "NeedsClarification")
             candidates = tuple(result.candidates[: rt.clarify_max_candidates])
             labels = self._labels(candidates, areas)
@@ -332,22 +339,46 @@ class HunchConversationEntity(conversation.ConversationEntity):
 
     # ---- step 6: the reply to a pending question --------------------------------------
 
+    async def _judge(self, state: dict, question_id: str, question: ChoiceQ) -> ChoiceA | None:
+        """The one Jev call of a reply turn, and the only thing a reply turn guards.
+
+        Everything the answer then leads to — service calls, the hand-off — must fail on its
+        own terms: swallowing a later KeyError/TypeError here would hand the fallback a
+        proposal it might execute a second time.
+        """
+        try:
+            answers = await self._rt.client.ask(state, {question_id: question})
+            return answers.choice(question_id)
+        except (DecisionBackendError, KeyError, TypeError) as err:
+            _LOGGER.warning("Reply judgment failed: %s", err)
+            return None
+
     async def _handle_reply(
         self, turn: _Turn, home: HomeModel, pending: PendingConfirm | PendingClarify
     ) -> conversation.ConversationResult:
         state = {"question": pending.question, "reply": turn.user_input.text}
-        try:
-            if isinstance(pending, PendingConfirm):
-                return await self._handle_confirm_reply(turn, home, pending, state)
-            return await self._handle_clarify_reply(turn, home, pending, state)
-        except (DecisionBackendError, KeyError, TypeError) as err:
-            _LOGGER.warning("Reply judgment failed: %s", err)
+        confirming = isinstance(pending, PendingConfirm)
+        if confirming:
+            question_id = CONFIRM_QID
+            question = ChoiceQ(
+                CONFIRM_INSTRUCTIONS,
+                ("affirmative", "negative", "other"),
+                CONFIRM_DESCRIPTIONS,
+            )
+        else:
+            question_id = CLARIFY_QID
+            question = ChoiceQ(CLARIFY_INSTRUCTIONS, (*pending.labels, NO_MATCH))
+        answer = await self._judge(state, question_id, question)
+        if answer is None:
             return await self._escalate(
                 turn,
                 None,
                 "ReplyJudgmentFailed",
                 pending_context(pending.question, self._pending_description(home, pending)),
             )
+        if confirming:
+            return await self._handle_confirm_reply(turn, home, pending, answer)
+        return await self._handle_clarify_reply(turn, home, pending, answer)
 
     def _pending_description(
         self, home: HomeModel, pending: PendingConfirm | PendingClarify
@@ -359,19 +390,8 @@ class HunchConversationEntity(conversation.ConversationEntity):
         return f"{phrase} one of: {', '.join(pending.labels)}"
 
     async def _handle_confirm_reply(
-        self, turn: _Turn, home: HomeModel, pending: PendingConfirm, state: dict
+        self, turn: _Turn, home: HomeModel, pending: PendingConfirm, answer: ChoiceA
     ) -> conversation.ConversationResult:
-        answers = await self._rt.client.ask(
-            state,
-            {
-                CONFIRM_QID: ChoiceQ(
-                    CONFIRM_INSTRUCTIONS,
-                    ("affirmative", "negative", "other"),
-                    CONFIRM_DESCRIPTIONS,
-                )
-            },
-        )
-        answer = answers.choice(CONFIRM_QID)
         if answer.confidence >= REPLY_CONF and answer.choice == "affirmative":
             # Exactly the stored actions; the reply text is never re-parsed into actions.
             return await self._run(
@@ -387,13 +407,9 @@ class HunchConversationEntity(conversation.ConversationEntity):
         )
 
     async def _handle_clarify_reply(
-        self, turn: _Turn, home: HomeModel, pending: PendingClarify, state: dict
+        self, turn: _Turn, home: HomeModel, pending: PendingClarify, answer: ChoiceA
     ) -> conversation.ConversationResult:
         areas = self._area_names(home)
-        answers = await self._rt.client.ask(
-            state, {CLARIFY_QID: ChoiceQ(CLARIFY_INSTRUCTIONS, (*pending.labels, NO_MATCH))}
-        )
-        answer = answers.choice(CLARIFY_QID)
         if answer.confidence >= REPLY_CONF and answer.choice in pending.labels:
             target = pending.candidates[pending.labels.index(answer.choice)]
             if pending.verb.param is not None and not pending.params:

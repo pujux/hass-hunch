@@ -91,11 +91,13 @@ REASONS = {
         "blast_radius": " That is a lot at once.",
         "risk:confirm": " This needs a confirmation.",
         "confidence": " I'm not completely sure that's what you meant.",
+        "collective_fallback": " I'm not sure you meant all of them.",
     },
     "de": {
         "blast_radius": " Das ist viel auf einmal.",
         "risk:confirm": " Das braucht eine Bestätigung.",
         "confidence": " Ich bin nicht ganz sicher, ob du das meinst.",
+        "collective_fallback": " Ich bin nicht sicher, ob du alle meinst.",
     },
 }
 
