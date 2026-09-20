@@ -12,7 +12,7 @@ from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
 from hunch.round1 import Shape
 from hunch.scope import device_label, verbatim_matches
-from hunch.vocabulary import ChoiceSpec, ScoreSpec
+from hunch.vocabulary import ScoreSpec
 
 # Sentinel option appended to every Round 2 Choice so the model can say nothing fits,
 # rather than being forced to pick among options that all miss.
@@ -114,8 +114,8 @@ class Round2Plan:
     condition_candidates: tuple[Entity, ...] = ()
     # verbs whose collective sweep was narrowed by a verbatim device name in the prompt
     name_matched: tuple[str, ...] = ()
-    # verb -> {param: value} read verbatim from the prompt (an explicit number beats a rubric)
-    explicit: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    # verb -> the numeric literals found in the prompt; Jev is asked which one (if any) is the value
+    numeric: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     # singular verbs where a no-match may sweep the named area/floor
     scoped_sweep_ok: tuple[str, ...] = ()
     # singular verbs with no area and no name: a no-match may sweep the domain, with confirmation
@@ -139,23 +139,26 @@ class Round2Plan:
         return tuple(seen.values())
 
 
-_PERCENT = re.compile(r"(?<![\d.,])(\d{1,3})\s*(?:%|prozent\b|percent\b)", re.I)
-_DEGREES = re.compile(r"(?<![\d.,])(\d{1,2}(?:[.,]\d)?)\s*(?:°|grad\b|degrees?\b|celsius\b)", re.I)
+_NUMBER = re.compile(
+    r"(?<![\w.,])(\d{1,3}(?:[.,]\d+)?\s*(?:%|°\s*c?|grad\b|prozent\b|percent\b|degrees?\b|celsius\b)?)",
+    re.I,
+)
 
 
-def extract_explicit(spec: ScoreSpec, prompt: str) -> float | None:
-    """Code calculates: an explicit number with a unit in the prompt beats a rubric judgement.
-    Exactly one match is required; several numbers are ambiguous and fall back to the Score."""
-    if spec.kind == "percent":
-        hits = _PERCENT.findall(prompt)
-        return min(100.0, float(hits[0])) if len(hits) == 1 else None
-    if spec.kind == "fraction":
-        hits = _PERCENT.findall(prompt)
-        return min(1.0, float(hits[0]) / 100.0) if len(hits) == 1 else None
-    if spec.kind == "degrees":
-        hits = _DEGREES.findall(prompt)
-        return float(hits[0].replace(",", ".")) if len(hits) == 1 else None
-    return None
+def numeric_literals(prompt: str) -> tuple[str, ...]:
+    """Code looks up: every number in the prompt, with its unit if it has one, verbatim. Whether
+    one of them is the value to set — and how it is meant — is Jev's judgement, not ours."""
+    seen: list[str] = []
+    for m in _NUMBER.finditer(prompt):
+        lit = re.sub(r"\s+", " ", m.group(1).strip())
+        if lit and lit not in seen:
+            seen.append(lit)
+    return tuple(seen)
+
+
+def parse_number(literal: str) -> float | None:
+    m = re.match(r"\d{1,3}(?:[.,]\d+)?", literal)
+    return float(m.group(0).replace(",", ".")) if m else None
 
 
 def _verbatim_named(cands: tuple[Entity, ...], prompt: str) -> Entity | None:
@@ -187,7 +190,8 @@ def plan_round2(
     coll: dict[str, tuple[Entity, ...]] = {}
     params: list[str] = []
     name_matched: list[str] = []
-    explicit: dict[str, dict[str, float]] = {}
+    numeric: dict[str, tuple[str, ...]] = {}
+    literals = numeric_literals(prompt)
     scoped_sweep_ok: list[str] = []
     domain_sweep_ok: list[str] = []
     ambiguous_by_area: list[str] = []
@@ -197,13 +201,9 @@ def plan_round2(
         if not cands:
             continue
         if verb.param is not None:
-            value = (
-                extract_explicit(verb.param, prompt) if isinstance(verb.param, ScoreSpec) else None
-            )
-            if value is not None:
-                explicit[verb.name] = {verb.param.name: value}
-            else:
-                params.append(verb.name)
+            params.append(verb.name)
+            if literals and isinstance(verb.param, ScoreSpec):
+                numeric[verb.name] = literals
         if collective and not has_exception:
             named = _verbatim_named(cands, prompt)
             if named is not None:
@@ -256,7 +256,7 @@ def plan_round2(
         tuple(params),
         cond,
         tuple(name_matched),
-        explicit,
+        numeric,
         tuple(scoped_sweep_ok),
         tuple(domain_sweep_ok),
         target_options(cond, area_names) if cond else (),
@@ -300,6 +300,16 @@ def build_round2_questions(
     for verb_name in plan.params:
         verb = next(v for v in shape.fired_verbs if v.name == verb_name)
         spec = verb.param
+        if verb_name in plan.numeric and isinstance(spec, ScoreSpec):
+            label = pb.param_label(spec.name)
+            qs[f"param_value:{verb_name}"] = ChoiceQ(
+                pb.param_value_question.format(param=label),
+                plan.numeric[verb_name] + (NO_MATCH,),
+                {NO_MATCH: pb.param_value_descriptions.get(NO_MATCH, "")} or None,
+            )
+            qs[f"param_relative:{verb_name}"] = NoulQ(pb.param_relative_question)
+            if spec.name == "position":
+                qs[f"param_inverted:{verb_name}"] = NoulQ(pb.param_inverted_question)
         if isinstance(spec, ScoreSpec):
             qs[f"param:{verb_name}"] = ScoreQ(
                 pb.param_question.format(param=pb.param_label(spec.name)),

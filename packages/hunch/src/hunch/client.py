@@ -66,7 +66,8 @@ def to_sdk_question(q: Question) -> Noul | Choice | Score:
     if isinstance(q, NoulQ):
         return Noul(instructions=q.instructions)
     if isinstance(q, ChoiceQ):
-        return Choice(instructions=q.instructions, criteria={o: None for o in q.options})
+        desc = q.descriptions or {}
+        return Choice(instructions=q.instructions, criteria={o: desc.get(o) for o in q.options})
     if isinstance(q, ScoreQ):
         return Score(instructions=q.instructions, criteria=list(q.levels))
     raise TypeError(type(q))

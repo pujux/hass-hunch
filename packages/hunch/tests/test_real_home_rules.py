@@ -3,11 +3,11 @@
 from hunch.client import FakeDecisionClient
 from hunch.config import EngineConfig
 from hunch.engine import Engine
-from hunch.questions import Answers, ChoiceA, ChoiceQ, NoulA, ScoreQ
+from hunch.questions import Answers, ChoiceA, ChoiceQ, NoulA, ScoreA, ScoreQ
 from hunch.resolution import Escalate, NeedsClarification, Resolved, Trace
 from hunch.resolver import resolve
 from hunch.round1 import FLAGS, Shape
-from hunch.round2 import NO_MATCH, build_round2_questions, extract_explicit, plan_round2
+from hunch.round2 import NO_MATCH, build_round2_questions, numeric_literals, plan_round2
 from hunch.vocabulary import DEFAULT_VOCABULARY as V
 
 
@@ -31,25 +31,18 @@ def _ents(home, *ids):
     return tuple(home.entity_by_id(i) for i in ids)
 
 
-# ---- A: explicit numbers are read by code ----------------------------------------------------
+# ---- A: numbers — code lists them, Jev picks and interprets, code computes ----------------
 
 
-def test_extract_explicit_percent_degrees_fraction():
-    pos = V.by_name("set_position").param
-    assert extract_explicit(pos, "Badezimmer Rollos auf 15%") == 15.0
-    assert extract_explicit(pos, "Rollos auf 40 Prozent") == 40.0
-    assert extract_explicit(pos, "Rollos halb runter") is None
-    assert extract_explicit(pos, "Rollos auf 15% und dann 30%") is None  # ambiguous
-    temp = V.by_name("set_temperature").param
-    assert extract_explicit(temp, "Stell die Klimaanlage auf 22 Grad") == 22.0
-    assert extract_explicit(temp, "set it to 21.5°") == 21.5
-    assert extract_explicit(temp, "make it warmer") is None
-    vol = V.by_name("set_volume").param
-    assert extract_explicit(vol, "volume to 30%") == 0.3
+def test_numeric_literals_are_listed_verbatim():
+    assert numeric_literals("Badezimmer Rollos auf 15%") == ("15%",)
+    assert numeric_literals("Stell die Klimaanlage auf 22,5 Grad") == ("22,5 Grad",)
+    assert numeric_literals("Rollos auf 15% und Licht auf 50 Prozent") == ("15%", "50 Prozent")
+    assert numeric_literals("Rollos halb runter") == ()
 
 
-def test_explicit_value_skips_the_score_question_and_lands_in_params(home, thresholds):
-    shape, vp = _shape(["set_position"], {"collective": 0.9}, {"set_position": 0.98})
+def test_numbers_present_ask_jev_which_and_how(home, thresholds):
+    shape, _ = _shape(["set_position"], {"collective": 0.9}, {"set_position": 0.98})
     plan = plan_round2(
         home,
         shape,
@@ -58,10 +51,132 @@ def test_explicit_value_skips_the_score_question_and_lands_in_params(home, thres
         60,
         prompt="Badezimmer Rollos auf 15%",
     )
-    assert plan.explicit == {"set_position": {"position": 15.0}} and plan.params == ()
-    assert "param:set_position" not in build_round2_questions(shape, plan, home)
-    r = resolve(shape, plan, None, EngineConfig(model="m"), _trace(vp))
+    assert plan.numeric == {"set_position": ("15%",)}
+    qs = build_round2_questions(shape, plan, home)
+    assert qs["param_value:set_position"].options == ("15%", NO_MATCH)
+    assert "param_relative:set_position" in qs and "param_inverted:set_position" in qs
+    assert qs["param_value:set_position"].descriptions[NO_MATCH]
+    assert "param:set_position" in qs  # the rubric is still asked, as the fallback
+
+
+def test_jev_picked_absolute_value_is_computed_by_code(home, config):
+    shape, vp = _shape(["set_position"], {"collective": 0.9}, {"set_position": 0.98})
+    plan = plan_round2(
+        home,
+        shape,
+        {"set_position": _ents(home, "cover.living_blinds")},
+        config.thresholds,
+        60,
+        prompt="Badezimmer Rollos auf 15%",
+    )
+    r2 = Answers(
+        "m",
+        {
+            "param_value:set_position": ChoiceA("15%", 0.95, {"15%": 0.95}),
+            "param_relative:set_position": NoulA(0.1),
+            "param_inverted:set_position": NoulA(0.05),
+            "param:set_position": ScoreA(0.6, 0.5, {}),
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
     assert isinstance(r, Resolved) and r.actions[0].params == {"position": 15.0}
+    assert abs(r.confidence - 0.9) < 1e-9
+
+
+def test_inverted_mode_flips_a_cover_position(home, config):
+    shape, vp = _shape(["set_position"], {"collective": 0.9}, {"set_position": 0.98})
+    plan = plan_round2(
+        home,
+        shape,
+        {"set_position": _ents(home, "cover.living_blinds")},
+        config.thresholds,
+        60,
+        prompt="Rollos 15% zu",
+    )
+    r2 = Answers(
+        "m",
+        {
+            "param_value:set_position": ChoiceA("15%", 0.9, {}),
+            "param_relative:set_position": NoulA(0.1),
+            "param_inverted:set_position": NoulA(0.85),
+            "param:set_position": ScoreA(1.0, 0.5, {}),
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
+    assert isinstance(r, Resolved) and r.actions[0].params == {"position": 85.0}
+
+
+def test_relative_change_escalates(home, config):
+    shape, vp = _shape(["set_temperature"], {"collective": 0.9}, {"set_temperature": 0.98})
+    plan = plan_round2(
+        home,
+        shape,
+        {"set_temperature": _ents(home, "climate.bedroom")},
+        config.thresholds,
+        60,
+        prompt="Mach die Heizung um 2 Grad wärmer",
+    )
+    r2 = Answers(
+        "m",
+        {
+            "param_value:set_temperature": ChoiceA("2 Grad", 0.9, {}),
+            "param_relative:set_temperature": NoulA(0.9),
+            "param:set_temperature": ScoreA(3.5, 0.6, {}),
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
+    assert isinstance(r, Escalate) and r.reason == "relative_change"
+
+
+def test_number_that_is_not_the_value_falls_back_to_the_rubric(home, config):
+    shape, vp = _shape(["set_temperature"], {"collective": 0.9}, {"set_temperature": 0.98})
+    plan = plan_round2(
+        home,
+        shape,
+        {"set_temperature": _ents(home, "climate.bedroom")},
+        config.thresholds,
+        60,
+        prompt="Stell die Klimaanlage wärmer, draußen sind 5 Grad",
+    )
+    r2 = Answers(
+        "m",
+        {
+            "param_value:set_temperature": ChoiceA(NO_MATCH, 0.9, {}),
+            "param_relative:set_temperature": NoulA(0.1),
+            "param:set_temperature": ScoreA(3.0, 0.8, {}),  # "warm (22°C)" level
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
+    assert isinstance(r, Resolved) and r.actions[0].params == {"temperature": 22.0}
+    assert "param:number_rejected:set_temperature" in r.trace.notes
+
+
+def test_implausible_value_falls_back_to_the_rubric(home, config):
+    shape, vp = _shape(["set_temperature"], {"collective": 0.9}, {"set_temperature": 0.98})
+    plan = plan_round2(
+        home,
+        shape,
+        {"set_temperature": _ents(home, "climate.bedroom")},
+        config.thresholds,
+        60,
+        prompt="Klimaanlage auf 55 Grad",
+    )
+    r2 = Answers(
+        "m",
+        {
+            "param_value:set_temperature": ChoiceA("55 Grad", 0.9, {}),
+            "param_relative:set_temperature": NoulA(0.1),
+            "param:set_temperature": ScoreA(4.0, 0.7, {}),
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
+    assert r.actions[0].params == {"temperature": 24.0}
+    assert "param:out_of_bounds:set_temperature" in r.trace.notes
 
 
 # ---- B: a weak pick with real alternatives asks instead of escalating ------------------------

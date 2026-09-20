@@ -224,7 +224,7 @@ class Engine:
                 return Escalate("round_budget", (), trace)
             round2 = await self._client.ask(build_round2_state(prompt, plan, home), questions)
             rounds += 1
-        return resolve(shape, plan, round2, self._config, trace)
+        return resolve(shape, plan, round2, self._config, trace, self._pb)
 
     async def _device_round(
         self, home: HomeModel, prompt: str, entities: tuple[Entity, ...], trace: Trace

@@ -79,3 +79,16 @@
 - prompt: Licht im Untergeschoss aus ausser Wohnzimmer Stehlampe
   # the excepted lamp is not exposed, so the exception cannot be honoured -> must NOT silently sweep
   expect: {kinds: [clarify, escalate, confirm]}
+
+# ---- numbers: code lists them, Jev decides what they mean (2026-09-20) ----
+- prompt: Rollos im Schlafzimmer 15% zu
+  # "zu" = closed: 15% closed is position 85
+  expect: {kind: resolved, verb: set_position, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo], params: {position: [80, 90]}}
+- prompt: Mach die Klimaanlage um 2 Grad wärmer
+  # relative change: the engine does not know the current setpoint
+  expect: {kind: escalate, reason: relative_change}
+- prompt: Fernseher im Wohnzimmer um 20% leiser
+  expect: {kind: escalate, reason: relative_change}
+- prompt: Stell die Klimaanlage wärmer, draußen sind 5 Grad
+  # the 5 is the weather, not the setpoint: rubric decides, never 5°C
+  expect: {kinds: [resolved, confirm, clarify], verb: set_temperature, params: {temperature: [16, 26]}}

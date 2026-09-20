@@ -18,6 +18,9 @@ class NoulQ:
 class ChoiceQ:
     instructions: str
     options: tuple[str, ...]
+    descriptions: Mapping[str, str] | None = (
+        None  # option -> what it means; sent as Choice criteria
+    )
 
 
 @dataclass(frozen=True)

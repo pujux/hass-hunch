@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hunch.config import EngineConfig
 from hunch.model import Entity
+from hunch.phrasing import EN, Phrasebook
 from hunch.questions import Answers
 from hunch.resolution import (
     Action,
@@ -16,7 +17,7 @@ from hunch.resolution import (
     Trace,
 )
 from hunch.round1 import Shape
-from hunch.round2 import NO_MATCH, Round2Plan
+from hunch.round2 import NO_MATCH, Round2Plan, parse_number
 from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec
 
 
@@ -38,6 +39,21 @@ def _scope_strength(shape: Shape, trace: Trace) -> float:
     return best
 
 
+_BOUNDS = {"percent": (0.0, 100.0), "fraction": (0.0, 100.0), "degrees": (5.0, 35.0)}
+
+
+def _numeric_value(spec: ScoreSpec, number: float, *, inverted: bool) -> float | None:
+    """Code calculates: apply the mode Jev chose and the plausibility bounds of the unit."""
+    lo, hi = _BOUNDS.get(spec.kind, (float("-inf"), float("inf")))
+    if not lo <= number <= hi:
+        return None
+    if spec.kind == "fraction":
+        number = number / 100.0
+    if inverted and spec.kind == "percent":
+        number = 100.0 - number
+    return number
+
+
 def _verb_prob(trace: Trace, verb_name: str) -> float:
     for d in reversed(trace.decisions):
         if d.name == f"verb:{verb_name}":
@@ -49,7 +65,12 @@ def _verb_prob(trace: Trace, verb_name: str) -> float:
 
 
 def resolve(
-    shape: Shape, plan: Round2Plan, round2: Answers | None, config: EngineConfig, trace: Trace
+    shape: Shape,
+    plan: Round2Plan,
+    round2: Answers | None,
+    config: EngineConfig,
+    trace: Trace,
+    pb: Phrasebook = EN,
 ) -> Resolution:
     th = config.thresholds
     if round2 is not None:
@@ -65,6 +86,7 @@ def resolve(
     reasons: list[str] = []
     pending_clarify: tuple[Entity, ...] | None = None  # only used if no verb yields an action
     exception_unresolved = False
+    relative_change = False
 
     for verb in shape.fired_verbs:
         # Per-verb contributions stay local until the verb actually yields targets: a verb
@@ -172,20 +194,49 @@ def resolve(
         elif shape.scene is not None and verb.name == "activate":
             targets = (shape.scene,)
 
-        params: dict[str, float | str] = dict(plan.explicit.get(verb.name, {}))
-        if params:
-            trace.note(f"param:explicit:{verb.name}")
-        elif (
-            verb.param is not None and round2 is not None and f"param:{verb.name}" in round2.answers
+        params: dict[str, float | str] = {}
+        spec = verb.param
+        if (
+            isinstance(spec, ScoreSpec)
+            and round2 is not None
+            and f"param_value:{verb.name}" in round2.answers
         ):
-            if isinstance(verb.param, ScoreSpec):
-                s = round2.score(f"param:{verb.name}")
-                params[verb.param.name] = score_to_value(verb.param, s.score)
-                local.append(s.confidence)
-            elif isinstance(verb.param, ChoiceSpec):
-                c = round2.choice(f"param:{verb.name}")
-                params[verb.param.name] = c.choice
-                local.append(c.confidence)
+            # Jev judged which number (if any) is the value and how it is meant; code computes.
+            picked = round2.choice(f"param_value:{verb.name}")
+            number = parse_number(picked.choice) if picked.choice != NO_MATCH else None
+            if number is None:
+                trace.note(f"param:number_rejected:{verb.name}")
+            else:
+                p_rel = round2.noul(f"param_relative:{verb.name}")
+                relative = trace.decide(f"param_relative:{verb.name}", p_rel, th.flag)
+                if relative:
+                    trace.note(f"param:relative:{verb.name}:{number}")
+                    relative_change = True
+                else:
+                    inverted = False
+                    inv_conf = 1.0
+                    if f"param_inverted:{verb.name}" in round2.answers:
+                        p_inv = round2.noul(f"param_inverted:{verb.name}")
+                        inverted = trace.decide(f"param_inverted:{verb.name}", p_inv, 0.5)
+                        inv_conf = p_inv if inverted else 1.0 - p_inv
+                    value = _numeric_value(spec, number, inverted=inverted)
+                    if value is None:
+                        trace.note(f"param:out_of_bounds:{verb.name}")
+                    else:
+                        params[spec.name] = value
+                        local.extend((picked.confidence, 1.0 - p_rel, inv_conf))
+                        trace.note(f"param:number:{verb.name}:{value}")
+        if not params and (
+            spec is not None and round2 is not None and f"param:{verb.name}" in round2.answers
+        ):
+            if isinstance(spec, ScoreSpec):
+                sc = round2.score(f"param:{verb.name}")
+                params[spec.name] = score_to_value(spec, sc.score)
+                local.append(sc.confidence)
+            elif isinstance(spec, ChoiceSpec):
+                cc = round2.choice(f"param:{verb.name}")
+                params[spec.name] = cc.choice
+                local.append(cc.confidence)
 
         if not targets:
             trace.note(f"dropped:{verb.name}")
@@ -211,6 +262,9 @@ def resolve(
 
     if exception_unresolved:
         return Escalate("exception", tuple(actions), trace)
+    if relative_change:
+        # The engine does not know current brightness/position/setpoints; the fallback agent does.
+        return Escalate("relative_change", tuple(actions), trace)
     if condition is None and trace.decide(
         "flag:has_condition", shape.flag("has_condition"), th.flag
     ):

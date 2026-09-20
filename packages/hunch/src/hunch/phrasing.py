@@ -26,9 +26,15 @@ class Phrasebook:
     exclusion_question: str  # {name} {area}
     target_question: str  # {phrasing}
     param_question: str  # {param}
+    param_value_question: str  # {param}: which literal number is the value
+    param_relative_question: str  # Noul: is the number a change from the current value
+    param_inverted_question: str  # Noul (covers): does the number say how far CLOSED
     cond_subject_question: str
     cond_state_question: str
     device_question: str
+    param_value_descriptions: Mapping[str, str] = field(
+        default_factory=dict
+    )  # for the NO_MATCH option
     verb_phrasing: Mapping[str, str] = field(default_factory=dict)  # overrides Verb.phrasing
     domain_labels: Mapping[str, str] = field(default_factory=dict)  # overrides raw domain ids
     param_labels: Mapping[str, str] = field(default_factory=dict)  # overrides ParamSpec.name
@@ -101,6 +107,22 @@ EN = Phrasebook(
     ),
     target_question="Which single device does the request want to {phrasing}?",
     param_question="What {param} does the request ask for?",
+    param_value_question=(
+        "Which of these numbers from the request is the {param} to set? Choose none of them if "
+        "the number means something else (a time, a count, the weather, another device)."
+    ),
+    param_relative_question=(
+        "Is that number meant as a CHANGE from the current value — 'by 2 degrees warmer', "
+        "'20% quieter', 'dim it by half' — rather than the exact value to set?"
+    ),
+    param_inverted_question=(
+        "For blinds or shutters only: does the request give that number as how far CLOSED they "
+        "should be — '15% zu', '15% geschlossen', 'closed 15%' — rather than the usual position "
+        "where 'auf 15%', 'to 15%', '15% open' all mean 15% open?"
+    ),
+    param_value_descriptions={
+        "none of these": "the numbers mean something else: a time, a count, the weather, another device"
+    },
     cond_subject_question="Which device is the request's condition about?",
     cond_state_question="Which state must that device be in for the request's condition to hold?",
     device_question="Which device does the request refer to?",
@@ -190,6 +212,22 @@ DE = Phrasebook(
     ),
     target_question="Auf welches einzelne Gerät bezieht sich die Anfrage ({phrasing})?",
     param_question="Welche {param} verlangt die Anfrage?",
+    param_value_question=(
+        "Welche dieser Zahlen aus der Anfrage ist die einzustellende {param}? Wähle keine davon, "
+        "wenn die Zahl etwas anderes meint (eine Uhrzeit, eine Anzahl, das Wetter, ein anderes Gerät)."
+    ),
+    param_relative_question=(
+        "Ist diese Zahl als ÄNDERUNG gegenüber dem aktuellen Wert gemeint — 'um 2 Grad wärmer', "
+        "'20% leiser', 'um die Hälfte dunkler' — statt als genauer Zielwert?"
+    ),
+    param_inverted_question=(
+        "Nur bei Rollos oder Jalousien: gibt die Anfrage die Zahl als Anteil GESCHLOSSEN an — "
+        "'15% zu', '15% geschlossen' — statt als übliche Position, bei der 'auf 15%', 'zu 15% "
+        "offen', '15% offen' alle 15% offen bedeuten?"
+    ),
+    param_value_descriptions={
+        "none of these": "die Zahlen meinen etwas anderes: eine Uhrzeit, eine Anzahl, das Wetter, ein anderes Gerät"
+    },
     cond_subject_question="Um welches Gerät geht es in der Bedingung der Anfrage?",
     cond_state_question=(
         "In welchem Zustand muss dieses Gerät sein, damit die Bedingung der Anfrage erfüllt ist?"
