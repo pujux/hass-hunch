@@ -2,14 +2,13 @@
 Jev-only areas (2026-09-20, from 'Licht aus' picking two random rooms)."""
 
 from hunch.client import FakeDecisionClient
-from hunch.config import EngineConfig, Thresholds
+from hunch.config import EngineConfig
 from hunch.engine import Engine
 from hunch.loaders import home_from_export
-from hunch.phrasing import DE, EN
 from hunch.questions import ChoiceA, ChoiceQ, NoulA, ScoreA, ScoreQ
 from hunch.resolution import Resolved
 from hunch.round2 import NO_MATCH
-from hunch.scope import verbatim_areas, verbatim_domains
+from hunch.scope import verbatim_areas
 
 
 def test_floor_aliases_survive_the_export():
@@ -34,21 +33,6 @@ def test_floor_aliases_survive_the_export():
     assert verbatim_areas(home, "Licht im Untergeschoss an") == ("k",)
 
 
-def test_domain_synonyms_in_either_language():
-    assert verbatim_domains("Licht aus", (EN, DE)) == ("light",)
-    assert verbatim_domains("turn off the downstairs lights", (EN, DE)) == ("light",)
-    assert verbatim_domains("Fahr die Rollos im Schlafzimmer runter", (EN, DE)) == ("cover",)
-    assert verbatim_domains("Dreh den Fernseher im Schlafzimmer auf", (EN, DE)) == ("media_player",)
-    assert verbatim_domains("Wie warm ist es im Wohnzimmer?", (EN, DE)) == ()
-    assert (
-        verbatim_domains("Welche Fenster sind offen?", (EN, DE)) == ()
-    )  # window: sensor or cover — undecidable
-
-
-def test_new_threshold_default():
-    assert Thresholds().scope_hard == 0.9
-
-
 def _script(overrides):
     def script(state, qs):
         out = {}
@@ -67,8 +51,8 @@ def _script(overrides):
 
 
 async def test_soft_jev_areas_are_dropped_without_verbatim_support(home, vocab, config):
-    # "lights off" with Jev hallucinating the bedroom at 0.75 and the office at 0.72: neither is
-    # named, neither is sure -> no area scope -> whole light domain; Jev then says "all of these".
+    # "lights off": Jev floats the bedroom and the office, but also says no place was named
+    # (names_place stays low) -> no area scope -> whole light domain; Jev then says "all of these".
     ov = {
         "verb:turn_off": NoulA(0.9),
         "domain:light": NoulA(0.97),
@@ -84,12 +68,13 @@ async def test_soft_jev_areas_are_dropped_without_verbatim_support(home, vocab, 
     assert any(n.startswith("soft_scope_dropped:") for n in r.trace.notes)
 
 
-async def test_a_sure_jev_area_is_kept_without_verbatim_support(home, vocab, config):
+async def test_jev_areas_count_when_jev_says_a_place_was_named(home, vocab, config):
     ov = {
         "verb:turn_on": NoulA(0.95),
         "domain:light": NoulA(0.97),
         "area:bedroom": NoulA(0.96),
         "flag:collective": NoulA(0.9),
+        "flag:names_place": NoulA(0.9),
     }
     r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
         home, "lights on in the sleeping room"
@@ -101,21 +86,13 @@ async def test_a_sure_jev_area_is_kept_without_verbatim_support(home, vocab, con
     }
 
 
-async def test_domain_synonym_overrides_a_borderline_jev_domain(home, vocab, config):
-    # "downstairs lights": Jev also fires switch at 0.71 -> the fridge would be swept.
-    ov = {
-        "verb:turn_off": NoulA(0.95),
-        "floor:downstairs": NoulA(0.92),
-        "domain:light": NoulA(0.98),
-        "domain:switch": NoulA(0.71),
-        "flag:collective": NoulA(0.9),
-    }
-    r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
-        home, "turn off the downstairs lights"
-    )
-    assert isinstance(r, Resolved)
-    assert "switch.fridge" not in {e.entity_id for e in r.actions[0].targets}
-    assert "domain_match:light" in r.trace.notes
+def test_domain_question_carries_the_words_people_use(home, vocab):
+    from hunch.round1 import build_round1_questions
+
+    q = build_round1_questions(home, vocab)["domain:light"].instructions.casefold()
+    assert "lights" in q and "licht" in q and "lampen" in q
+    q = build_round1_questions(home, vocab)["domain:cover"].instructions.casefold()
+    assert "blinds" in q and "rollos" in q
 
 
 async def test_a_named_area_beats_a_fired_floor(home, vocab, config):
@@ -126,6 +103,7 @@ async def test_a_named_area_beats_a_fired_floor(home, vocab, config):
         "area:bedroom": NoulA(0.99),
         "floor:upstairs": NoulA(0.72),
         "flag:collective": NoulA(0.9),
+        "flag:names_place": NoulA(0.9),
     }
     home2 = home
     r = await Engine(FakeDecisionClient(_script(ov)), vocab, config).decide(
@@ -137,12 +115,14 @@ async def test_a_named_area_beats_a_fired_floor(home, vocab, config):
     )
 
 
-async def test_most_rooms_firing_means_the_whole_home(home, vocab, config):
-    # "Mach alles aus": Jev lights up every room at 0.77-0.9. Not hallucinations: the whole home.
+async def test_whole_home_flag_lifts_the_area_scope(home, vocab, config):
+    # "Mach alles aus": Jev floats every room AND says the whole home is meant.
     ov = {
         "verb:turn_off": NoulA(0.9),
         "domain:light": NoulA(0.95),
         "flag:collective": NoulA(0.92),
+        "flag:whole_home": NoulA(0.93),
+        "flag:names_place": NoulA(0.8),
         "area:kitchen": NoulA(0.85),
         "area:living": NoulA(0.88),
         "area:hallway": NoulA(0.8),

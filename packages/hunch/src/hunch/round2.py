@@ -81,12 +81,15 @@ def _dedupe(
 def target_options(
     candidates: tuple[Entity, ...], area_names: Mapping[str, str] | None = None
 ) -> tuple[TargetOption, ...]:
-    """One option per *entity*: a multi-entity device is expanded into its entities."""
+    """Options Jev can pick from. A device with one candidate entity is one option. A device
+    with several is offered as the device itself ("Bedside lamps" -> both lamps) AND as each
+    entity ("Bedside lamps — Bedside left"), because people name either; Jev decides which."""
     raw: list[TargetOption] = []
     for group in _group_by_device(candidates):
         if len(group) == 1:
             raw.append(TargetOption(device_label(group[0]), (group[0],)))
         else:
+            raw.append(TargetOption(device_label(group[0]), tuple(group)))
             raw.extend(TargetOption(f"{device_label(e)} — {e.name}", (e,)) for e in group)
     return _dedupe(raw, area_names)
 

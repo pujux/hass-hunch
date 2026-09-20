@@ -43,12 +43,13 @@ def test_target_options_collapse_single_entity_devices_and_expand_multi(home):
     )
     labels = [o.label for o in opts]
     assert labels == [
+        "Bedside lamps",  # the device itself: both lamps
         "Bedside lamps — Bedside left",
         "Bedside lamps — Bedside right",
         "Desk lamp",
         "Christmas tree",
     ]
-    assert all(len(o.entities) == 1 for o in opts)
+    assert len(opts[0].entities) == 2 and all(len(o.entities) == 1 for o in opts[1:])
 
 
 def test_target_options_dedupes_labels(home):

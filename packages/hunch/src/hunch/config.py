@@ -15,7 +15,6 @@ class Thresholds:
     verb_lone_margin: float = 0.3  # ... if it leads the runner-up by at least this
     scope_fire: float = 0.7
     # a Jev-only area/floor (not named verbatim) needs this to count  # floor / area / domain Nouls
-    scope_hard: float = 0.9
     collective: float = 0.5
     target_choice_conf: float = 0.7
     auto_execute: float = 0.70  # 2026-09-20: 0.75 asked on correct sweeps; set on Julian's corpus

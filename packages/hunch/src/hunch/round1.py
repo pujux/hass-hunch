@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from hunch.config import Thresholds
 from hunch.model import Area, Entity, HomeModel
-from hunch.phrasing import EN, Phrasebook
+from hunch.phrasing import EN, PHRASEBOOKS, Phrasebook
 from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
 from hunch.resolution import Trace
 from hunch.vocabulary import EXCLUSIVE_GROUPS, Verb, Vocabulary
@@ -15,6 +15,8 @@ from hunch.vocabulary import EXCLUSIVE_GROUPS, Verb, Vocabulary
 FLAGS = (
     "collective",
     "names_specific",
+    "names_place",
+    "whole_home",
     "has_exception",
     "has_condition",
     "has_timing",
@@ -49,7 +51,13 @@ def build_round1_questions(
     for a in home.areas:
         qs[f"area:{a.area_id}"] = NoulQ(pb.area_question.format(label=_label(a)))
     for d in home.domains:
-        qs[f"domain:{d}"] = NoulQ(pb.domain_question.format(domain=pb.domain_label(d)))
+        # Jev judges the domain; code just hands it the words people use for it, in every
+        # supported language, so "Licht", "lights" and "Rollos" are not left to inference.
+        words: list[str] = []
+        for book in PHRASEBOOKS.values():
+            words.extend(w for w in book.domain_synonyms.get(d, ()) if w not in words)
+        label = f"{pb.domain_label(d)} ({', '.join(words)})" if words else pb.domain_label(d)
+        qs[f"domain:{d}"] = NoulQ(pb.domain_question.format(domain=label))
     for flag in FLAGS:
         qs[f"flag:{flag}"] = NoulQ(pb.flags[flag])
     if home.scenes:

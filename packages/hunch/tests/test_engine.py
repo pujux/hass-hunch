@@ -41,6 +41,7 @@ async def test_collective_downstairs_resolves_in_one_round(home, vocab, config):
             "floor:downstairs": NoulA(0.9),
             "domain:light": NoulA(0.9),
             "flag:collective": NoulA(0.9),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, config).decide(home, "turn off the downstairs lights")
@@ -64,6 +65,7 @@ async def test_exception_uses_second_round(home, vocab, config):
             "area:kitchen": NoulA(0.9),
             "flag:collective": NoulA(0.9),
             "flag:has_exception": NoulA(0.85),
+            "flag:names_place": NoulA(0.9),
         },
         {"exclude:turn_off:switch.fridge": NoulA(0.93)},
     )
@@ -86,6 +88,7 @@ async def test_singular_uses_choice(home, vocab, config):
             "area:living": NoulA(0.85),
             "domain:light": NoulA(0.8),
             "flag:collective": NoulA(0.1),
+            "flag:names_place": NoulA(0.9),
         },
         {"target:turn_on": ChoiceA("Reading lamp", 0.9, {})},
     )
@@ -183,6 +186,7 @@ async def test_verb_with_no_candidates_is_dropped_not_fatal(home, vocab, config)
             "verb:arm": NoulA(0.9),
             "area:hallway": NoulA(0.9),
             "flag:collective": NoulA(0.9),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, config).decide(home, "turn off the hallway and arm the alarm")
@@ -206,6 +210,7 @@ async def test_round_budget_escalates_when_round2_does_not_fit(home, vocab):
             "area:living": NoulA(0.85),
             "domain:light": NoulA(0.8),
             "flag:collective": NoulA(0.1),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, cfg).decide(home, "turn on the light in the lounge")
@@ -263,6 +268,7 @@ async def test_trace_travels_with_result(home, vocab, config):
             "verb:turn_off": NoulA(0.95),
             "area:hallway": NoulA(0.9),
             "flag:collective": NoulA(0.9),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, config).decide(home, "hallway off")
@@ -280,6 +286,7 @@ async def test_confirm_tier_verb_ends_in_needs_confirmation(home, vocab, config)
             "area:hallway": NoulA(0.9),
             "domain:lock": NoulA(0.9),
             "flag:collective": NoulA(0.9),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, config).decide(home, "lock the front door")
@@ -296,6 +303,7 @@ async def test_blast_radius_ends_in_needs_confirmation(home, vocab):
             "floor:downstairs": NoulA(0.9),
             "domain:light": NoulA(0.9),
             "flag:collective": NoulA(0.95),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, cfg).decide(home, "turn everything off")
@@ -310,6 +318,7 @@ async def test_param_verb_resolves_with_params_populated(home, vocab, config):
             "area:office": NoulA(0.9),
             "domain:light": NoulA(0.9),
             "flag:collective": NoulA(0.1),
+            "flag:names_place": NoulA(0.9),
         },
         {"param:set_brightness": ScoreA(3.0, 0.9, {})},
     )
@@ -348,6 +357,7 @@ async def test_destructive_flag_escalates(home, vocab, config):
             "verb:turn_off": NoulA(0.9),
             "area:hallway": NoulA(0.9),
             "flag:is_destructive": NoulA(0.85),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, config).decide(home, "disable the smoke alarm")
@@ -364,6 +374,7 @@ async def test_multi_verb_request_yields_one_action_per_verb(home, vocab, config
             "domain:light": NoulA(0.9),
             "domain:cover": NoulA(0.9),
             "flag:collective": NoulA(0.9),
+            "flag:names_place": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, config).decide(
@@ -387,6 +398,7 @@ async def test_scope_clarify_for_one_verb_does_not_abort_when_another_resolves(h
             "verb:turn_on": NoulA(0.73),
             "area:living": NoulA(0.99),
             "domain:cover": NoulA(0.96),
+            "flag:names_place": NoulA(0.9),
         },
     )
     r = await Engine(client, vocab, cfg).decide(home, "open the blinds in the living room")

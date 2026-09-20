@@ -77,6 +77,15 @@ EN = Phrasebook(
             "device ('light', 'blinds', 'Rollos') together with a room, floor or a word like "
             "'all'? A plural-looking proper name still counts as one device."
         ),
+        "names_place": (
+            "Does the request name a room, area or floor (by name, alias or a word like "
+            "'downstairs', 'unten', 'im Bad'), or the whole home? Answer no for a bare command "
+            "like 'lights off' that names no place at all."
+        ),
+        "whole_home": (
+            "Does the request apply to the WHOLE home — 'alles', 'everything', 'all the lights in "
+            "the house', 'überall' — rather than to one room, one floor or particular devices?"
+        ),
         "has_exception": (
             "Does the request exclude something, e.g. 'except', 'but not', 'apart from', "
             "'other than'?"
@@ -197,6 +206,15 @@ DE = Phrasebook(
             "nur eine Geräteart ('Licht', 'Rollos') zusammen mit einem Raum, Stockwerk oder einem "
             "Wort wie 'alle'? Ein Eigenname in Pluralform zählt trotzdem als ein Gerät."
         ),
+        "names_place": (
+            "Nennt die Anfrage einen Raum, Bereich oder ein Stockwerk (mit Namen, Alias oder einem "
+            "Wort wie 'unten', 'oben', 'im Bad') oder das ganze Haus? Antworte nein bei einem "
+            "bloßen Befehl wie 'Licht aus', der gar keinen Ort nennt."
+        ),
+        "whole_home": (
+            "Bezieht sich die Anfrage auf das GANZE Haus — 'alles', 'überall', 'alle Lichter im "
+            "Haus' — statt auf einen Raum, ein Stockwerk oder bestimmte Geräte?"
+        ),
         "has_exception": (
             "Schließt die Anfrage etwas aus, z. B. mit 'außer', 'aber nicht', 'abgesehen von', "
             "'bis auf'?"
@@ -257,7 +275,9 @@ DE = Phrasebook(
         "offen', '15% offen' alle 15% offen bedeuten?"
     ),
     param_value_descriptions={
-        "none of these": "die Zahlen meinen etwas anderes: eine Uhrzeit, eine Anzahl, das Wetter, ein anderes Gerät"
+        "none of these": (
+            "die Zahlen meinen etwas anderes: eine Uhrzeit, eine Anzahl, das Wetter, ein anderes Gerät"
+        )
     },
     cond_subject_question="Um welches Gerät geht es in der Bedingung der Anfrage?",
     cond_state_question=(

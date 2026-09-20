@@ -61,6 +61,16 @@ def _base_label(label: str) -> str:
     return re.sub(r" (?:\([^)]*\)|#\d+)$", "", label)
 
 
+def _all_entities(options) -> tuple[Entity, ...]:
+    """Every entity behind a set of options, once — a device option and its per-entity options
+    describe the same lamps."""
+    seen: dict[str, Entity] = {}
+    for o in options:
+        for e in o.entities:
+            seen.setdefault(e.entity_id, e)
+    return tuple(seen.values())
+
+
 def _verb_prob(trace: Trace, verb_name: str) -> float:
     for d in reversed(trace.decisions):
         if d.name == f"verb:{verb_name}":
@@ -155,7 +165,7 @@ def resolve(
             if trace.decide(f"all_of:{verb.name}", p_all, th.collective):
                 # Jev saw the candidates and says the request means every one of them.
                 trace.note(f"all_of:{verb.name}")
-                targets = tuple(e for o in options for e in o.entities)
+                targets = _all_entities(options)
                 backing = p_all
                 if shape.scope_areas and all(e.area_id in shape.scope_areas for e in targets):
                     named = any(n.startswith("area_match:") for n in trace.notes)
@@ -172,7 +182,7 @@ def resolve(
                 ):
                     # Some plural signal, no single target: all of them — but ask first.
                     trace.note(f"collective_fallback:{verb.name}")
-                    targets = tuple(e for o in options for e in o.entities)
+                    targets = _all_entities(options)
                     local.append(max(shape.flag("collective"), p_all))
                     reasons.append("collective_fallback")
                 elif c.confidence < th.no_match_clarify:
@@ -188,7 +198,8 @@ def resolve(
                 twins: list = []
                 if opt is not None and not shape.scope_areas:
                     # Same device name in several rooms and no room said: nothing in the request
-                    # can tell them apart, whatever the pick's confidence. A lookup, not a judgement.
+                    # can tell them apart, whatever the pick's confidence. A lookup, not a
+                    # judgement.
                     base = _base_label(opt.label)
                     twins = [o for o in options if o is not opt and _base_label(o.label) == base]
                 if opt is not None and (weak or twins or verb.name in plan.ambiguous_by_area):

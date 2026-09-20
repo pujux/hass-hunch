@@ -7,7 +7,7 @@ import dataclasses
 from hunch.client import DecisionBackendError, DecisionClient
 from hunch.config import EngineConfig
 from hunch.model import Entity, HomeModel
-from hunch.phrasing import EN, PHRASEBOOKS, Phrasebook
+from hunch.phrasing import EN, Phrasebook
 from hunch.questions import ChoiceQ, Question
 from hunch.resolution import Escalate, NeedsClarification, Resolution, Trace
 from hunch.resolver import resolve
@@ -26,7 +26,6 @@ from hunch.scope import (
     ScopeEscalate,
     scope_candidates,
     verbatim_areas,
-    verbatim_domains,
 )
 from hunch.vocabulary import Vocabulary
 
@@ -102,62 +101,32 @@ class Engine:
         if not shape.fired_verbs:
             return Escalate("no_intent", (), trace)
 
-        # Code decides the scope wherever it can. Areas and floors count when the prompt names
-        # them (name or alias) or when Jev is very sure; a merely-likely area nobody mentioned is
-        # a hallucination ("Licht aus" must not pick two random rooms). Domains named by a known
-        # word in any supported language override Jev's domain guess.
+        # Scope: Jev judges whether a place was named and whether the whole home is meant; code
+        # contributes only lookups — areas/floors whose names or aliases appear in the prompt.
         named_areas = verbatim_areas(home, prompt)
-        # Floors are few and rarely hallucinated: a floor that fired at scope_fire keeps its
-        # areas ("Schalte alle Lichter unten aus" without an alias for "unten"). Areas need
-        # either a verbatim mention or the hard bar.
         fired_floor_areas = tuple(
             a
             for f in home.floors
             if shape.floor_probs.get(f.floor_id, 0.0) >= th.scope_fire
             for a in f.area_ids
         )
-        soft_fired = [
-            a for a in shape.scope_areas if a not in named_areas and a not in fired_floor_areas
-        ]
-        whole_home = not named_areas and len(soft_fired) >= max(3, len(home.areas) // 2)
-        if whole_home:
-            # "Mach alles aus": Jev lights up most rooms at once. That is not twelve hallucinations,
-            # it is "the whole home" — so no area restriction at all, rather than the few above
-            # the hard bar.
+        names_place = trace.decide("flag:names_place", shape.flag("names_place"), th.flag)
+        whole_home = trace.decide("flag:whole_home", shape.flag("whole_home"), th.flag)
+        if whole_home and not named_areas:
+            kept: tuple[str, ...] = ()
             trace.note("whole_home")
-        if named_areas:
-            # A room said out loud beats everything else: a floor that also fired must not widen
-            # "Rollos im Schlafzimmer" to the whole upper floor.
-            kept = tuple(
-                a
-                for a in shape.scope_areas
-                if a in named_areas or shape.area_probs.get(a, 0.0) >= th.scope_hard
-            )
-        elif whole_home:
-            kept = ()
+        elif names_place or named_areas:
+            kept = tuple(shape.scope_areas) if names_place else fired_floor_areas
         else:
-            kept = tuple(
-                a
-                for a in shape.scope_areas
-                if a in fired_floor_areas or shape.area_probs.get(a, 0.0) >= th.scope_hard
-            )
+            kept = ()  # "Licht aus": no place named — Jev's room guesses are noise
         dropped = tuple(a for a in shape.scope_areas if a not in kept)
         added = tuple(a for a in named_areas if a not in kept)
         if dropped and not whole_home:
             trace.note("soft_scope_dropped:" + ",".join(dropped))
         if added:
             trace.note("area_match:" + ",".join(added))
-        matched_domains = tuple(
-            d for d in verbatim_domains(prompt, tuple(PHRASEBOOKS.values())) if d in home.domains
-        )
-        scope_domains = shape.scope_domains
-        if matched_domains and matched_domains != scope_domains:
-            trace.note("domain_match:" + ",".join(matched_domains))
-            scope_domains = matched_domains
-        if kept + added != shape.scope_areas or scope_domains != shape.scope_domains:
-            shape = dataclasses.replace(
-                shape, scope_areas=kept + added, scope_domains=scope_domains
-            )
+        if kept + added != shape.scope_areas:
+            shape = dataclasses.replace(shape, scope_areas=kept + added)
 
         per_verb: dict[str, tuple[Entity, ...]] = {}
         widened: set[str] = set()

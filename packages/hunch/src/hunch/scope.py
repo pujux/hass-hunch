@@ -10,7 +10,6 @@ from dataclasses import dataclass
 
 from hunch.config import EngineConfig
 from hunch.model import Entity, HomeModel
-from hunch.phrasing import Phrasebook
 from hunch.resolution import Trace
 from hunch.round1 import Shape
 from hunch.vocabulary import Verb
@@ -85,20 +84,6 @@ def verbatim_areas(home: HomeModel, prompt: str) -> tuple[str, ...]:
         if len(parts) > 1 and len(parts[0]) >= 4 and _words(parts[0]) in text:
             stems.append(a.area_id)
     return tuple(stems)
-
-
-def verbatim_domains(prompt: str, phrasebooks: tuple[Phrasebook, ...]) -> tuple[str, ...]:
-    """Domains the prompt names by a known word in any supported language ("Licht", "lights",
-    "Rollos", "Fernseher"). Empty when nothing matches — Jev's domain judgement then stands."""
-    if not prompt:
-        return ()
-    text = _words(prompt)
-    found: list[str] = []
-    for pb in phrasebooks:
-        for domain, words in pb.domain_synonyms.items():
-            if domain not in found and any(_words(w) in text for w in words):
-                found.append(domain)
-    return tuple(found)
 
 
 def device_label(e: Entity) -> str:

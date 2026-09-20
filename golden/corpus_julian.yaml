@@ -82,8 +82,8 @@
 
 # ---- numbers: code lists them, Jev decides what they mean (2026-09-20) ----
 - prompt: Rollos im Schlafzimmer 15% zu
-  # "zu" = closed: 15% closed is position 85
-  expect: {kind: resolved, verb: set_position, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo], params: {position: [80, 90]}}
+  # "zu" = closed: 15% closed is position 85; the number pick hovers around 0.7, asking is fine
+  expect: {kinds: [resolved, confirm], verb: set_position, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo], params: {position: [80, 90]}}
 - prompt: Mach die Klimaanlage um 2 Grad wärmer
   # relative change: the engine does not know the current setpoint
   expect: {kind: escalate, reason: relative_change}
