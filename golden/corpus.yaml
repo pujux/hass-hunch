@@ -47,4 +47,6 @@
 - prompt: if the blinds are closed lock the front door
   expect: {kind: confirm, verb: lock, targets: [lock.front_door], condition: {subject: cover.living_blinds, state: closed}}
 - prompt: turn off the kitchen lights and close the blinds
-  expect: {kind: resolved, verbs: [turn_off, close]}
+  # the blinds are outside the named room; Jev is asked whether closing them is a separate action
+  # and may hedge into a confirmation — asking is fine, dropping the blinds is not
+  expect: {kinds: [resolved, confirm], verbs: [turn_off, close]}

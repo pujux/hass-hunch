@@ -124,11 +124,11 @@ EN = Phrasebook(
         "than one particular device among them?"
     ),
     outside_scope_question=(
-        "The request names a room or floor, but the devices listed in `candidates` are NOT in it. "
-        "Does the request nevertheless ask to {phrasing} — as a separate action on devices "
-        "elsewhere (e.g. 'turn off the kitchen lights and close the blinds')? Answer no if the "
-        "action was only meant inside the named room, or if that verb is a misreading of a word "
-        "like 'zu'/'auf'."
+        "The request names a room or floor, but the devices in `candidates` are elsewhere. Does "
+        "the request contain a SEPARATE instruction to {phrasing} that applies to devices like "
+        "these — as in 'turn off the kitchen lights and close the blinds', where closing the "
+        "blinds is its own action not limited to the kitchen? Answer no if the only thing asked "
+        "is inside the named room and this verb just echoes a word like 'zu' or 'auf'."
     ),
     param_inverted_question=(
         "For blinds or shutters only: does the request give that number as how far CLOSED they "
@@ -246,9 +246,10 @@ DE = Phrasebook(
     ),
     outside_scope_question=(
         "Die Anfrage nennt einen Raum oder ein Stockwerk, aber die Geräte in `candidates` sind "
-        "NICHT darin. Verlangt die Anfrage trotzdem, {phrasing} — als eigene Aktion an Geräten "
-        "anderswo (z. B. 'Küchenlicht aus und Rollos zu')? Antworte nein, wenn die Aktion nur im "
-        "genannten Raum gemeint war oder das Verb eine Fehldeutung von 'zu'/'auf' ist."
+        "anderswo. Enthält die Anfrage eine EIGENE Anweisung, {phrasing}, die für solche Geräte "
+        "gilt — wie in 'Küchenlicht aus und Rollos zu', wo das Schließen der Rollos eine eigene, "
+        "nicht auf die Küche beschränkte Aktion ist? Antworte nein, wenn nur etwas im genannten "
+        "Raum verlangt wird und dieses Verb bloß ein Wort wie 'zu' oder 'auf' widerspiegelt."
     ),
     param_inverted_question=(
         "Nur bei Rollos oder Jalousien: gibt die Anfrage die Zahl als Anteil GESCHLOSSEN an — "
