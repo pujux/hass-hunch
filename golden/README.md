@@ -64,6 +64,29 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-20 (night) — Jev thinks, code fetches and computes
+
+Julian's principle, after reviewing the day's heuristics: Jev is the judgment engine; code only
+helps it get state and data, then lets it decide. More questions cost nothing measurable
+(they run in parallel; a full 36-row run is still ≈ $0.005). Every rule where code had been
+*judging* was swapped for a Jev question, one at a time, measured against the corpus:
+
+| Code was judging… | Now Jev is asked… |
+|---|---|
+| a regex picked "15%"/"22 Grad" as the target | which listed number is the value (or none), whether it is a change (`param_relative`) and, for blinds, whether it means closed (`param_inverted`); code parses and bounds it |
+| a verbatim device name narrowed the candidates | nothing — names only rescue candidates from the cap; the Choice decides, with "none of these" |
+| "no device named + room named ⇒ all of them" sweeps | `all_of` Noul with the candidates in front of it ("die Rollos", "Licht im Untergeschoss") |
+| a widened verb was dropped/kept by rule | `outside_scope` Noul: is this a separate action on devices outside the named room? ("… and close the blinds") |
+| an exception named verbatim was excluded by code | the exclusion Nouls — and they hold at n=52 (Mini Kühlschrank 0.98, everything else 0.02) |
+| a hard 0.9 bar and a room-count rule decided the scope | `names_place` and `whole_home` Nouls; a room said out loud (or a shared stem) is the scope; a room Jev is ≥ 0.9 sure of counts on its own |
+| domain synonyms overrode Jev's domain | the synonyms ride inside Jev's domain question ("light (lights, lamps, Licht, Lampen…)") |
+| a 4-way "mode" Choice | two Nouls with contrasting examples — the Choice had hedged at 0.4 |
+
+Also: Choice options now carry descriptions (Jev criteria); multi-entity devices are offered
+both as the device ("Bedside lamps") and per entity. Result: **real home 36/36, fixture 24/24**.
+Two rows hover at a threshold and may confirm instead of resolve ("15% zu" number pick,
+"alles aus außer" lone-leader verb) — asking is the designed outcome there.
+
 ### 2026-09-20 (evening) — thresholds set on Julian's corpus
 
 Decided with Julian once his prompts were in: (1) a collective flag backed by a named area or

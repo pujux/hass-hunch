@@ -375,6 +375,7 @@ async def test_multi_verb_request_yields_one_action_per_verb(home, vocab, config
             "domain:cover": NoulA(0.9),
             "flag:collective": NoulA(0.9),
             "flag:names_place": NoulA(0.9),
+            "outside_scope:close": NoulA(0.9),
         }
     )
     r = await Engine(client, vocab, config).decide(

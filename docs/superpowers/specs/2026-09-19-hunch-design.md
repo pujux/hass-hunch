@@ -399,6 +399,19 @@ several rooms with no room said always clarify.
 lies inside it. When no verb reaches `verb_fire`, a single leader ≥ `verb_lone_leader` that
 beats the runner-up by ≥ `verb_lone_margin` fires (`lone_leader:` trace note).
 
+**Jev thinks, code fetches and computes (2026-09-20, night).** The rules above that let code
+*judge* were replaced by questions; code keeps only lookups (names in the prompt, candidate
+lists, arithmetic) and composition of Jev's probabilities. Round 1 gains `names_place` and
+`whole_home` Nouls; Round 2 gains, per singular verb, `all_of` ("does the request mean all
+of these?"), per widened verb `outside_scope` ("a separate action on devices outside the named
+room?"), and per numeric parameter `param_value` (Choice over the literal numbers found + none),
+`param_relative` and, for covers, `param_inverted` Nouls — code parses the picked number,
+applies the mode and plausibility bounds; relative changes escalate. Names in the prompt no
+longer narrow candidates; they only keep them from being capped away. Scope: a room named out
+loud or by a shared stem is the scope; otherwise Jev's rooms count when `names_place` fires or a
+room is ≥ `scope_hard`; `whole_home` lifts the area restriction. Choice options may carry
+descriptions (sent as criteria); multi-entity devices are offered as the device and per entity.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

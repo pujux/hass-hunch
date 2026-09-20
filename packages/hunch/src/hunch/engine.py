@@ -115,10 +115,19 @@ class Engine:
         if whole_home and not named_areas:
             kept: tuple[str, ...] = ()
             trace.note("whole_home")
-        elif names_place or named_areas:
-            kept = tuple(shape.scope_areas) if names_place else fired_floor_areas
+        elif named_areas:
+            # A room said out loud (or matched by a shared stem) IS the scope. Jev's floor or
+            # room guesses on top of it are noise: "Rollos im Schlafzimmer" is not the floor.
+            kept = tuple(a for a in shape.scope_areas if a in named_areas)
         else:
-            kept = ()  # "Licht aus": no place named — Jev's room guesses are noise
+            # No room word in the prompt: Jev's rooms count if Jev says a place was named
+            # (aliases, 'unten', 'im Bad'), or if Jev is very sure of a room on its own
+            # ("bedside lamps" -> bedroom 0.97). Otherwise they are noise ("Licht aus").
+            kept = tuple(
+                a
+                for a in shape.scope_areas
+                if names_place or shape.area_probs.get(a, 0.0) >= th.scope_hard
+            )
         dropped = tuple(a for a in shape.scope_areas if a not in kept)
         added = tuple(a for a in named_areas if a not in kept)
         if dropped and not whole_home:
