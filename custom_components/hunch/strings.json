@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": { "user": { "title": "Connect Hunch to TypeSafe", "data": { "api_key": "TypeSafe API key" } } },
+    "error": {
+      "invalid_auth": "The API key was rejected.",
+      "unknown_model": "The pinned Jev model does not exist.",
+      "cannot_connect": "Could not reach the TypeSafe API."
+    },
+    "abort": { "already_configured": "Hunch is already set up." }
+  },
+  "options": {
+    "step": { "init": { "title": "Hunch options" } }
+  }
+}

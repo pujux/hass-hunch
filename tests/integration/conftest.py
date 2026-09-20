@@ -54,7 +54,11 @@ async def setup_hunch(hass: HomeAssistant):
 
     async def _setup(client, calls, options=None):
         entry = MockConfigEntry(
-            domain=DOMAIN, data={"api_key": "test-key"}, options=options or {}, title="Hunch"
+            domain=DOMAIN,
+            data={"api_key": "test-key"},
+            options=options or {},
+            title="Hunch",
+            unique_id=DOMAIN,
         )
         entry.add_to_hass(hass)
         with patch("custom_components.hunch.build_client", return_value=client):

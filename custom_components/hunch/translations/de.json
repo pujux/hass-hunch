@@ -1,0 +1,12 @@
+{
+  "config": {
+    "step": { "user": { "title": "Hunch mit TypeSafe verbinden", "data": { "api_key": "TypeSafe-API-Schlüssel" } } },
+    "error": {
+      "invalid_auth": "Der API-Schlüssel wurde abgelehnt.",
+      "unknown_model": "Das festgelegte Jev-Modell existiert nicht.",
+      "cannot_connect": "Die TypeSafe-API ist nicht erreichbar."
+    },
+    "abort": { "already_configured": "Hunch ist bereits eingerichtet." }
+  },
+  "options": { "step": { "init": { "title": "Hunch-Optionen" } } }
+}
