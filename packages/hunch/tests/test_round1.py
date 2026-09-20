@@ -160,3 +160,11 @@ def test_verb_questions_carry_cue_words_in_both_languages(home, vocab):
     assert "off" in q and "aus" in q and "außer" in q
     assert "auf" in qs["verb:open"].instructions and "zu" in qs["verb:close"].instructions
     assert "aus" in qs["verb_primary"].descriptions["turn_off"]
+
+
+def test_condition_domain_choice_describes_what_one_reads(home, vocab):
+    q = build_round1_questions(home, vocab)["condition_domain"]
+    assert q.descriptions is not None
+    assert "locked" in q.descriptions["lock"]
+    assert "no condition" in q.descriptions["none"]
+    assert "READ" in q.instructions

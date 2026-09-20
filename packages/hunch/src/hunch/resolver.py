@@ -302,6 +302,8 @@ def resolve(
         contributions.extend((subj.confidence, state.confidence))
         if subj.choice == NO_MATCH:
             trace.note("no_match:cond_subject")
+        elif state.choice == NO_MATCH:
+            trace.note("no_match:cond_state")
         else:
             opt = next((o for o in plan.condition_options if o.label == subj.choice), None)
             if opt:

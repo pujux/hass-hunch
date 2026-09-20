@@ -55,6 +55,10 @@ class Phrasebook:
     verb_synonyms: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     # words people say for a domain, in this language
     domain_synonyms: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    # what one READS of a device type to check a condition (descriptions of condition_domain)
+    condition_domain_descriptions: Mapping[str, str] = field(default_factory=dict)
+    # domain -> state -> what that state means in everyday words (descriptions of cond_state)
+    condition_state_descriptions: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     def phrasing_for(self, verb_name: str, default: str) -> str:
         return self.verb_phrasing.get(verb_name, default)
@@ -100,6 +104,12 @@ EN = Phrasebook(
             "world, e.g. 'if', 'when', 'unless', 'only if' — as opposed to merely excluding a "
             "device with 'except' / 'but not' / 'außer', which is not a condition?"
         ),
+        "condition_numeric": (
+            "Does the request's condition compare a MEASURED VALUE against a number or threshold "
+            "— 'wenn es wärmer als 23 Grad ist', 'if it is below 40%', 'über 25 Grad', 'when "
+            "more than two people are home' — rather than checking a state such as open/closed, "
+            "on/off, home/away, dark/bright, running/stopped? No if there is no condition at all."
+        ),
         "has_timing": (
             "Does the request ask to delay, schedule, sequence or time a device action, e.g. 'in "
             "ten minutes', 'after', 'later', 'then', 'for 15 minutes'? Not a condition ('if', "
@@ -115,7 +125,9 @@ EN = Phrasebook(
     },
     scene_question="Which scene or script does the request name, if any?",
     condition_domain_question=(
-        "If the request contains a condition, which device type is the condition about?"
+        "If the request contains a condition ('if', 'when', 'wenn', 'falls'): which device type "
+        "would one READ to check it? Pick the type of the thing being observed in the condition, "
+        "not the thing being controlled by the action."
     ),
     verb_primary_question=(
         "Which ONE action does the request primarily ask for? Compare the options: a word like "
@@ -136,6 +148,18 @@ EN = Phrasebook(
         "several_places": "two or more rooms or floors are named",
         "whole_home": "the whole house is meant",
         "no_place": "no room, area or floor is named or implied",
+        "no_condition": (
+            "the request has no condition, or its condition is about none of these device "
+            "types (the time of day, the weather forecast, something a person said)"
+        ),
+        "no_condition_state": (
+            "the condition is not about a state of this device — it compares a number or "
+            "threshold, or refers to a time or the weather"
+        ),
+        "no_condition_subject": (
+            "none of the listed devices is the thing the condition observes — e.g. it is about "
+            "darkness, rain or presence and nothing here measures that"
+        ),
     },
     exclusion_question=(
         "The request in `request` names an exception — something that must NOT be affected. "
@@ -197,6 +221,56 @@ EN = Phrasebook(
         "unlock": ("unlock",),
         "query_state": ("is …?", "how warm", "how much", "which … are"),
         "activate": ("scene", "run the script"),
+    },
+    condition_domain_descriptions={
+        "sensor": "a measured value is read: temperature, humidity, brightness, power, air quality",
+        "binary_sensor": (
+            "an open/closed, detected/clear or present/away state is read: doors, windows, "
+            "motion, presence, darkness, rain, water leaks"
+        ),
+        "climate": "a thermostat, heating or air conditioner: whether it runs and in which mode",
+        "cover": "whether blinds, shutters, curtains or a garage door are open or closed",
+        "light": "whether a light is on or off",
+        "switch": "whether a switch or plug is on or off",
+        "fan": "whether a fan is on or off",
+        "media_player": "whether a TV or speaker is playing, paused or off",
+        "lock": "whether a door is locked or unlocked",
+        "alarm_control_panel": "whether the alarm is armed or disarmed",
+        "person": "whether someone is at home or away",
+        "vacuum": "whether the robot vacuum is cleaning, docked or idle",
+        "humidifier": "whether a humidifier is on or off",
+    },
+    condition_state_descriptions={
+        "binary_sensor": {
+            "on": (
+                "active — a door or window IS open, motion or presence IS detected, it IS dark, "
+                "wet or occupied"
+            ),
+            "off": (
+                "inactive — a door or window is closed, no motion or presence, it is bright, dry "
+                "or empty"
+            ),
+        },
+        "cover": {
+            "open": "open, up",
+            "closed": "closed, down",
+            "opening": "moving up right now",
+            "closing": "moving down right now",
+        },
+        "climate": {
+            "heat": "heating",
+            "cool": "cooling — the air conditioner is running",
+            "auto": "running in automatic mode",
+            "off": "switched off, not running",
+        },
+        "lock": {"locked": "locked", "unlocked": "unlocked", "jammed": "jammed, stuck"},
+        "media_player": {
+            "playing": "playing",
+            "paused": "paused",
+            "idle": "on but playing nothing",
+            "off": "switched off",
+        },
+        "person": {"home": "at home", "not_home": "away, not at home"},
     },
     domain_synonyms={
         "light": ("light", "lights", "lamp", "lamps", "lighting"),
@@ -265,6 +339,13 @@ DE = Phrasebook(
             "z. B. 'wenn', 'falls', 'sobald', 'nur wenn' — im Gegensatz zum bloßen Ausschließen "
             "eines Geräts mit 'außer' / 'aber nicht', was keine Bedingung ist?"
         ),
+        "condition_numeric": (
+            "Vergleicht die Bedingung der Anfrage einen MESSWERT mit einer Zahl oder Schwelle — "
+            "'wenn es wärmer als 23 Grad ist', 'unter 40 %', 'über 25 Grad', 'wenn mehr als zwei "
+            "Personen zu Hause sind' — statt einen Zustand zu prüfen wie offen/geschlossen, "
+            "an/aus, zu Hause/abwesend, dunkel/hell, läuft/steht? Nein, wenn es gar keine "
+            "Bedingung gibt."
+        ),
         "has_timing": (
             "Verlangt die Anfrage, eine Geräteaktion zu verzögern, zu planen, zeitlich zu steuern "
             "oder zu befristen, z. B. 'in zehn Minuten', 'nachher', 'später', 'danach', 'für 15 "
@@ -280,7 +361,9 @@ DE = Phrasebook(
     },
     scene_question="Welche Szene oder welches Skript nennt die Anfrage, falls überhaupt?",
     condition_domain_question=(
-        "Falls die Anfrage eine Bedingung enthält: Um welche Geräteart geht es in der Bedingung?"
+        "Falls die Anfrage eine Bedingung enthält ('wenn', 'falls', 'sobald'): Welche Geräteart "
+        "würde man ABLESEN, um sie zu prüfen? Wähle die Art der beobachteten Sache in der "
+        "Bedingung, nicht die der gesteuerten."
     ),
     verb_primary_question=(
         "Welche EINE Aktion verlangt die Anfrage in erster Linie? Vergleiche die Optionen: ein "
@@ -300,6 +383,18 @@ DE = Phrasebook(
         "several_places": "zwei oder mehr Räume oder Stockwerke sind genannt",
         "whole_home": "das ganze Haus ist gemeint",
         "no_place": "kein Raum, Bereich oder Stockwerk ist genannt oder gemeint",
+        "no_condition": (
+            "die Anfrage hat keine Bedingung, oder ihre Bedingung betrifft keine dieser "
+            "Gerätearten (Uhrzeit, Wettervorhersage, etwas, das jemand gesagt hat)"
+        ),
+        "no_condition_state": (
+            "die Bedingung betrifft keinen Zustand dieses Geräts — sie vergleicht eine Zahl "
+            "oder Schwelle oder meint eine Uhrzeit oder das Wetter"
+        ),
+        "no_condition_subject": (
+            "keines der aufgezählten Geräte ist das, was die Bedingung beobachtet — z. B. geht "
+            "es um Dunkelheit, Regen oder Anwesenheit und nichts hier misst das"
+        ),
     },
     exclusion_question=(
         "Die Anfrage in `request` nennt eine Ausnahme — etwas, das NICHT betroffen sein darf. "
@@ -439,6 +534,56 @@ DE = Phrasebook(
         "unlock": ("aufsperren", "entriegeln"),
         "query_state": ("ist …?", "wie warm", "wie viel", "welche … sind"),
         "activate": ("szene", "skript starten"),
+    },
+    condition_domain_descriptions={
+        "sensor": "ein Messwert wird abgelesen: Temperatur, Luftfeuchtigkeit, Helligkeit, Leistung",
+        "binary_sensor": (
+            "ein Zustand offen/geschlossen, erkannt/frei oder anwesend/abwesend wird abgelesen: "
+            "Türen, Fenster, Bewegung, Präsenz, Dunkelheit, Regen, Wasser"
+        ),
+        "climate": "Thermostat, Heizung oder Klimaanlage: ob sie läuft und in welchem Modus",
+        "cover": "ob Rollos, Jalousien, Vorhänge oder ein Tor offen oder geschlossen sind",
+        "light": "ob ein Licht an oder aus ist",
+        "switch": "ob ein Schalter oder eine Steckdose an oder aus ist",
+        "fan": "ob ein Lüfter an oder aus ist",
+        "media_player": "ob ein Fernseher oder Lautsprecher spielt, pausiert oder aus ist",
+        "lock": "ob eine Tür abgesperrt oder aufgesperrt ist",
+        "alarm_control_panel": "ob die Alarmanlage scharf oder unscharf ist",
+        "person": "ob jemand zu Hause oder abwesend ist",
+        "vacuum": "ob der Staubsaugerroboter saugt, in der Station steht oder wartet",
+        "humidifier": "ob ein Luftbefeuchter an oder aus ist",
+    },
+    condition_state_descriptions={
+        "binary_sensor": {
+            "on": (
+                "aktiv — eine Tür oder ein Fenster IST offen, Bewegung oder Präsenz IST erkannt, "
+                "es IST dunkel, nass oder belegt"
+            ),
+            "off": (
+                "inaktiv — Tür oder Fenster geschlossen, keine Bewegung oder Präsenz, es ist "
+                "hell, trocken oder leer"
+            ),
+        },
+        "cover": {
+            "open": "offen, oben",
+            "closed": "geschlossen, unten",
+            "opening": "fährt gerade hoch",
+            "closing": "fährt gerade runter",
+        },
+        "climate": {
+            "heat": "heizt",
+            "cool": "kühlt — die Klimaanlage läuft",
+            "auto": "läuft im Automatikmodus",
+            "off": "ausgeschaltet, läuft nicht",
+        },
+        "lock": {"locked": "abgesperrt", "unlocked": "aufgesperrt", "jammed": "verklemmt"},
+        "media_player": {
+            "playing": "spielt",
+            "paused": "pausiert",
+            "idle": "an, spielt aber nichts",
+            "off": "ausgeschaltet",
+        },
+        "person": {"home": "zu Hause", "not_home": "abwesend, nicht zu Hause"},
     },
     domain_synonyms={
         "light": ("licht", "lichter", "lampe", "lampen", "leuchte", "leuchten", "beleuchtung"),

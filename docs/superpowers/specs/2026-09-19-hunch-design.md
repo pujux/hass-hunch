@@ -432,6 +432,19 @@ know that "oben" *is* every one of them — `all_of` hovered at 0.4 and the requ
 confirmation on one bathroom light. With the scope named, `all_of` reads 0.82–0.87 and the whole
 floor resolves. Code did the lookup (alias → floor → rooms); Jev still makes the judgment.
 
+**Conditions made decisive (2026-09-21).** `has_condition` was never the flipper (0.98 stable);
+the `condition_domain` Choice was — bare domain ids with no descriptions hovered at the 0.7 bar
+(sensor 0.52–0.70), so a numeric request sometimes got Round 2 and a meaningless "sensor is on"
+Condition. Now: `condition_domain` options carry what one *reads* of each type (and *none* says
+"no condition, or none of these types"); a new Round 1 flag `condition_numeric` ("compares a
+measured value against a number or threshold?") hands off as `Escalate("condition")` before
+Round 2 with note `condition:numeric`; only domains with discrete states (`DOMAIN_STATES`) can
+be a condition subject (a sensor's number is not a state); `cond_state` options carry everyday
+meanings ("on — a door or window IS open …") plus *none of these*, and `cond_subject`'s *none of
+these* is described too; the subject is looked for in the controlled room first and then in the
+whole home ("Rollos in der Galerie zu wenn die Klimaanlage läuft"). Measured 4/4 stable on the
+numeric, door-state and thermostat prompts; negatives flat.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

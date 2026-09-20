@@ -220,10 +220,15 @@ def plan_round2(
                 if not verb.is_query:
                     all_of.append(verb.name)  # Jev, not code, decides "one of them or all of them"
     cond: tuple[Entity, ...] = ()
-    if shape.condition_domain and shape.flag("has_condition") >= thresholds.flag:
-        cond = tuple(e for e in home.entities if e.domain == shape.condition_domain)
-        if shape.scope_areas:
-            cond = tuple(e for e in cond if e.area_id in shape.scope_areas)
+    if (
+        shape.condition_domain in DOMAIN_STATES  # a sensor's number is not a state Jev can pick
+        and shape.flag("has_condition") >= thresholds.flag
+    ):
+        in_domain = tuple(e for e in home.entities if e.domain == shape.condition_domain)
+        in_scope = tuple(e for e in in_domain if e.area_id in shape.scope_areas)
+        # The thing observed need not sit in the room being controlled ("Rollos in der Galerie
+        # zu wenn die Klimaanlage läuft"): prefer the room, fall back to the whole home.
+        cond = in_scope or in_domain
         if len(cond) > scope_cap:
             # Truncating would silently hide the right answer; ask nothing instead and let
             # the engine record that the condition could not be resolved.
@@ -356,9 +361,14 @@ def build_round2_questions(
         qs["cond_subject"] = ChoiceQ(
             pb.cond_subject_question,
             tuple(o.label for o in plan.condition_options) + (NO_MATCH,),
+            {NO_MATCH: pb.special_descriptions["no_condition_subject"]},
         )
+        states = DOMAIN_STATES[shape.condition_domain]
+        state_desc = dict(pb.condition_state_descriptions.get(shape.condition_domain, {}))
+        state_desc[NO_MATCH] = pb.special_descriptions["no_condition_state"]
         qs["cond_state"] = ChoiceQ(
             pb.cond_state_question,
-            DOMAIN_STATES.get(shape.condition_domain, ("on", "off")),
+            states + (NO_MATCH,),
+            state_desc,
         )
     return qs

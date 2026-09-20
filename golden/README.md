@@ -6,8 +6,8 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 ## Latest result
 
 - **Model:** `jev-1.13.0`
-- **Date:** 2026-09-21 (after Julian set the floor aliases; the resolved place goes into Round 2)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 39 rows) 38–39/39 — the
+- **Date:** 2026-09-21 (floor aliases; scope in Round 2; decisive conditions)
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 40 rows) 40/40 (39–40 across runs) — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,30 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (night) — conditions: the flip was `condition_domain`, not `has_condition`
+
+Julian asked to stop "Rollos im Schlafzimmer schließen wenn es wärmer als 23 grad ist" flipping
+between Escalate and NeedsConfirmation. Measured first: `has_condition` was 0.98 in 6/6 runs;
+the flipper was the `condition_domain` Choice — raw domain ids, no descriptions — at 0.52–0.70
+against the 0.7 bar. When it cleared, Round 2 built a Condition("Temperatur sensor", "on") from
+the bare on/off fallback and asked for confirmation of nonsense. Three more looseness found by
+probing: a door-state condition that *should* work ended as low_confidence because `cond_state`
+offered a naked "on"/"off" for a door contact ("offen" → on at 0.41); the subject was restricted
+to the controlled room, so "Rollos in der Galerie zu wenn die Klimaanlage läuft" found nothing;
+and `cond_subject`'s "none of these" had no description, so "wenn es dunkel ist" (no darkness
+sensor exposed) picked a lamp's opening contact at 0.6.
+
+Fix, all Jev-side except one data fact: descriptions on `condition_domain` (what one READS of
+each type; *none* = no condition / none of these types); new flag `condition_numeric` → hand off
+before Round 2 (`condition:numeric`); `cond_state` options described in everyday words plus a
+described *none of these*; `cond_subject`'s *none of these* described; subject candidates from
+the room first, then the whole home; a domain without discrete states (sensor) cannot be a
+subject. No threshold moved. Measured 4/4 each: numeric → Escalate(condition) with
+`condition_domain` sensor 0.99 and `condition_numeric` 0.98; door → Resolved with the right
+contact, state on 0.77–0.83; thermostat → Resolved with (Klima, cool 0.98); negatives: numeric
+0.05–0.08, domain *none* 0.95+. Corpus: numeric row now `escalate/condition` outright, door-state
+row added. **Fixture 24/24, real home 40/40.**
 
 ### 2026-09-21 (later) — floor aliases: tell Jev what place the request resolved to
 

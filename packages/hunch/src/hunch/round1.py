@@ -17,6 +17,7 @@ FLAGS = (
     "names_specific",
     "has_exception",
     "has_condition",
+    "condition_numeric",
     "has_timing",
     "is_destructive",
 )
@@ -131,9 +132,16 @@ def build_round1_questions(
         },
     )
     if home.domains:
+        descriptions = {
+            d: pb.condition_domain_descriptions[d]
+            for d in home.domains
+            if d in pb.condition_domain_descriptions
+        }
+        descriptions["none"] = pb.special_descriptions["no_condition"]
         qs["condition_domain"] = ChoiceQ(
             pb.condition_domain_question,
             tuple(home.domains) + ("none",),
+            descriptions,
         )
     return qs
 

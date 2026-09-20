@@ -192,3 +192,37 @@ def test_round2_state_tells_jev_what_place_the_request_named(home, thresholds):
         "place": "no place named"
     }
     assert "scope" not in build_round2_state("Licht aus", plan, home)
+
+
+def test_condition_state_options_carry_meanings_and_a_none(home, thresholds):
+    shape = _shape(
+        home, ["arm"], {"collective": 0.9, "has_condition": 0.8}, condition_domain="cover"
+    )
+    plan = plan_round2(home, shape, {"arm": ()}, thresholds, 60)
+    qs = build_round2_questions(shape, plan, home)
+    assert qs["cond_state"].options[-1] == NO_MATCH
+    assert qs["cond_state"].descriptions["closed"].startswith("closed")
+    assert NO_MATCH in qs["cond_state"].descriptions
+    assert NO_MATCH in qs["cond_subject"].descriptions
+
+
+def test_condition_subject_may_sit_outside_the_room_being_controlled(home, thresholds):
+    # "close the kitchen blinds if the thermostat is heating": the only thermostat is upstairs.
+    shape = _shape(
+        home,
+        ["close"],
+        {"collective": 0.9, "has_condition": 0.9},
+        condition_domain="climate",
+        areas=("kitchen",),
+    )
+    plan = plan_round2(home, shape, {"close": ()}, thresholds, 60)
+    assert [e.entity_id for e in plan.condition_candidates] == ["climate.bedroom"]
+
+
+def test_a_sensor_reading_is_not_a_state_a_condition_can_hold(home, thresholds):
+    shape = _shape(
+        home, ["close"], {"collective": 0.9, "has_condition": 0.9}, condition_domain="sensor"
+    )
+    plan = plan_round2(home, shape, {"close": ()}, thresholds, 60)
+    assert plan.condition_candidates == ()
+    assert "cond_subject" not in build_round2_questions(shape, plan, home)

@@ -74,8 +74,12 @@
 - prompt: Wie viel ist 13 mal 8?
   expect: {kind: escalate}
 - prompt: Rollos im Schlafzimmer schließen wenn es wärmer als 23 grad ist
-  # numeric condition: not expressible in the two-slot condition model -> must NOT execute unconditionally
-  expect: {kinds: [escalate, confirm]}
+  # numeric condition: not expressible in the two-slot condition model -> Jev's condition_numeric flag
+  # hands it off before Round 2 (2026-09-21); never executes unconditionally, never a fake condition
+  expect: {kind: escalate, reason: condition}
+- prompt: Rollos im Schlafzimmer schließen wenn die Dachterrassentür offen ist
+  # state condition: the door contact in the same room; 'offen' = binary_sensor 'on'
+  expect: {kinds: [resolved, confirm], verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo], condition: {subject: binary_sensor.schlafzimmer_dachterrassentur_tur, state: 'on'}}
 - prompt: Licht im Untergeschoss an
   expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_kiosk_bildschirmhelligkeit, light.wohnzimmerkiosk_screenbrightness, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 - prompt: Licht im Untergeschoss aus ausser Wohnzimmer Stehlampe

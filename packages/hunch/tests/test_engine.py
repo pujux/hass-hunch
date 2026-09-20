@@ -408,3 +408,42 @@ async def test_scope_clarify_for_one_verb_does_not_abort_when_another_resolves(h
     assert isinstance(r, Resolved)
     assert [a.verb.name for a in r.actions] == ["open"]
     assert "dropped:turn_on:scope" in r.trace.notes
+
+
+async def test_numeric_condition_hands_off_before_round2(home, vocab, config):
+    # "close the blinds if it is warmer than 23 degrees": Jev says the condition compares a
+    # measurement with a number; no two-slot Condition can hold that, so the engine stops here.
+    client, calls = _scripted(
+        {
+            "verb:close": NoulA(0.95),
+            "domain:cover": NoulA(0.95),
+            "flag:collective": NoulA(0.9),
+            "flag:has_condition": NoulA(0.95),
+            "flag:condition_numeric": NoulA(0.9),
+            "condition_domain": ChoiceA("climate", 0.9, {"climate": 0.9}),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "close the blinds if it is warmer than 23 degrees"
+    )
+    assert isinstance(r, Escalate) and r.reason == "condition"
+    assert "condition:numeric" in r.trace.notes
+    assert calls["n"] == 1
+
+
+async def test_state_none_of_these_means_no_condition(home, vocab, config):
+    client, _ = _scripted(
+        {
+            "verb:lock": NoulA(0.95),
+            "domain:lock": NoulA(0.9),
+            "flag:has_condition": NoulA(0.9),
+            "condition_domain": ChoiceA("cover", 0.9, {"cover": 0.9}),
+        },
+        {
+            "cond_subject": ChoiceA("Blinds", 0.9, {"Blinds": 0.9}),
+            "cond_state": ChoiceA(NO_MATCH, 0.9, {NO_MATCH: 0.9}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "lock the door if the blinds are weird")
+    assert isinstance(r, Escalate) and r.reason == "condition"
+    assert "no_match:cond_state" in r.trace.notes
