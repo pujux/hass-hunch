@@ -95,12 +95,14 @@ def interpret_round1(
         # "Mach alles aus": nothing reaches verb_fire, but one verb clearly leads and nothing
         # else is even close. A lone leader is a decision; a crowded field is not.
         probs = {v.name: answers.noul(f"verb:{v.name}") for v in vocab.verbs}
-        leaders = [n for n, p in probs.items() if p >= thresholds.verb_lone_leader]
-        if len(leaders) == 1 and all(
-            p < thresholds.verb_rival for n, p in probs.items() if n != leaders[0]
+        ranked = sorted(probs.items(), key=lambda kv: -kv[1])
+        leader, runner_up = ranked[0], ranked[1] if len(ranked) > 1 else (None, 0.0)
+        if (
+            leader[1] >= thresholds.verb_lone_leader
+            and leader[1] - runner_up[1] >= thresholds.verb_lone_margin
         ):
-            trace.note(f"lone_leader:{leaders[0]}")
-            fired = [vocab.by_name(leaders[0])]
+            trace.note(f"lone_leader:{leader[0]}")
+            fired = [vocab.by_name(leader[0])]
     for group in EXCLUSIVE_GROUPS:
         rivals = [v for v in fired if v.name in group]
         if len(rivals) > 1:

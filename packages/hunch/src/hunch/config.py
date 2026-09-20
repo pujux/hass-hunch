@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 class Thresholds:
     verb_fire: float = 0.7
     verb_lone_leader: float = 0.55  # below verb_fire, a single clear leader still fires ...
-    verb_rival: float = 0.3  # ... if no other verb reaches this
+    verb_lone_margin: float = 0.3  # ... if it leads the runner-up by at least this
     scope_fire: float = 0.7
     scope_hard: float = 0.9  # a Jev-only area/floor (not named verbatim) needs this to count  # floor / area / domain Nouls
     collective: float = 0.5

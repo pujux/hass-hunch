@@ -12,7 +12,7 @@ from hunch.vocabulary import DEFAULT_VOCABULARY as V
 
 def test_new_defaults():
     t = Thresholds()
-    assert t.auto_execute == 0.70 and t.verb_lone_leader == 0.55 and t.verb_rival == 0.3
+    assert t.auto_execute == 0.70 and t.verb_lone_leader == 0.55 and t.verb_lone_margin == 0.3
 
 
 def test_collective_backed_by_a_named_area_is_strong(home, config):

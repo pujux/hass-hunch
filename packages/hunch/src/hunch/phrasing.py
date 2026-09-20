@@ -74,8 +74,9 @@ EN = Phrasebook(
             "'other than'?"
         ),
         "has_condition": (
-            "Does the request make the action depend on a condition, "
-            "e.g. 'if', 'when', 'unless', 'only if'?"
+            "Does the request make the action depend on a condition about the state of the "
+            "world, e.g. 'if', 'when', 'unless', 'only if' — as opposed to merely excluding a "
+            "device with 'except' / 'but not' / 'außer', which is not a condition?"
         ),
         "has_timing": (
             "Does the request ask to delay, schedule, sequence or time a device action, "
@@ -162,8 +163,9 @@ DE = Phrasebook(
             "'bis auf'?"
         ),
         "has_condition": (
-            "Macht die Anfrage die Aktion von einer Bedingung abhängig, z. B. 'wenn', 'falls', "
-            "'sobald', 'nur wenn', 'außer wenn'?"
+            "Macht die Anfrage die Aktion von einer Bedingung über den Zustand der Welt abhängig, "
+            "z. B. 'wenn', 'falls', 'sobald', 'nur wenn' — im Gegensatz zum bloßen Ausschließen "
+            "eines Geräts mit 'außer' / 'aber nicht', was keine Bedingung ist?"
         ),
         "has_timing": (
             "Verlangt die Anfrage, eine Geräteaktion zu verzögern, zu planen, zeitlich zu steuern "
