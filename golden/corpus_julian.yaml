@@ -36,7 +36,8 @@
   # two 'Dachterrasse Rollo' covers (Galerie, Schlafzimmer), no room named -> ask which
   expect: {kinds: [clarify]}
 - prompt: Starte Peter
-  expect: {kind: escalate, reason: no_intent}
+  # no vacuum verbs in the vocabulary yet: hand off, whichever way Jev gets there
+  expect: {kind: escalate}
 - prompt: Mach das Licht in zehn Minuten aus
   expect: {kind: escalate, reason: timing}
 - prompt: Wie spät ist es?

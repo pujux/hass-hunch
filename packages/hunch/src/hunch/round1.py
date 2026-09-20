@@ -29,12 +29,28 @@ def _label(area: Area) -> str:
 
 
 def build_round1_state(home: HomeModel, prompt: str) -> JSON:
+    from hunch.scope import verbatim_matches  # local import: scope imports this module's Shape
+
+    # Code fetches, Jev decides: the exposed devices whose name, alias or device name appears in
+    # the prompt are handed over with their type and room, so a bare name like "Kücheninsel" can
+    # be judged as the light it is. Never the full entity list — that stays out of Round 1.
+    mentioned = [
+        {
+            "name": e.name,
+            "type": e.domain,
+            "area": home.area_by_id(e.area_id).name
+            if e.area_id and home.area_by_id(e.area_id)
+            else None,
+        }
+        for e in verbatim_matches(home.entities + home.scenes, prompt)[:10]
+    ]
     return {
         "request": prompt,
         "floors": [f.name for f in home.floors],
         "areas": [_label(a) for a in home.areas],
         "domains": list(home.domains),
         "scenes": [s.name for s in home.scenes],
+        "mentioned_devices": mentioned,
     }
 
 

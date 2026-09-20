@@ -120,6 +120,16 @@ def resolve(
 
         if verb.name in plan.collective:
             targets = plan.collective[verb.name]
+            if verb.name in plan.include and round2 is not None:
+                kept_inc: list[Entity] = []
+                for e in targets:
+                    p_in = round2.noul(f"include:{verb.name}:{e.entity_id}")
+                    if trace.decide(f"include:{verb.name}:{e.entity_id}", p_in, 0.5):
+                        kept_inc.append(e)
+                        local.append(p_in)
+                    else:
+                        trace.note(f"not_meant:{verb.name}:{e.entity_id}")
+                targets = tuple(kept_inc)
             if len(targets) > 1:  # a single candidate never relied on the collective flag
                 collective = shape.flag("collective")
                 in_scope = shape.scope_areas and all(
@@ -196,12 +206,18 @@ def resolve(
                 opt = next((o for o in options if o.label == c.choice), None)
                 weak = c.confidence < th.confirm_band and len(ranked) > 1
                 twins: list = []
-                if opt is not None and not shape.scope_areas:
-                    # Same device name in several rooms and no room said: nothing in the request
-                    # can tell them apart, whatever the pick's confidence. A lookup, not a
-                    # judgement.
+                if opt is not None:
+                    # Same device name in several rooms: unless the scope singles out the picked
+                    # one's room, nothing in the request can tell them apart, whatever the pick's
+                    # confidence. A lookup, not a judgement.
                     base = _base_label(opt.label)
-                    twins = [o for o in options if o is not opt and _base_label(o.label) == base]
+                    same = [o for o in options if o is not opt and _base_label(o.label) == base]
+                    in_scope = [
+                        o
+                        for o in same
+                        if not shape.scope_areas or o.entities[0].area_id in shape.scope_areas
+                    ]
+                    twins = in_scope
                 if opt is not None and (weak or twins or verb.name in plan.ambiguous_by_area):
                     if not weak:
                         trace.note(f"clarify:ambiguous_by_area:{verb.name}")

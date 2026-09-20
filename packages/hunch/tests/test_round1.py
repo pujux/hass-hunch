@@ -137,3 +137,14 @@ def test_interpret_records_trace(home, vocab, thresholds):
     interpret_round1(home, vocab, ans, thresholds, trace)
     assert trace.models == ["jev-1.13.0"]
     assert any(d.name == "verb:turn_off" and d.passed for d in trace.decisions)
+
+
+def test_round1_state_names_the_devices_the_prompt_mentions(home):
+    # Code looks up which exposed devices the prompt names (name, alias or device name) and hands
+    # Jev their type and room — so "Kücheninsel auf 35%" can be judged as a light, not a blind.
+    state = build_round1_state(home, "reading lamp to 35%")
+    assert state["mentioned_devices"] == [
+        {"name": "Reading lamp", "type": "light", "area": "Living room"}
+    ]
+    assert build_round1_state(home, "lights off")["mentioned_devices"] == []
+    assert "entities" not in state  # still never the full list

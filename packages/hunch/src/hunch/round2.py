@@ -123,6 +123,8 @@ class Round2Plan:
     ambiguous_by_area: tuple[str, ...] = ()
     # singular verbs also asked "all of these?" (Jev sees the candidates in the state)
     all_of: tuple[str, ...] = ()
+    # collective verbs whose candidates span several device types: Jev is asked per candidate
+    include: Mapping[str, tuple[Entity, ...]] = field(default_factory=dict)
     # verbs whose candidates lie outside the named room/floor: Jev is asked whether they were meant
     outside_scope: tuple[str, ...] = ()
 
@@ -186,6 +188,7 @@ def plan_round2(
     literals = numeric_literals(prompt)
     ambiguous_by_area: list[str] = []
     all_of: list[str] = []
+    include: dict[str, tuple[Entity, ...]] = {}
     for verb in shape.fired_verbs:
         cands = per_verb.get(verb.name, ())
         if not cands:
@@ -196,6 +199,9 @@ def plan_round2(
                 numeric[verb.name] = literals
         if collective and not has_exception:
             coll[verb.name] = cands
+            if len({e.domain for e in cands}) > 1:
+                # "kitchen lights" over lights AND a fridge switch: Jev judges each candidate.
+                include[verb.name] = cands
         elif collective:
             exclude[verb.name] = cands
         else:
@@ -230,7 +236,16 @@ def plan_round2(
         target_options(cond, area_names) if cond else (),
         tuple(ambiguous_by_area),
         tuple(all_of),
-        tuple(v.name for v in shape.fired_verbs if v.name in widened and shape.scope_areas),
+        include,
+        tuple(
+            v.name
+            for v in shape.fired_verbs
+            if v.name in widened
+            and (
+                not shape.scope_areas
+                or any(e.area_id not in shape.scope_areas for e in per_verb.get(v.name, ()))
+            )
+        ),
     )
 
 
@@ -268,6 +283,17 @@ def build_round2_questions(
         )
     for verb_name in plan.all_of:
         qs[f"all_of:{verb_name}"] = NoulQ(pb.all_of_question)
+    for verb_name, ents in plan.include.items():
+        verb = next(v for v in shape.fired_verbs if v.name == verb_name)
+        for e in ents:
+            qs[f"include:{verb_name}:{e.entity_id}"] = NoulQ(
+                pb.include_question.format(
+                    name=e.name,
+                    type=e.domain,
+                    area=_area_name(home, e),
+                    phrasing=pb.phrasing_for(verb.name, verb.phrasing),
+                )
+            )
     for verb_name in plan.outside_scope:
         verb = next(v for v in shape.fired_verbs if v.name == verb_name)
         qs[f"outside_scope:{verb_name}"] = NoulQ(

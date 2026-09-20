@@ -135,7 +135,7 @@ async def test_whole_home_flag_lifts_the_area_scope(home, vocab, config):
     assert "whole_home" in r.trace.notes
 
 
-async def test_out_of_room_verb_is_dropped_when_jev_says_it_was_not_meant(home, vocab, config):
+async def test_widened_verb_is_dropped_when_jev_says_it_was_not_meant(home, vocab, config):
     # "lamps in the bedroom up": `open` co-fires on "up", finds no bedroom cover, widens.
     ov = {
         "verb:turn_on": NoulA(0.95),

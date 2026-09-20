@@ -340,3 +340,50 @@ def test_all_of_is_not_asked_for_queries(home, thresholds):
         60,
     )
     assert plan.all_of == ()
+
+
+# ---- mixed-type sweeps: Jev judges each candidate --------------------------------------------
+
+
+def test_mixed_domain_collective_asks_per_candidate_and_drops_the_odd_one(home, config):
+    shape, vp = _shape(["turn_off"], {"collective": 0.9}, {"turn_off": 0.95}, areas=("kitchen",))
+    cands = _ents(home, "light.kitchen_ceiling", "light.kitchen_counter", "switch.fridge")
+    plan = plan_round2(
+        home,
+        shape,
+        {"turn_off": cands},
+        config.thresholds,
+        60,
+        prompt="turn off the kitchen lights",
+    )
+    assert plan.include == {"turn_off": cands}
+    qs = build_round2_questions(shape, plan, home)
+    assert "include:turn_off:switch.fridge" in qs
+    r2 = Answers(
+        "m",
+        {
+            "include:turn_off:light.kitchen_ceiling": NoulA(0.97),
+            "include:turn_off:light.kitchen_counter": NoulA(0.96),
+            "include:turn_off:switch.fridge": NoulA(0.04),
+        },
+        None,
+    )
+    r = resolve(shape, plan, r2, config, _trace(vp))
+    assert isinstance(r, Resolved)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+    }
+    assert "not_meant:turn_off:switch.fridge" in r.trace.notes
+
+
+def test_single_domain_collective_asks_nothing_extra(home, config):
+    shape, _ = _shape(["turn_off"], {"collective": 0.9}, {"turn_off": 0.95}, areas=("kitchen",))
+    plan = plan_round2(
+        home,
+        shape,
+        {"turn_off": _ents(home, "light.kitchen_ceiling", "light.kitchen_counter")},
+        config.thresholds,
+        60,
+    )
+    assert plan.include == {}

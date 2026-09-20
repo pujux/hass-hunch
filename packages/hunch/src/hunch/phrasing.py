@@ -31,6 +31,9 @@ class Phrasebook:
     param_inverted_question: str  # Noul (covers): does the number say how far CLOSED
     all_of_question: str  # Noul: does the request mean every listed candidate
     outside_scope_question: str  # Noul: {phrasing} — a second action outside the named room?
+    include_question: (
+        str  # Noul per candidate of a mixed-type sweep: {name} {type} {area} {phrasing}
+    )
     cond_subject_question: str
     cond_state_question: str
     device_question: str
@@ -64,7 +67,11 @@ EN = Phrasebook(
     verb_question="Does the request ask to {phrasing}?",
     floor_question="Does the request refer to the floor '{name}' or to all of it?",
     area_question="Does the request refer to the area '{label}'?",
-    domain_question="Does the request involve devices of type '{domain}'?",
+    domain_question=(
+        "Does the request act on or ask about devices of type '{domain}' — as its target, not "
+        "merely a device it names as an exception ('except the fridge') or in a condition "
+        "('if the blinds are closed')?"
+    ),
     flags={
         "collective": (
             "Does the request target every matching device in its scope for at least one of its "
@@ -96,10 +103,10 @@ EN = Phrasebook(
             "device with 'except' / 'but not' / 'außer', which is not a condition?"
         ),
         "has_timing": (
-            "Does the request ask to delay, schedule, sequence or time a device action, "
-            "e.g. 'in ten minutes', 'after', 'later', 'then' — as opposed to merely mentioning "
-            "a future time in a request that is not about controlling a device (such as asking "
-            "about tomorrow's weather)?"
+            "Does the request ask to delay, schedule, sequence or time a device action, e.g. 'in "
+            "ten minutes', 'after', 'later', 'then', 'for 15 minutes'? Not a condition ('if', "
+            "'when the door is open', 'wenn') and not a mere mention of a time in a request that "
+            "controls no device (asking about tomorrow's weather)."
         ),
         "is_destructive": (
             "Would fulfilling the request cause irreversible, unsafe or security-relevant "
@@ -133,11 +140,17 @@ EN = Phrasebook(
         "than one particular device among them?"
     ),
     outside_scope_question=(
-        "The request names a room or floor, but the devices in `candidates` are elsewhere. Does "
-        "the request contain a SEPARATE instruction to {phrasing} that applies to devices like "
-        "these — as in 'turn off the kitchen lights and close the blinds', where closing the "
-        "blinds is its own action not limited to the kitchen? Answer no if the only thing asked "
-        "is inside the named room and this verb just echoes a word like 'zu' or 'auf'."
+        "The devices listed in `candidates` are NOT of the kind or in the place the request "
+        "refers to — they only came up because nothing closer matched. Does the request "
+        "nevertheless contain an instruction to {phrasing} that applies to devices like these "
+        "(e.g. 'turn off the kitchen lights and close the blinds' — the blinds are a separate "
+        "action)? Answer no if the action was meant for something else (another room, a "
+        "vacuum, a blind) or this verb just echoes a word like 'zu', 'auf' or 'start'."
+    ),
+    include_question=(
+        "The request means several devices at once. Is '{name}' ({type}, {area}) one of the "
+        "devices it asks to {phrasing}? Answer no for a device of a kind the request did not "
+        "mean — e.g. a fridge plug when 'the kitchen lights' were asked for."
     ),
     param_inverted_question=(
         "For blinds or shutters only: does the request give that number as how far CLOSED they "
@@ -192,7 +205,11 @@ DE = Phrasebook(
         "Bezieht sich die Anfrage auf das Stockwerk '{name}' oder auf das ganze Stockwerk?"
     ),
     area_question="Bezieht sich die Anfrage auf den Raum bzw. Bereich '{label}'?",
-    domain_question="Betrifft die Anfrage Geräte der Art '{domain}'?",
+    domain_question=(
+        "Wirkt die Anfrage auf Geräte der Art '{domain}' oder fragt sie danach — als ihr Ziel, "
+        "nicht bloß als Gerät, das sie als Ausnahme ('außer dem Kühlschrank') oder in einer "
+        "Bedingung ('wenn die Rollos zu sind') nennt?"
+    ),
     flags={
         "collective": (
             "Zielt die Anfrage bei mindestens einer ihrer Aktionen auf alle passenden Geräte in "
@@ -226,9 +243,9 @@ DE = Phrasebook(
         ),
         "has_timing": (
             "Verlangt die Anfrage, eine Geräteaktion zu verzögern, zu planen, zeitlich zu steuern "
-            "oder in eine Reihenfolge zu bringen, z. B. 'in zehn Minuten', 'nachher', 'später', "
-            "'danach' — im Gegensatz zur bloßen Erwähnung eines Zeitpunkts in einer Anfrage, die "
-            "gar kein Gerät steuert (etwa die Frage nach dem Wetter von morgen)?"
+            "oder zu befristen, z. B. 'in zehn Minuten', 'nachher', 'später', 'danach', 'für 15 "
+            "Minuten'? Keine Bedingung ('wenn', 'falls', 'sobald die Tür offen ist') und keine "
+            "bloße Zeitangabe in einer Anfrage, die kein Gerät steuert (Wetter von morgen)."
         ),
         "is_destructive": (
             "Hätte die Erfüllung der Anfrage unumkehrbare, unsichere oder sicherheitsrelevante "
@@ -263,11 +280,17 @@ DE = Phrasebook(
         "bestimmten Geräts darunter?"
     ),
     outside_scope_question=(
-        "Die Anfrage nennt einen Raum oder ein Stockwerk, aber die Geräte in `candidates` sind "
-        "anderswo. Enthält die Anfrage eine EIGENE Anweisung, {phrasing}, die für solche Geräte "
-        "gilt — wie in 'Küchenlicht aus und Rollos zu', wo das Schließen der Rollos eine eigene, "
-        "nicht auf die Küche beschränkte Aktion ist? Antworte nein, wenn nur etwas im genannten "
-        "Raum verlangt wird und dieses Verb bloß ein Wort wie 'zu' oder 'auf' widerspiegelt."
+        "Die Geräte in `candidates` sind NICHT von der Art oder an dem Ort, auf die sich die "
+        "Anfrage bezieht — sie kamen nur ins Spiel, weil nichts Näheres passte. Enthält die "
+        "Anfrage trotzdem eine Anweisung, {phrasing}, die für solche Geräte gilt (z. B. "
+        "'Küchenlicht aus und Rollos zu' — die Rollos sind eine eigene Aktion)? Antworte nein, "
+        "wenn die Aktion etwas anderem galt (einem anderen Raum, einem Staubsauger, einem Rollo) "
+        "oder das Verb bloß ein Wort wie 'zu', 'auf' oder 'starte' widerspiegelt."
+    ),
+    include_question=(
+        "Die Anfrage meint mehrere Geräte auf einmal. Gehört '{name}' ({type}, {area}) zu den "
+        "Geräten, die sie {phrasing} soll? Antworte nein bei einer Geräteart, die nicht gemeint "
+        "war — z. B. eine Kühlschrank-Steckdose, wenn 'die Küchenlichter' verlangt wurden."
     ),
     param_inverted_question=(
         "Nur bei Rollos oder Jalousien: gibt die Anfrage die Zahl als Anteil GESCHLOSSEN an — "
