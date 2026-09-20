@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-19 (after the final-review fix wave)
-- **Agreement:** fixture 23–24/24; real German home (`corpus_julian.yaml`, 32 rows) 32/32
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 32 rows) 32/32 (one row, "Mach alles aus außer …", is variance-prone)
 - **Latency:** p50 ≈ 370–400 ms, p95 ≈ 800 ms (real home needs two rounds more often)
 - **Cost:** ≈ $0.0016 (fixture) / $0.0034 (real home) per full run
 
@@ -71,8 +71,10 @@ floor counts as strong — `max(collective, scope strength)` — because two ind
 agree on "all of them"; (2) a lone-leader verb fires below `verb_fire` when it is ≥ 0.55 and
 leads the runner-up by ≥ 0.3 ("Mach alles aus": turn_off 0.68, close 0.33); (3) `auto_execute`
 0.75 → 0.70. Also: `has_condition` reworded so "außer"/"except" (an exception) no longer reads
-as a condition (0.07 vs 0.98 for real conditions). Result: **real home 32/32**, fixture 23/24
-("turn everything off" spreads turn_off/close/lock — escalation accepted as an outcome).
+as a condition (0.07 vs 0.98 for real conditions). Then two more code-side rules from the last failing traces: most rooms firing at once means
+*the whole home*, not a dozen hallucinations ("Mach alles aus"); and an exception named verbatim
+("außer dem Mini Kühlschrank", "except the fridge") is excluded by code with no Nouns asked.
+Result: **real home 32/32, fixture 24/24** ("turn everything off" accepts confirm or escalate).
 
 ### 2026-09-20 (later) — Julian's own prompts: code matches names, Jev judges the rest
 

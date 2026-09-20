@@ -124,6 +124,8 @@ class Round2Plan:
     condition_options: tuple[TargetOption, ...] = ()
     # singular verbs whose options differ only by area while the prompt names no area: ask
     ambiguous_by_area: tuple[str, ...] = ()
+    # verb -> entities the prompt names as the exception (excluded by code, no Nouls needed)
+    excluded_by_name: Mapping[str, tuple[Entity, ...]] = field(default_factory=dict)
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
@@ -189,6 +191,7 @@ def plan_round2(
     scoped_sweep_ok: list[str] = []
     domain_sweep_ok: list[str] = []
     ambiguous_by_area: list[str] = []
+    excluded_by_name: dict[str, tuple[Entity, ...]] = {}
     for verb in shape.fired_verbs:
         cands = per_verb.get(verb.name, ())
         if not cands:
@@ -208,7 +211,13 @@ def plan_round2(
                 name_matched.append(verb.name)
             coll[verb.name] = cands
         elif collective:
-            exclude[verb.name] = cands
+            named = verbatim_matches(cands, prompt)
+            if named:
+                # "except the fridge" with a Fridge among the candidates: code knows the exception.
+                excluded_by_name[verb.name] = named
+                coll[verb.name] = tuple(e for e in cands if e not in named)
+            else:
+                exclude[verb.name] = cands
         else:
             opts = target_options(cands, area_names)
             if len(opts) == 1:
@@ -252,6 +261,7 @@ def plan_round2(
         tuple(domain_sweep_ok),
         target_options(cond, area_names) if cond else (),
         tuple(ambiguous_by_area),
+        excluded_by_name,
     )
 
 

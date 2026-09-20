@@ -116,6 +116,15 @@ class Engine:
             if shape.floor_probs.get(f.floor_id, 0.0) >= th.scope_fire
             for a in f.area_ids
         )
+        soft_fired = [
+            a for a in shape.scope_areas if a not in named_areas and a not in fired_floor_areas
+        ]
+        whole_home = not named_areas and len(soft_fired) >= max(3, len(home.areas) // 2)
+        if whole_home:
+            # "Mach alles aus": Jev lights up most rooms at once. That is not twelve hallucinations,
+            # it is "the whole home" — so no area restriction at all, rather than the few above
+            # the hard bar.
+            trace.note("whole_home")
         if named_areas:
             # A room said out loud beats everything else: a floor that also fired must not widen
             # "Rollos im Schlafzimmer" to the whole upper floor.
@@ -124,6 +133,8 @@ class Engine:
                 for a in shape.scope_areas
                 if a in named_areas or shape.area_probs.get(a, 0.0) >= th.scope_hard
             )
+        elif whole_home:
+            kept = ()
         else:
             kept = tuple(
                 a
@@ -132,7 +143,7 @@ class Engine:
             )
         dropped = tuple(a for a in shape.scope_areas if a not in kept)
         added = tuple(a for a in named_areas if a not in kept)
-        if dropped:
+        if dropped and not whole_home:
             trace.note("soft_scope_dropped:" + ",".join(dropped))
         if added:
             trace.note("area_match:" + ",".join(added))

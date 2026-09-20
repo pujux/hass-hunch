@@ -370,7 +370,9 @@ keeps its areas unless an area was named; domain words in any supported language
 (`Phrasebook.domain_synonyms`) override Jev's domains. Inside the scope, candidates whose
 name, alias or device name appears in the prompt are the candidates (not when an exception
 is named). Verbs in an exclusive group (`EXCLUSIVE_GROUPS`) — open/close/set_position,
-on/off, lock/unlock, arm/disarm, play/pause — keep only the strongest. Duplicate option
+on/off, lock/unlock, arm/disarm, play/pause — keep only the strongest. When most areas fire at once with none named, the request is
+about the whole home and no area restriction applies. An exception named verbatim is excluded
+by code without asking Jev. Duplicate option
 labels are qualified by area ("Dachterrasse Rollo (Galerie)"); same-named options in
 several rooms with no room said always clarify.
 

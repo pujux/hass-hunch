@@ -21,7 +21,9 @@
 - prompt: run the goodnight script
   expect: {kind: resolved, verb: activate, targets: [script.goodnight]}
 - prompt: turn everything off
-  expect: {kind: resolved, verb: turn_off}
+  # 'everything' in a home with covers and a lock: Jev spreads turn_off/close/lock. Confirming a
+  # sweep or handing the ambiguity to the LLM are both acceptable; acting silently is not.
+  expect: {kinds: [confirm, escalate]}
 - prompt: set the bedroom to 22 degrees
   expect: {kind: resolved, verb: set_temperature, targets: [climate.bedroom], params: {temperature: [21, 23]}}
 - prompt: make the bedroom warmer

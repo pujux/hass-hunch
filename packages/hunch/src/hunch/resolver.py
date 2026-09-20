@@ -74,6 +74,9 @@ def resolve(
 
         if verb.name in plan.collective:
             targets = plan.collective[verb.name]
+            if verb.name in plan.excluded_by_name:
+                trace.note(f"exception_match:{verb.name}:{len(plan.excluded_by_name[verb.name])}")
+                local.append(shape.flag("has_exception"))
             if len(targets) > 1:  # a single candidate never relied on the collective flag
                 collective = shape.flag("collective")
                 in_scope = shape.scope_areas and all(

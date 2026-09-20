@@ -2,7 +2,7 @@
 Jev-only areas (2026-09-20, from 'Licht aus' picking two random rooms)."""
 
 from hunch.client import FakeDecisionClient
-from hunch.config import Thresholds
+from hunch.config import EngineConfig, Thresholds
 from hunch.engine import Engine
 from hunch.loaders import home_from_export
 from hunch.phrasing import DE, EN
@@ -134,3 +134,41 @@ async def test_a_named_area_beats_a_fired_floor(home, vocab, config):
     assert "soft_scope_dropped:office" in r.trace.notes or all(
         "office" not in n for n in r.trace.notes
     )
+
+
+async def test_most_rooms_firing_means_the_whole_home(home, vocab, config):
+    # "Mach alles aus": Jev lights up every room at 0.77-0.9. Not hallucinations: the whole home.
+    ov = {
+        "verb:turn_off": NoulA(0.9),
+        "domain:light": NoulA(0.95),
+        "flag:collective": NoulA(0.92),
+        "area:kitchen": NoulA(0.85),
+        "area:living": NoulA(0.88),
+        "area:hallway": NoulA(0.8),
+        "area:bedroom": NoulA(0.82),
+        "area:office": NoulA(0.78),
+    }
+    cfg = EngineConfig(model="m", max_silent_targets=100)
+    r = await Engine(FakeDecisionClient(_script(ov)), vocab, cfg).decide(home, "everything off")
+    assert isinstance(r, Resolved) and len(r.actions[0].targets) == 9
+    assert "whole_home" in r.trace.notes
+
+
+async def test_a_named_exception_is_excluded_by_code(home, vocab, config):
+    ov = {
+        "verb:turn_off": NoulA(0.9),
+        "area:kitchen": NoulA(0.99),
+        "flag:collective": NoulA(0.9),
+        "flag:has_exception": NoulA(0.95),
+    }
+    client = FakeDecisionClient(_script(ov))
+    r = await Engine(client, vocab, config).decide(
+        home, "turn off everything in the kitchen except the fridge"
+    )
+    assert isinstance(r, Resolved)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+    }
+    assert len(client.calls) == 1  # no exclusion Nouls were needed
+    assert "exception_match:turn_off:1" in r.trace.notes
