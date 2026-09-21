@@ -241,3 +241,24 @@ def test_condition_context_names_the_check():
 
     text = condition_context()
     assert "condition" in text and "current state" in text
+
+
+def test_todo_lists_render_their_items_not_their_count():
+    from types import SimpleNamespace
+
+    full = SimpleNamespace(
+        entity_id="todo.shopping",
+        state="4",
+        unit=None,
+        device_class=None,
+        items=("Oliven Öl", "Butter"),
+    )
+    assert describe_state(full, "de") == "Oliven Öl, Butter"
+    empty = SimpleNamespace(
+        entity_id="todo.shopping", state="0", unit=None, device_class=None, items=()
+    )
+    assert describe_state(empty, "de") == "leer" and describe_state(empty, "en") == "empty"
+    unread = SimpleNamespace(
+        entity_id="todo.shopping", state="4", unit=None, device_class=None, items=None
+    )
+    assert describe_state(unread, "de") == "4"

@@ -129,6 +129,7 @@ STATE_WORDS: dict[str, dict[tuple[str, str], str]] = {
 }
 DOOR_WORDS = {"en": {"on": "open", "off": "closed"}, "de": {"on": "offen", "off": "geschlossen"}}
 DOOR_CLASSES = {"door", "window", "garage_door", "opening"}
+EMPTY_LIST = {"en": "empty", "de": "leer"}
 CONDITION_WORD = {"en": " if {subject} is {state}", "de": ", wenn {subject} {state} ist"}
 MANY = {"en": "{n} devices in {places}", "de": "{n} Geräte in {places}"}
 MANY_NOWHERE = {"en": "{n} devices", "de": "{n} Geräte"}
@@ -167,6 +168,11 @@ def describe_state(reading: Any, language: str) -> str:
     object."""
     domain = reading.entity_id.split(".", 1)[0]
     state = reading.state if reading.state is not None else "?"
+    items = getattr(reading, "items", None)
+    if domain == "todo" and items is not None:
+        if not items:
+            return EMPTY_LIST.get(language, EMPTY_LIST["en"])
+        return ", ".join(items)
     if (
         domain == "binary_sensor"
         and reading.device_class in DOOR_CLASSES

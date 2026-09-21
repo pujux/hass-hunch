@@ -27,6 +27,8 @@ class StateReading:
     state: str | None
     unit: str | None
     device_class: str | None
+    # to-do lists: the open items (their state is only a count)
+    items: tuple[str, ...] | None = None
 
 
 class Executor:
@@ -54,11 +56,12 @@ class Executor:
             return None
         return st.state == condition.expected_state
 
-    def read_states(self, entities: Sequence[Entity]) -> list[StateReading]:
+    async def read_states(self, entities: Sequence[Entity]) -> list[StateReading]:
         out = []
         for e in entities:
             st = self._hass.states.get(e.entity_id)
             attrs = st.attributes if st is not None else {}
+            items = await self._todo_items(e.entity_id) if e.domain == "todo" else None
             out.append(
                 StateReading(
                     e.entity_id,
@@ -67,6 +70,24 @@ class Executor:
                     st.state if st else None,
                     attrs.get("unit_of_measurement"),
                     attrs.get("device_class"),
+                    items,
                 )
             )
         return out
+
+    async def _todo_items(self, entity_id: str) -> tuple[str, ...] | None:
+        """Open items of a to-do list via todo.get_items; None when the list cannot be read."""
+        try:
+            response = await self._hass.services.async_call(
+                "todo",
+                "get_items",
+                {"entity_id": entity_id, "status": ["needs_action"]},
+                blocking=True,
+                return_response=True,
+            )
+        except (Unauthorized, ServiceNotFound, HomeAssistantError):
+            return None
+        if not isinstance(response, dict):
+            return None
+        entry = response.get(entity_id) or {}
+        return tuple(str(i.get("summary", "")) for i in entry.get("items", []) if i.get("summary"))

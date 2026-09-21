@@ -51,5 +51,34 @@ async def test_condition_and_state_readings(hass: HomeAssistant):
     assert ex.condition_holds(Condition(_e("binary_sensor.door"), "on")) is True
     assert ex.condition_holds(Condition(_e("binary_sensor.door"), "off")) is False
     assert ex.condition_holds(Condition(_e("binary_sensor.missing"), "on")) is None
-    r = ex.read_states([_e("sensor.temp", "Temperatur", "wohnzimmer")])[0]
+    r = (await ex.read_states([_e("sensor.temp", "Temperatur", "wohnzimmer")]))[0]
     assert (r.state, r.unit, r.area_id) == ("23.6", "°C", "wohnzimmer")
+
+
+async def test_todo_readings_carry_the_open_items(hass: HomeAssistant):
+    hass.states.async_set("todo.einkaufsliste", "4")
+    calls = async_mock_service(
+        hass,
+        "todo",
+        "get_items",
+        response={
+            "todo.einkaufsliste": {
+                "items": [
+                    {"summary": "Oliven Öl", "status": "needs_action"},
+                    {"summary": "Butter", "status": "needs_action"},
+                ]
+            }
+        },
+        supports_response=__import__(
+            "homeassistant.core", fromlist=["SupportsResponse"]
+        ).SupportsResponse.ONLY,
+    )
+    r = (await Executor(hass).read_states([_e("todo.einkaufsliste", "Einkaufsliste")]))[0]
+    assert r.items == ("Oliven Öl", "Butter") and r.state == "4"
+    assert calls[0].data["entity_id"] == "todo.einkaufsliste"
+
+
+async def test_todo_reading_without_the_service_falls_back_to_the_count(hass: HomeAssistant):
+    hass.states.async_set("todo.einkaufsliste", "4")
+    r = (await Executor(hass).read_states([_e("todo.einkaufsliste", "Einkaufsliste")]))[0]
+    assert r.items is None and r.state == "4"

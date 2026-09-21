@@ -252,7 +252,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
         commands = tuple(a for a in actions if not a.verb.is_query)
         lines = []
         for action in queries:
-            for reading in executor.read_states(action.targets):
+            for reading in await executor.read_states(action.targets):
                 room = areas.get(reading.area_id or "")
                 label = f"{reading.name} ({room})" if room else reading.name
                 lines.append(f"{label}: {describe_state(reading, lang)}")
