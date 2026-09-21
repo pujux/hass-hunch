@@ -199,6 +199,10 @@ class Shape:
     several_verbs: bool = False  # the verb Choice said the request asks for several actions
     follow_up: str | None = None  # SAME_DEVICES | SAME_ACTION | ADD_DEVICES | MORE_SAME
     follow_up_conf: float = 0.0
+    condition_numeric: bool = False  # the condition compares a measurement with a number
+    # numeric conditions: every device type Jev found plausible for the condition, best first
+    # ("unter 20 Grad" may be the room thermometer or the weather); the subject Choice decides
+    condition_domains: tuple[str, ...] = ()
 
     def flag(self, name: str) -> float:
         return self.flags.get(name, 0.0)
@@ -316,15 +320,32 @@ def interpret_round1(
             scene = next((s for s in home.scenes if s.name == c.choice), None)
 
     condition_domain: str | None = None
-    if (
-        trace.decide("flag:has_condition", flags["has_condition"], thresholds.flag)
-        and "condition_domain" in answers.answers
-    ):
+    condition_numeric = False
+    has_condition = trace.decide("flag:has_condition", flags["has_condition"], thresholds.flag)
+    if has_condition:
+        condition_numeric = trace.decide(
+            "flag:condition_numeric", flags["condition_numeric"], thresholds.flag
+        )
+    condition_domains: tuple[str, ...] = ()
+    if has_condition and condition_numeric and "condition_domain" in answers.answers:
+        probs = answers.choice("condition_domain").probabilities
+        condition_domains = tuple(
+            sorted(
+                (d for d, p in probs.items() if d != "none" and p >= 0.2),
+                key=lambda d: -probs[d],
+            )
+        )
+    if has_condition and "condition_domain" in answers.answers:
         c = answers.choice("condition_domain")
         if c.choice != "none" and trace.decide(
             "condition_domain", c.confidence, thresholds.target_choice_conf
         ):
             condition_domain = c.choice
+    if condition_domain is None and condition_numeric and condition_domains:
+        # a hesitant domain pick ("sensor 0.65 / weather 0.3") must not strand a numeric
+        # condition: the subject Choice in Round 2 compares the concrete candidates instead
+        condition_domain = condition_domains[0]
+        trace.note("condition_domain:hesitant_numeric")
 
     follow_up: str | None = None
     follow_up_conf = 0.0
@@ -351,4 +372,6 @@ def interpret_round1(
         several_verbs=several_verbs,
         follow_up=follow_up,
         follow_up_conf=follow_up_conf,
+        condition_numeric=condition_numeric,
+        condition_domains=condition_domains,
     )

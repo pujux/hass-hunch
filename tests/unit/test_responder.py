@@ -262,3 +262,33 @@ def test_todo_lists_render_their_items_not_their_count():
         entity_id="todo.shopping", state="4", unit=None, device_class=None, items=None
     )
     assert describe_state(unread, "de") == "4"
+
+
+def test_numeric_conditions_are_described_with_the_value():
+    from types import SimpleNamespace
+
+    from custom_components.hunch.responder import describe_expected, format_value
+
+    def cond(op, thr, state, eid):
+        return SimpleNamespace(
+            operator=op, threshold=thr, expected_state=state, subject=SimpleNamespace(entity_id=eid)
+        )
+
+    assert describe_expected(cond("<", 20.0, "< 20", "sensor.t"), "de") == "unter 20"
+    assert describe_expected(cond("<", 20.0, "< 20", "sensor.t"), "en") == "below 20"
+    assert describe_expected(cond(">", 22.5, "> 22.5", "sensor.t"), "de") == "über 22,5"
+    assert describe_expected(cond(None, None, "on", "binary_sensor.d"), "de").startswith("offen")
+    assert format_value("24.5", "°C", "de") == "24,5 °C"
+    assert format_value("24.5", None, "en") == "24.5"
+    text = render(
+        "condition_not_met",
+        "de",
+        subject="Temperatur (Wohnzimmer)",
+        expected="unter 20",
+        value="24,5 °C",
+    )
+    assert (
+        text
+        == "Temperatur (Wohnzimmer) ist 24,5 °C, nicht unter 20, darum habe ich nichts geändert."
+    )
+    assert "{" not in render("condition_not_met", "en", subject="x", expected="open")

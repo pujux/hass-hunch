@@ -696,3 +696,42 @@ async def test_a_follow_up_leans_on_the_previous_turn(hass: HomeAssistant, setup
     assert calls_seen[-1].get("previous", {}).get("request") == "Licht in der Küche aus"
     assert len(svc) == 2 and svc[1].data["entity_id"] == [e.entity_id]
     assert "ausgeschaltet" in second.response.speech["plain"]["speech"]
+
+
+async def test_a_numeric_condition_is_checked_live_and_the_value_is_spoken(
+    hass: HomeAssistant, setup_hunch
+):
+    from hunch.round2 import BELOW
+
+    ids = await _home(hass)
+    reg = er.async_get(hass)
+    t = reg.async_get_or_create(
+        "sensor", "test", "t1", suggested_object_id="kuche_temperatur", original_name="Temperatur"
+    )
+    reg.async_update_entity(
+        t.entity_id, area_id=ar.async_get(hass).async_get_area_by_name("Küche").id
+    )
+    hass.states.async_set(t.entity_id, "24.5", {"unit_of_measurement": "°C"})
+    async_expose_entity(hass, "conversation", t.entity_id, True)
+    r1 = {
+        **R1_TURN_OFF_KITCHEN,
+        "flag:has_condition": NoulA(0.95),
+        "flag:condition_numeric": NoulA(0.95),
+        "condition_domain": ChoiceA("sensor", 0.95, {"sensor": 0.95}),
+    }
+    r2 = {
+        "cond_subject": ChoiceA("Temperatur", 0.95, {}),
+        "cond_threshold": ChoiceA("20 Grad", 0.95, {}),
+        "cond_direction": ChoiceA(BELOW, 0.93, {}),
+    }
+    client, calls = scripted(r1, r2)
+    await setup_hunch(client, calls)
+    svc = async_mock_service(hass, "homeassistant", "turn_off")
+    result = await _say(hass, "Licht in der Küche aus wenn es unter 20 Grad hat")
+    assert len(svc) == 0
+    speech = result.response.speech["plain"]["speech"]
+    assert "24,5 °C" in speech and "unter 20" in speech
+    hass.states.async_set(t.entity_id, "18.0", {"unit_of_measurement": "°C"})
+    result = await _say(hass, "Licht in der Küche aus wenn es unter 20 Grad hat")
+    assert len(svc) == 1 and sorted(svc[0].data["entity_id"]) == sorted(ids[:2])
+    assert result.response.speech["plain"]["speech"].startswith("Erledigt")

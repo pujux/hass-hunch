@@ -19,7 +19,7 @@ from hunch.resolution import (
     Trace,
 )
 from hunch.round1 import Shape
-from hunch.round2 import ALL_IN_ROOM, NO_MATCH, Round2Plan, parse_number
+from hunch.round2 import ABOVE, ALL_IN_ROOM, BELOW, NO_MATCH, Round2Plan, parse_number
 from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec, Verb
 
 
@@ -346,15 +346,30 @@ def resolve(
     condition: Condition | None = None
     if plan.condition_candidates and round2 is not None and "cond_subject" in round2.answers:
         subj = round2.choice("cond_subject")
-        state = round2.choice("cond_state")
-        contributions.extend((subj.confidence, state.confidence))
-        if subj.choice == NO_MATCH:
+        opt = next((o for o in plan.condition_options if o.label == subj.choice), None)
+        if subj.choice == NO_MATCH or opt is None:
             trace.note("no_match:cond_subject")
-        elif state.choice == NO_MATCH:
-            trace.note("no_match:cond_state")
+            contributions.append(subj.confidence)
+        elif plan.condition_literals:
+            # numeric: sensor + number + direction -> "< 20"; the executor compares live
+            thr = round2.choice("cond_threshold")
+            dirn = round2.choice("cond_direction")
+            number = parse_number(thr.choice) if thr.choice != NO_MATCH else None
+            contributions.extend((subj.confidence, thr.confidence, dirn.confidence))
+            if number is None:
+                trace.note("no_match:cond_threshold")
+            elif dirn.choice not in (BELOW, ABOVE):
+                trace.note("no_match:cond_direction")
+            else:
+                op = "<" if dirn.choice == BELOW else ">"
+                condition = Condition(opt.entities[0], f"{op} {number:g}", op, number)
+                trace.note(f"condition:numeric:{op}{number:g}")
         else:
-            opt = next((o for o in plan.condition_options if o.label == subj.choice), None)
-            if opt:
+            state = round2.choice("cond_state")
+            contributions.extend((subj.confidence, state.confidence))
+            if state.choice == NO_MATCH:
+                trace.note("no_match:cond_state")
+            else:
                 condition = Condition(opt.entities[0], state.choice)
 
     if exception_unresolved:

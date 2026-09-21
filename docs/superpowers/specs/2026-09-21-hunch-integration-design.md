@@ -206,8 +206,11 @@ mode is spoken in the confirmation question before anything happens. A service c
 `HomeAssistantError`/`ServiceNotFound`/`Unauthorized` marks that group's targets failed and
 continues with the other groups.
 
-Condition check: `hass.states.get(subject.entity_id).state == expected_state`. Exactly equality,
-no operators, matching the two-slot model.
+Condition check: a state condition is plain equality of the live state with `expected_state`; a
+numeric condition (`operator`/`threshold` set, engine ≥ 0.5.0) compares the live value — a weather
+entity's `temperature` attribute, otherwise the state parsed as a number. `check_condition` returns
+`(holds, value, unit)`; when the condition does not hold, the answer names the value:
+"Temperatur (Wohnzimmer) ist 24,5 °C, nicht unter 20, darum habe ich nichts geändert."
 
 ## 9. Responder
 

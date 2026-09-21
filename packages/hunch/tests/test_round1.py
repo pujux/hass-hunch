@@ -168,3 +168,28 @@ def test_condition_domain_choice_describes_what_one_reads(home, vocab):
     assert "locked" in q.descriptions["lock"]
     assert "no condition" in q.descriptions["none"]
     assert "READ" in q.instructions
+
+
+def test_a_hesitant_domain_still_carries_a_numeric_condition(home, vocab, thresholds):
+    qs = build_round1_questions(home, vocab)
+    answers = {qid: NoulA(0.05) for qid in qs}
+    answers.update(
+        {
+            "verb:turn_off": NoulA(0.9),
+            "domain:light": NoulA(0.9),
+            "flag:has_condition": NoulA(0.95),
+            "flag:condition_numeric": NoulA(0.95),
+            "verb_primary": ChoiceA("turn_off", 0.9, {}),
+            "area_primary": ChoiceA("none", 0.9, {}),
+            "scene": ChoiceA("none", 0.9, {}),
+            "condition_domain": ChoiceA(
+                "climate", 0.62, {"climate": 0.65, "lock": 0.3, "none": 0.05}
+            ),
+        }
+    )
+    trace = Trace()
+    shape = interpret_round1(home, vocab, Answers("m", answers, None), thresholds, trace)
+    assert shape.condition_numeric is True
+    assert shape.condition_domains == ("climate", "lock")
+    assert shape.condition_domain == "climate"
+    assert "condition_domain:hesitant_numeric" in trace.notes

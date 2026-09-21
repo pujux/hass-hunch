@@ -82,3 +82,21 @@ async def test_todo_reading_without_the_service_falls_back_to_the_count(hass: Ho
     hass.states.async_set("todo.einkaufsliste", "4")
     r = (await Executor(hass).read_states([_e("todo.einkaufsliste", "Einkaufsliste")]))[0]
     assert r.items is None and r.state == "4"
+
+
+async def test_numeric_conditions_compare_the_live_value(hass: HomeAssistant):
+    hass.states.async_set("sensor.temp", "24.5", {"unit_of_measurement": "°C"})
+    hass.states.async_set("sensor.text", "unknown")
+    ex = Executor(hass)
+    below = Condition(_e("sensor.temp"), "< 20", "<", 20.0)
+    above = Condition(_e("sensor.temp"), "> 20", ">", 20.0)
+    assert ex.check_condition(below).holds is False and ex.check_condition(above).holds is True
+    assert ex.check_condition(above).value == "24.5" and ex.check_condition(above).unit == "°C"
+    assert ex.check_condition(Condition(_e("sensor.text"), "< 20", "<", 20.0)).holds is None
+    assert ex.condition_holds(below) is False
+
+
+async def test_weather_conditions_read_the_temperature_attribute(hass: HomeAssistant):
+    hass.states.async_set("weather.home", "sunny", {"temperature": 27.5, "temperature_unit": "°C"})
+    check = Executor(hass).check_condition(Condition(_e("weather.home"), "> 25", ">", 25.0))
+    assert check.holds is True and check.value == "27.5" and check.unit == "°C"

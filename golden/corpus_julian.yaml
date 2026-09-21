@@ -77,9 +77,18 @@
 - prompt: Wie viel ist 13 mal 8?
   expect: {kind: escalate}
 - prompt: Rollos im Schlafzimmer schließen wenn es wärmer als 23 grad ist
-  # numeric condition: not expressible in the two-slot condition model -> Jev's condition_numeric flag
-  # hands it off before Round 2 (2026-09-21); never executes unconditionally, never a fake condition
-  expect: {kind: escalate, reason: condition}
+  # numeric condition (2026-09-21 evening): Jev picks the thermometer, the number and the direction;
+  # the executor compares with the live value
+  expect: {kinds: [resolved, confirm], verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo], condition: {subject: sensor.schlafzimmer_temperatursensor_temperatur, state: '> 23'}}
+- prompt: Schalte den Fernseher im Wohnzimmer aus, wenn es unter 20 Grad hat.
+  expect: {kinds: [resolved, confirm], verb: turn_off, targets: [media_player.wohnzimmer_fernseher], condition: {subject: sensor.wohnzimmer_temperatursensor_temperatur, state: '< 20'}}
+- prompt: Schalte die Deckenlampe im Wohnzimmer ein, wenn es über 20 Grad hat
+  expect: {kinds: [resolved, confirm], verb: turn_on, targets: [light.wohnzimmer_deckenlampe], condition: {subject: sensor.wohnzimmer_temperatursensor_temperatur, state: '> 20'}}
+- prompt: Schalte die Stehlampe im Wohnzimmer aus falls es unter 30 grad hat
+  expect: {kinds: [resolved, confirm], verb: turn_off, targets: [light.wohnzimmer_stehlampe], condition: {subject: sensor.wohnzimmer_temperatursensor_temperatur, state: '< 30'}}
+- prompt: Kücheninsel auf 35% wenn es unter 20 Grad hat
+  # two numbers: 35% belongs to the action, 20 is the threshold
+  expect: {kinds: [resolved, confirm], verb: set_brightness, targets: [light.kuche_kucheninsel], params: {brightness_pct: [35, 35]}, condition: {subject: sensor.kuche_temperatursensor_temperatur, state: '< 20'}}
 - prompt: Rollos im Schlafzimmer schließen wenn die Dachterrassentür offen ist
   # state condition: the door contact in the same room; 'offen' = binary_sensor 'on'
   expect: {kinds: [resolved, confirm], verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo], condition: {subject: binary_sensor.schlafzimmer_dachterrassentur_tur, state: 'on'}}

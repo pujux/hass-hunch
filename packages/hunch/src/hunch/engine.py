@@ -122,14 +122,10 @@ class Engine:
 
         if trace.decide("flag:has_timing", shape.flag("has_timing"), th.flag):
             return Escalate("timing", (), trace)
-        if shape.flag("has_condition") >= th.flag and trace.decide(
-            "flag:condition_numeric", shape.flag("condition_numeric"), th.flag
-        ):
-            # "wenn es wärmer als 23 Grad ist": a comparison against a number is not a state a
-            # Condition can hold, and executing unconditionally would be wrong. Jev judged the
-            # shape; code only refuses to pretend.
+        if shape.condition_numeric:
+            # "wenn es wärmer als 23 Grad ist": Round 2 asks for the sensor, the number and the
+            # direction; the executor compares with the live value. Unresolvable -> hand-off.
             trace.note("condition:numeric")
-            return Escalate("condition", (), trace)
         # Follow-ups: the sentence leans on the previous turn; code fills the half it leaves out.
         forced: dict[str, tuple[Entity, ...]] = {}
         forced_all: set[str] = set()  # verbs whose scoped candidates are all meant, no picking

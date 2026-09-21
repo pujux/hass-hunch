@@ -19,6 +19,8 @@ from hunch.vocabulary import ChoiceSpec, ScoreSpec
 # rather than being forced to pick among options that all miss.
 NO_MATCH = "none of these"
 ALL_IN_ROOM = "all of them"
+BELOW = "below the number"
+ABOVE = "above the number"
 
 # Known states per domain for condition questions. Extend as domains are added.
 DOMAIN_STATES: dict[str, tuple[str, ...]] = {
@@ -139,6 +141,8 @@ class Round2Plan:
     # follow-ups: verbs this turn never said (borrowed from the previous turn); the follow-up
     # judgment stands in for their verb probability
     carried_verbs: tuple[str, ...] = ()
+    # numeric condition: the literal numbers in the prompt Jev chooses the threshold from
+    condition_literals: tuple[str, ...] = ()
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
@@ -274,11 +278,23 @@ def plan_round2(
                     # "add devices" follow-up, which names what joins: pick, never sweep.
                     all_of.append(verb.name)
     cond: tuple[Entity, ...] = ()
+    cond_literals: tuple[str, ...] = ()
+    if shape.condition_numeric and shape.condition_domain and literals:
+        # "wenn es unter 20 Grad hat": any entity of the judged kind whose value can be read;
+        # Jev picks the sensor, the number and the direction, the executor compares.
+        cond_literals = literals
+    numeric_ok = bool(cond_literals)
     if (
-        shape.condition_domain in DOMAIN_STATES  # a sensor's number is not a state Jev can pick
+        (shape.condition_domain in DOMAIN_STATES or numeric_ok)
+        and shape.condition_domain
         and shape.flag("has_condition") >= thresholds.flag
     ):
-        in_domain = tuple(e for e in home.entities if e.domain == shape.condition_domain)
+        domains = (
+            shape.condition_domains
+            if numeric_ok and shape.condition_domains
+            else (shape.condition_domain,)
+        )
+        in_domain = tuple(e for e in home.entities if e.domain in domains)
         in_scope = tuple(e for e in in_domain if e.area_id in shape.scope_areas)
         # The thing observed need not sit in the room being controlled ("Rollos in der Galerie
         # zu wenn die Klimaanlage läuft"): prefer the room, fall back to the whole home.
@@ -312,6 +328,7 @@ def plan_round2(
         tuple(v.name for v in shape.fired_verbs if v.name in forced),
         dict(carried_params or {}),
         tuple(v.name for v in shape.fired_verbs if v.name in carried_verbs),
+        cond_literals if cond else (),
     )
 
 
@@ -443,12 +460,28 @@ def build_round2_questions(
             tuple(o.label for o in plan.condition_options) + (NO_MATCH,),
             {NO_MATCH: pb.special_descriptions["no_condition_subject"]},
         )
-        states = DOMAIN_STATES[shape.condition_domain]
-        state_desc = dict(pb.condition_state_descriptions.get(shape.condition_domain, {}))
-        state_desc[NO_MATCH] = pb.special_descriptions["no_condition_state"]
-        qs["cond_state"] = ChoiceQ(
-            pb.cond_state_question,
-            states + (NO_MATCH,),
-            state_desc,
-        )
+        if plan.condition_literals:
+            qs["cond_threshold"] = ChoiceQ(
+                pb.cond_threshold_question,
+                plan.condition_literals + (NO_MATCH,),
+                {NO_MATCH: pb.special_descriptions["no_condition_number"]},
+            )
+            qs["cond_direction"] = ChoiceQ(
+                pb.cond_direction_question,
+                (BELOW, ABOVE, NO_MATCH),
+                {
+                    BELOW: pb.special_descriptions["condition_below"],
+                    ABOVE: pb.special_descriptions["condition_above"],
+                    NO_MATCH: pb.special_descriptions["no_condition_direction"],
+                },
+            )
+        else:
+            states = DOMAIN_STATES[shape.condition_domain]
+            state_desc = dict(pb.condition_state_descriptions.get(shape.condition_domain, {}))
+            state_desc[NO_MATCH] = pb.special_descriptions["no_condition_state"]
+            qs["cond_state"] = ChoiceQ(
+                pb.cond_state_question,
+                states + (NO_MATCH,),
+                state_desc,
+            )
     return qs

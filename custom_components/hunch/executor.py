@@ -20,6 +20,13 @@ class TargetResult:
 
 
 @dataclass(frozen=True)
+class ConditionCheck:
+    holds: bool | None  # None: the subject has no state, or no number where one is needed
+    value: str | None
+    unit: str | None
+
+
+@dataclass(frozen=True)
 class StateReading:
     entity_id: str
     name: str
@@ -50,11 +57,35 @@ class Executor:
                     results.extend(TargetResult(i, True) for i in ids)
         return results
 
-    def condition_holds(self, condition: Condition) -> bool | None:
+    def check_condition(self, condition: Condition) -> ConditionCheck:
+        """Plain equality for a state condition; a numeric comparison with the live value for
+        a threshold condition ("< 20")."""
         st = self._hass.states.get(condition.subject.entity_id)
         if st is None:
-            return None
-        return st.state == condition.expected_state
+            return ConditionCheck(None, None, None)
+        unit = st.attributes.get("unit_of_measurement")
+        raw: str | None = st.state
+        if condition.subject.domain == "weather":
+            # a weather entity's state is the sky ("sunny"); the number people mean is its
+            # temperature attribute
+            temp = st.attributes.get("temperature")
+            raw = None if temp is None else str(temp)
+            unit = st.attributes.get("temperature_unit") or unit
+        if condition.operator is not None and condition.threshold is not None:
+            try:
+                value = float(raw)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return ConditionCheck(None, raw, unit)
+            holds = (
+                value < condition.threshold
+                if condition.operator == "<"
+                else value > condition.threshold
+            )
+            return ConditionCheck(holds, raw, unit)
+        return ConditionCheck(st.state == condition.expected_state, st.state, unit)
+
+    def condition_holds(self, condition: Condition) -> bool | None:
+        return self.check_condition(condition).holds
 
     async def read_states(self, entities: Sequence[Entity]) -> list[StateReading]:
         out = []

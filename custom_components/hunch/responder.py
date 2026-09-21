@@ -67,6 +67,9 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "clarify": "Which one did you mean: {options}?",
         "cancelled": "Okay, I didn't change anything.",
         "condition_not_met": "{subject} is not {expected}, so I left everything as it is.",
+        "condition_not_met_value": (
+            "{subject} is {value}, not {expected}, so I left everything as it is."
+        ),
         "expired": "That question has expired; I'm treating this as a new request.",
         "fallback_unavailable": "I can't do that myself, and no other assistant is available.",
         "execution_failed": "Done, except: {failed}.",
@@ -78,6 +81,9 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "clarify": "Welches meinst du: {options}?",
         "cancelled": "Okay, ich habe nichts geändert.",
         "condition_not_met": "{subject} ist nicht {expected}, darum habe ich nichts geändert.",
+        "condition_not_met_value": (
+            "{subject} ist {value}, nicht {expected}, darum habe ich nichts geändert."
+        ),
         "expired": "Diese Frage ist abgelaufen; ich behandle das als neue Anfrage.",
         "fallback_unavailable": (
             "Das kann ich selbst nicht, und kein anderer Assistent ist verfügbar."
@@ -200,6 +206,30 @@ def action_clause(phrase: str, targets: str, language: str) -> str:
     return " ".join(p for p in parts if p)
 
 
+THRESHOLD_WORDS = {"en": {"<": "below", ">": "above"}, "de": {"<": "unter", ">": "über"}}
+
+
+def describe_expected(condition: Any, language: str) -> str:
+    """What the condition waits for, in words: 'below 20' / 'unter 20' for a threshold, the
+    state word (or raw state) otherwise. Reads `.operator`, `.threshold`, `.expected_state`,
+    `.subject.entity_id`."""
+    op = getattr(condition, "operator", None)
+    threshold = getattr(condition, "threshold", None)
+    if op is not None and threshold is not None:
+        words = THRESHOLD_WORDS.get(language, THRESHOLD_WORDS["en"])
+        number = f"{threshold:g}".replace(".", ",") if language == "de" else f"{threshold:g}"
+        return f"{words[op]} {number}"
+    domain = condition.subject.entity_id.split(".", 1)[0]
+    words = STATE_WORDS.get(language, STATE_WORDS["en"])
+    return words.get((domain, condition.expected_state), condition.expected_state)
+
+
+def format_value(value: str, unit: str | None, language: str) -> str:
+    """A measured value with its unit, decimal comma in German."""
+    shown = value.replace(".", ",") if language == "de" else value
+    return f"{shown} {unit}" if unit else shown
+
+
 def condition_clause(subject: str, state: str, language: str) -> str:
     """A trailing "if <subject> is <state>" clause, for use as `confirm`'s `condition` slot."""
     return CONDITION_WORD.get(language, CONDITION_WORD["en"]).format(subject=subject, state=state)
@@ -214,6 +244,10 @@ def render(outcome: str, language: str, **slots: Any) -> str:
         return tpl.format(options=", ".join(slots["options"]))
     if outcome == "execution_failed":
         return tpl.format(failed=", ".join(slots["failed"]))
+    if outcome == "condition_not_met" and slots.get("value"):
+        return TEMPLATES[lang]["condition_not_met_value"].format(**slots)
+    if outcome == "condition_not_met":
+        return tpl.format(subject=slots["subject"], expected=slots["expected"])
     if outcome in ("action_done", "confirm"):
         # `phrase`/`targets` are one clause; a multi-verb plan arrives pre-joined in
         # `targets` with an empty `phrase` (spec §9).

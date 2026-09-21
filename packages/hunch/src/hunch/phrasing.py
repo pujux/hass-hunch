@@ -59,6 +59,17 @@ class Phrasebook:
     condition_domain_descriptions: Mapping[str, str] = field(default_factory=dict)
     # domain -> state -> what that state means in everyday words (descriptions of cond_state)
     condition_state_descriptions: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    # Numeric conditions: which number is the threshold, and which side of it holds?
+    cond_threshold_question: str = (
+        "The request's condition compares a measured value with a number. Which of these "
+        "numbers from the request is that threshold? Choose none of these if the number belongs "
+        "to the action instead (a brightness, a position, a temperature to SET)."
+    )
+    cond_direction_question: str = (
+        "When does the condition hold: when the measured value is BELOW that number ('unter', "
+        "'weniger als', 'kälter als', 'niedriger', 'below', 'less than') or ABOVE it ('über', "
+        "'mehr als', 'wärmer als', 'höher', 'above', 'more than')?"
+    )
     # Follow-ups: does the sentence lean on `previous` (the last turn), and how?
     follow_up_question: str = (
         "`previous` is what this conversation did just before: the sentence and the devices it "
@@ -207,6 +218,10 @@ EN = Phrasebook(
             "kind of device, no particular one"
         ),
         "none_in_room": "the request does not refer to this room or to any device in it",
+        "no_condition_number": "none of these numbers is the condition's threshold",
+        "condition_below": "the condition holds while the value is lower than the number",
+        "condition_above": "the condition holds while the value is higher than the number",
+        "no_condition_direction": "the request does not say which side of the number counts",
     },
     exclusion_question=(
         "The request in `request` names an exception — something that must NOT be affected. "
@@ -447,6 +462,10 @@ DE = Phrasebook(
             "ohne bestimmtes Gerät"
         ),
         "none_in_room": "die Anfrage bezieht sich weder auf diesen Raum noch auf ein Gerät darin",
+        "no_condition_number": "keine dieser Zahlen ist die Schwelle der Bedingung",
+        "condition_below": "die Bedingung gilt, solange der Wert kleiner als die Zahl ist",
+        "condition_above": "die Bedingung gilt, solange der Wert größer als die Zahl ist",
+        "no_condition_direction": "die Anfrage sagt nicht, welche Seite der Zahl zählt",
     },
     exclusion_question=(
         "Die Anfrage in `request` nennt eine Ausnahme — etwas, das NICHT betroffen sein darf. "
@@ -673,6 +692,15 @@ DE = Phrasebook(
             "Anfrage)"
         ),
     },
+    cond_threshold_question=(
+        "Die Bedingung der Anfrage vergleicht einen Messwert mit einer Zahl. Welche dieser Zahlen "
+        "aus der Anfrage ist diese Schwelle? Wähle none of these, wenn die Zahl zur Aktion gehört "
+        "(eine Helligkeit, eine Position, eine Temperatur, die EINGESTELLT werden soll)."
+    ),
+    cond_direction_question=(
+        "Wann gilt die Bedingung: wenn der Messwert UNTER der Zahl liegt ('unter', 'weniger als', "
+        "'kälter als', 'niedriger') oder ÜBER ihr ('über', 'mehr als', 'wärmer als', 'höher')?"
+    ),
     domain_synonyms={
         "light": ("licht", "lichter", "lampe", "lampen", "leuchte", "leuchten", "beleuchtung"),
         "cover": (

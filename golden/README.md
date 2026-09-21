@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 50 rows incl. 7 two-turn rows) 49–50/50 — the
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 54 rows incl. 7 two-turn rows) 53–54/54 — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,20 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (late evening) — numeric conditions evaluated by Hunch
+
+Julian's 8B fallback read 24.5 °C and then did the wrong thing on 3 of 4 threshold sentences
+(no action although due; "wurde ausgeschaltet" without any tool call; twice). Prompting made it
+worse (no tool calls at all). Engine 0.5.0: `condition_numeric` routes instead of escalating —
+Round 2 asks sensor (over every plausible device type; the new `weather` entity made the domain
+Choice hesitate at 0.61–0.74 between sensor and weather, so a hesitant domain no longer strands
+the request), threshold (Choice over the prompt's literals + none) and direction (below/above).
+Live: 15/15 correct on five sentences, confidences 0.74–0.98; "35% … unter 20" separates action
+value and threshold; "draußen über 25 Grad" picks the weather entity, whose temperature attribute
+the executor reads. Integration 0.3.0 compares live and names the value when the condition does
+not hold. Corpus: the old hand-off row became a real expectation, Julian's four live sentences
+added. **Real home 54/54, fixture 24/24.**
 
 ### 2026-09-21 (night) — re-export: new areas Loggia and Dachterrasse; a device named after a room
 

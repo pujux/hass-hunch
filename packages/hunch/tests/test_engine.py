@@ -410,25 +410,118 @@ async def test_scope_clarify_for_one_verb_does_not_abort_when_another_resolves(h
     assert "dropped:turn_on:scope" in r.trace.notes
 
 
-async def test_numeric_condition_hands_off_before_round2(home, vocab, config):
-    # "close the blinds if it is warmer than 23 degrees": Jev says the condition compares a
-    # measurement with a number; no two-slot Condition can hold that, so the engine stops here.
+def _home_with_thermometer():
+    from hunch.model import Area, Entity, Floor, HomeModel
+
+    def e(eid, name, area, verbs, state=None):
+        return Entity(eid, eid.split(".")[0], name, (), area, None, None, verbs, state)
+
+    return HomeModel(
+        floors=(Floor("down", "Downstairs", ("living",)),),
+        areas=(Area("living", "Wohnzimmer", (), "down"),),
+        entities=(
+            e("light.stehlampe", "Stehlampe", "living", frozenset({"turn_on", "turn_off"}), "on"),
+            e("sensor.temp", "Temperatur", "living", frozenset({"query_state"}), "24.5"),
+            e("sensor.hum", "Luftfeuchtigkeit", "living", frozenset({"query_state"}), "55"),
+        ),
+        scenes=(),
+    )
+
+
+def _numeric_round1():
+    return {
+        "verb:turn_off": NoulA(0.95),
+        "domain:light": NoulA(0.95),
+        "area:living": NoulA(0.99),
+        "flag:names_specific": NoulA(0.9),
+        "flag:has_condition": NoulA(0.95),
+        "flag:condition_numeric": NoulA(0.95),
+        "verb_primary": ChoiceA("turn_off", 0.98, {}),
+        "area_primary": ChoiceA("Wohnzimmer", 0.99, {}),
+        "condition_domain": ChoiceA("sensor", 0.95, {"sensor": 0.95}),
+    }
+
+
+async def test_numeric_condition_is_resolved_as_a_comparison(vocab, config):
+    # "Schalte die Stehlampe aus, wenn es unter 20 Grad hat": Jev picks the thermometer, the
+    # number and the direction; the Condition carries the comparison for the executor.
+    from hunch.round2 import BELOW
+
+    home = _home_with_thermometer()
     client, calls = _scripted(
+        _numeric_round1(),
         {
-            "verb:close": NoulA(0.95),
-            "domain:cover": NoulA(0.95),
-            "flag:collective": NoulA(0.9),
-            "flag:has_condition": NoulA(0.95),
-            "flag:condition_numeric": NoulA(0.9),
-            "condition_domain": ChoiceA("climate", 0.9, {"climate": 0.9}),
-        }
+            "target:turn_off": ChoiceA("Stehlampe", 0.97, {}),
+            "cond_subject": ChoiceA("Temperatur", 0.96, {}),
+            "cond_threshold": ChoiceA("20 Grad", 0.95, {}),
+            "cond_direction": ChoiceA(BELOW, 0.93, {}),
+        },
     )
     r = await Engine(client, vocab, config).decide(
-        home, "close the blinds if it is warmer than 23 degrees"
+        home, "Schalte die Stehlampe aus, wenn es unter 20 Grad hat"
+    )
+    assert isinstance(r, Resolved), r
+    assert r.condition is not None
+    assert r.condition.subject.entity_id == "sensor.temp"
+    assert (r.condition.operator, r.condition.threshold) == ("<", 20.0)
+    assert r.condition.expected_state == "< 20"
+    assert "condition:numeric" in r.trace.notes and "condition:numeric:<20" in r.trace.notes
+    assert calls["n"] == 2
+
+
+async def test_numeric_condition_without_a_threshold_hands_off(vocab, config):
+    # the only number belongs to the action ("auf 50%"), Jev says none of these -> fallback
+    from hunch.round2 import BELOW, NO_MATCH
+
+    home = _home_with_thermometer()
+    client, _ = _scripted(
+        _numeric_round1(),
+        {
+            "target:turn_off": ChoiceA("Stehlampe", 0.97, {}),
+            "cond_subject": ChoiceA("Temperatur", 0.96, {}),
+            "cond_threshold": ChoiceA(NO_MATCH, 0.9, {}),
+            "cond_direction": ChoiceA(BELOW, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "Schalte die Stehlampe aus, wenn es kalt ist, so um die 20 Grad rum"
     )
     assert isinstance(r, Escalate) and r.reason == "condition"
-    assert "condition:numeric" in r.trace.notes
-    assert calls["n"] == 1
+    assert "no_match:cond_threshold" in r.trace.notes
+
+
+def test_numeric_condition_questions_offer_the_literals_and_both_directions(thresholds):
+    from hunch.round1 import Shape
+    from hunch.round2 import ABOVE, BELOW, NO_MATCH, build_round2_questions, plan_round2
+    from hunch.vocabulary import DEFAULT_VOCABULARY as V
+
+    home = _home_with_thermometer()
+    flags = {"has_condition": 0.95, "condition_numeric": 0.95, "names_specific": 0.9}
+    shape = Shape(
+        (V.by_name("turn_off"),),
+        ("living",),
+        ("light",),
+        {},
+        {},
+        flags,
+        None,
+        "sensor",
+        condition_numeric=True,
+    )
+    plan = plan_round2(
+        home,
+        shape,
+        {"turn_off": (home.entity_by_id("light.stehlampe"),)},
+        thresholds,
+        60,
+        "Stehlampe aus wenn es unter 20 Grad hat",
+    )
+    assert plan.condition_literals == ("20 Grad",)
+    assert {e.entity_id for e in plan.condition_candidates} == {"sensor.temp", "sensor.hum"}
+    qs = build_round2_questions(shape, plan, home)
+    assert qs["cond_threshold"].options == ("20 Grad", NO_MATCH)
+    assert qs["cond_direction"].options == (BELOW, ABOVE, NO_MATCH)
+    assert "cond_state" not in qs
 
 
 async def test_state_none_of_these_means_no_condition(home, vocab, config):

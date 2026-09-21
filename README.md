@@ -24,6 +24,8 @@ real Jev API before building the corresponding engine component.
 
 ## Home Assistant integration
 
+> **Conditions:** "wenn es unter 20 Grad hat" is checked against the live sensor value before acting, and the answer names the value when nothing happens. Conditions Hunch cannot express ("wenn es dunkel wird", "sobald …") are handed to the fallback agent.
+>
 > **Follow-ups:** a sentence that leaves out what the previous one said ("und im Esszimmer", "aus", "was genau steht drauf") is completed from the last turn, for five minutes per conversation.
 
 `custom_components/hunch` puts the engine in front of any conversation agent already

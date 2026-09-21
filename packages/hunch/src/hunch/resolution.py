@@ -105,7 +105,11 @@ class PreviousTurn:
 @dataclass(frozen=True)
 class Condition:
     subject: Entity
-    expected_state: str
+    expected_state: str  # a state ("open") or, for a numeric condition, "< 20" / "> 23"
+    # numeric conditions ("wenn es unter 20 Grad hat"): the executor compares the subject's
+    # current value with the threshold; None for a plain state condition
+    operator: str | None = None  # "<" or ">"
+    threshold: float | None = None
 
 
 @dataclass(frozen=True)

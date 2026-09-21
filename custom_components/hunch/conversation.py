@@ -36,8 +36,10 @@ from .responder import (
     action_clause,
     condition_clause,
     condition_context,
+    describe_expected,
     describe_state,
     describe_targets,
+    format_value,
     pending_context,
     render,
     resolve_language,
@@ -246,14 +248,17 @@ class HunchConversationEntity(conversation.ConversationEntity):
         lang = turn.lang
         areas = self._area_names(home)
         executor = Executor(self.hass)
-        if condition is not None and executor.condition_holds(condition) is not True:
-            text = render(
-                "condition_not_met",
-                lang,
-                subject=self._label(condition.subject, areas),
-                expected=condition.expected_state,
-            )
-            return self._result(turn, text, trace, outcome)
+        if condition is not None:
+            check = executor.check_condition(condition)
+            if check.holds is not True:
+                text = render(
+                    "condition_not_met",
+                    lang,
+                    subject=self._label(condition.subject, areas),
+                    expected=describe_expected(condition, lang),
+                    value=format_value(check.value, check.unit, lang) if check.value else None,
+                )
+                return self._result(turn, text, trace, outcome)
         # A mixed plan reads its query targets *and* runs its commands; neither may swallow
         # the other (spec §9).
         queries = tuple(a for a in actions if a.verb.is_query)
@@ -365,7 +370,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
         clause = ""
         if condition is not None:
             clause = condition_clause(
-                self._label(condition.subject, areas), condition.expected_state, lang
+                self._label(condition.subject, areas), describe_expected(condition, lang), lang
             )
         return render(
             "confirm",

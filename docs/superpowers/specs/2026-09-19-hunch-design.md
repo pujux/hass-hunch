@@ -486,6 +486,18 @@ whose name or alias lies inside a device label present in the prompt, and which 
 for the fired verbs (of the fired device types), is dropped from both the verbatim and Jev's scope
 (`area_shadowed:`). A room that holds candidates is a room. Lookup, not judgment.
 
+**Numeric conditions (2026-09-21, evening).** "Schalte die Stehlampe aus, wenn es unter 20 Grad
+hat" no longer hands off. `condition_numeric` (Round 1, 0.98 stable) now routes instead of
+escalating: Round 2 asks `cond_subject` over the entities of every device type Jev found plausible
+(the `condition_domain` Choice's options with p ≥ 0.2 — "sensor 0.65 / weather 0.3" is a hesitant
+pick, and a hesitant pick must not strand the request; room first, then the whole home),
+`cond_threshold` (a Choice over the prompt's literal numbers + none, so "Kücheninsel auf 35% wenn
+es unter 20 Grad hat" separates the two), and `cond_direction` (*below the number* / *above the
+number* / none). Code assembles `Condition(subject, "< 20", operator="<", threshold=20.0)`; the
+executor compares with the live value (a weather entity's `temperature` attribute). Any *none*
+→ `Escalate("condition")` as before. Measured 15/15 on five sentences; the weather entity is
+chosen for "draußen". State conditions ("wenn die Tür offen ist") are unchanged.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:
