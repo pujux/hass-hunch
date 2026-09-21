@@ -143,3 +143,6 @@
 - turns: ["Licht in der Küche an", "Rollos im Schlafzimmer runter"]
   # a complete sentence after another: a new request, not a follow-up
   expect: {kind: resolved, verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}
+- turns: ["Kücheninsel auf 5%", "bitte auf 1%", "doch auf 50%"]
+  # live 2026-09-21: 'auf 50%' co-fires set_position, which a light cannot do; the previous verb carries
+  expect: {kinds: [resolved, confirm], verb: set_brightness, targets: [light.kuche_kucheninsel], params: {brightness_pct: [50, 50]}}

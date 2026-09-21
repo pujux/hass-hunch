@@ -521,7 +521,8 @@ async def test_a_failure_after_the_judgment_is_not_mistaken_for_a_judgment_failu
     fake = AsyncMock(return_value=_fallback_result("c17"))
     with (
         patch(
-            "custom_components.hunch.conversation.verb_phrase", side_effect=KeyError("no phrase")
+            "custom_components.hunch.conversation.describe_action",
+            side_effect=KeyError("no phrase"),
         ),
         patch("custom_components.hunch.conversation.conversation.async_converse", fake),
         pytest.raises(KeyError),
@@ -735,3 +736,39 @@ async def test_a_numeric_condition_is_checked_live_and_the_value_is_spoken(
     result = await _say(hass, "Licht in der Küche aus wenn es unter 20 Grad hat")
     assert len(svc) == 1 and sorted(svc[0].data["entity_id"]) == sorted(ids[:2])
     assert result.response.speech["plain"]["speech"].startswith("Erledigt")
+
+
+async def test_every_turn_leaves_an_agent_detail_event_on_the_conversation_trace(
+    hass: HomeAssistant, setup_hunch
+):
+    from homeassistant.components.conversation import trace as ctrace
+
+    await _home(hass)
+    client, calls = scripted(R1_TURN_OFF_KITCHEN)
+    await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    async_mock_service(hass, "homeassistant", "turn_off")
+    await _say(hass, "Licht in der Küche aus")
+    events = [
+        e["data"]["hunch"]
+        for e in ctrace.async_get_traces()[-1].as_dict()["events"]
+        if e["event_type"] == ctrace.ConversationTraceEventType.AGENT_DETAIL
+        and "hunch" in e["data"]
+    ]
+    assert events and events[-1]["outcome"] == "Resolved"
+    assert events[-1]["answered_by"] == "hunch"
+
+    client2, calls2 = scripted({"flag:has_timing": NoulA(0.95), "verb:turn_off": NoulA(0.9)})
+    entry = hass.config_entries.async_entries("hunch")[0]
+    entry.runtime_data.client = client2
+    entry.runtime_data.engine._client = client2  # swap the fake for the hand-off case
+    fake = AsyncMock(return_value=_fallback_result())
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _say(hass, "Licht in 10 Minuten aus")
+    events = [
+        e["data"]["hunch"]
+        for e in ctrace.async_get_traces()[-1].as_dict()["events"]
+        if e["event_type"] == ctrace.ConversationTraceEventType.AGENT_DETAIL
+        and "hunch" in e["data"]
+    ]
+    assert events and events[-1]["outcome"] == "Escalate:timing"
+    assert events[-1]["handed_off_to"] == "conversation.other"

@@ -206,6 +206,55 @@ def action_clause(phrase: str, targets: str, language: str) -> str:
     return " ".join(p for p in parts if p)
 
 
+# verbs that carry a value: the sentence needs the value, in the language's word order.
+# {t} = targets, {v} = the formatted value. (done form, question form)
+PARAM_CLAUSES: dict[str, dict[str, tuple[str, str]]] = {
+    "en": {
+        "set_brightness": ("set {t} to {v}", "set {t} to {v}"),
+        "set_position": ("moved {t} to {v}", "move {t} to {v}"),
+        "set_temperature": ("set {t} to {v}", "set {t} to {v}"),
+        "set_volume": ("set the volume of {t} to {v}", "set the volume of {t} to {v}"),
+    },
+    "de": {
+        "set_brightness": ("{t} auf {v} gestellt", "{t} auf {v} stellen"),
+        "set_position": ("{t} auf {v} gefahren", "{t} auf {v} fahren"),
+        "set_temperature": ("{t} auf {v} gestellt", "{t} auf {v} stellen"),
+        "set_volume": ("Lautstärke von {t} auf {v} gestellt", "Lautstärke von {t} auf {v} stellen"),
+    },
+}
+PARAM_UNITS = {"brightness_pct": "%", "position": "%", "temperature": "°C", "volume_level": "%"}
+
+
+def format_param(name: str, value: Any, language: str) -> str:
+    """'50 %', '22 °C', '22,5 °C' in German."""
+    number = f"{value:g}" if isinstance(value, int | float) else str(value)
+    if language == "de":
+        number = number.replace(".", ",")
+    unit = PARAM_UNITS.get(name, "")
+    return f"{number} {unit}".strip()
+
+
+def describe_action(
+    verb_name: str,
+    targets: str,
+    params: Mapping[str, Any],
+    language: str,
+    *,
+    done: bool,
+) -> str:
+    """One clause for an action: with its value for parametrised verbs ('Kücheninsel (Küche)
+    auf 50 % gestellt'), the plain verb phrase otherwise ('Spots (Küche) ausgeschaltet')."""
+    lang = language if language in TEMPLATES else "en"
+    if params:
+        name, value = next(iter(params.items()))
+        tpl = PARAM_CLAUSES.get(lang, PARAM_CLAUSES["en"]).get(verb_name) or PARAM_CLAUSES[
+            "en"
+        ].get(verb_name)
+        if tpl:
+            return tpl[0 if done else 1].format(t=targets, v=format_param(name, value, lang))
+    return action_clause(verb_phrase(verb_name, lang, done=done), targets, lang)
+
+
 THRESHOLD_WORDS = {"en": {"<": "below", ">": "above"}, "de": {"<": "unter", ">": "über"}}
 
 

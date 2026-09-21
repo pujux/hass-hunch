@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from homeassistant.components import conversation
 from homeassistant.core import HomeAssistant
@@ -33,9 +33,9 @@ from . import HunchConfigEntry, HunchRuntime
 from .executor import Executor
 from .pending import PendingClarify, PendingConfirm
 from .responder import (
-    action_clause,
     condition_clause,
     condition_context,
+    describe_action,
     describe_expected,
     describe_state,
     describe_targets,
@@ -151,6 +151,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
         self._rt.traces.append(
             {"prompt": turn.user_input.text, "outcome": outcome, "trace": payload}
         )
+        self._trace_event({"outcome": outcome, "answered_by": "hunch", "spoken": text})
         return conversation.ConversationResult(
             response=_response(turn.user_input.language, text, error=error),
             conversation_id=turn.chat_log.conversation_id,
@@ -168,6 +169,14 @@ class HunchConversationEntity(conversation.ConversationEntity):
         agent_id = self._rt.fallback_agent_id
         user_input = turn.user_input
         if agent_id != self.entity_id:
+            # Visible in the Assist debug view ("Roh"): this turn left Hunch, and why.
+            self._trace_event(
+                {
+                    "outcome": outcome,
+                    "handed_off_to": agent_id or "home_assistant_default_agent",
+                    "with_context": extra_system_prompt is not None,
+                }
+            )
             try:
                 result = await conversation.async_converse(
                     self.hass,
@@ -196,6 +205,16 @@ class HunchConversationEntity(conversation.ConversationEntity):
             turn, render("fallback_unavailable", turn.lang), trace, outcome, error=True
         )
 
+    @staticmethod
+    def _trace_event(data: Mapping[str, Any]) -> None:
+        """An `agent_detail` event on HA's conversation trace; a no-op outside a traced run."""
+        try:
+            conversation.async_conversation_trace_append(
+                conversation.ConversationTraceEventType.AGENT_DETAIL, {"hunch": dict(data)}
+            )
+        except Exception:  # noqa: BLE001 - tracing must never break a turn
+            _LOGGER.debug("conversation trace unavailable", exc_info=True)
+
     def _action_clauses(
         self,
         actions: Sequence[Action],
@@ -212,18 +231,15 @@ class HunchConversationEntity(conversation.ConversationEntity):
         """
         parts = []
         for action in actions:
-            clause = action_clause(
-                verb_phrase(action.verb.name, language, done=done),
-                describe_targets(action.targets, areas, language),
-                language,
-            )
-            if params:
-                values = " ".join(
-                    f"{v:g}" if isinstance(v, float) else str(v) for v in action.params.values()
+            parts.append(
+                describe_action(
+                    action.verb.name,
+                    describe_targets(action.targets, areas, language),
+                    action.params,
+                    language,
+                    done=done,
                 )
-                if values:
-                    clause += f" -> {values}"
-            parts.append(clause)
+            )
         return "; ".join(parts)
 
     # ---- executing -------------------------------------------------------------------

@@ -292,3 +292,31 @@ def test_numeric_conditions_are_described_with_the_value():
         == "Temperatur (Wohnzimmer) ist 24,5 °C, nicht unter 20, darum habe ich nichts geändert."
     )
     assert "{" not in render("condition_not_met", "en", subject="x", expected="open")
+
+
+def test_parametrised_actions_say_the_value_in_the_right_word_order():
+    from custom_components.hunch.responder import describe_action, format_param
+
+    assert format_param("brightness_pct", 50.0, "de") == "50 %"
+    assert format_param("temperature", 22.5, "de") == "22,5 °C"
+    assert format_param("temperature", 22.5, "en") == "22.5 °C"
+    de = describe_action(
+        "set_brightness", "Kücheninsel (Küche)", {"brightness_pct": 50.0}, "de", done=True
+    )
+    assert de == "Kücheninsel (Küche) auf 50 % gestellt"
+    en = describe_action(
+        "set_brightness", "Kücheninsel (Küche)", {"brightness_pct": 50.0}, "en", done=False
+    )
+    assert en == "set Kücheninsel (Küche) to 50 %"
+    assert describe_action(
+        "set_volume", "Fernseher (Wohnzimmer)", {"volume_level": 20.0}, "de", done=True
+    ) == ("Lautstärke von Fernseher (Wohnzimmer) auf 20 % gestellt")
+    # no value: the plain verb phrase in the language's word order
+    assert (
+        describe_action("turn_off", "Spots (Küche)", {}, "de", done=True)
+        == "Spots (Küche) ausgeschaltet"
+    )
+    assert (
+        describe_action("turn_off", "Spots (Küche)", {}, "en", done=True)
+        == "turned off Spots (Küche)"
+    )

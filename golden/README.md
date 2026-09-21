@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 54 rows incl. 7 two-turn rows) 53–54/54 — the
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 55 rows incl. 8 multi-turn rows) 54–55/55 — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,22 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (night) — "doch auf 50%": the previous devices constrain the verb
+
+Live chain "Kücheninsel auf 5%" → "bitte auf 1%" → "doch auf 50%": the third turn escalated
+(`Escalate scope`) and the 8B fallback streamed "Erledigt: Kücheninsel (Küche) Helligkeit gesetzt
+auf 50%." without acting — the raw trace shows the token deltas, `success: []`. Cause: on "auf
+50%" `set_position` co-fires (0.60) next to `set_brightness` (0.64) and the hesitant comparison
+(0.52) sometimes picks it; a light cannot do it, the forced set was empty, nothing was left. Rule
+for same-device follow-ups: verbs none of the previous devices can do are dropped; with nothing
+left the previous verb carries on with the new value; a fired verb that is the previous verb rides
+on the follow-up judgment instead of its 0.6 Noul. Runner chains `previous` through multi-turn
+rows; the three-turn row added. Also: parametrised actions are spoken with their value in the
+language's word order ("Kücheninsel (Küche) auf 50 % gestellt" instead of "… Helligkeit gesetzt
+für."), and every turn leaves an `agent_detail` event on HA's conversation trace (outcome; on a
+hand-off the target agent), visible in the Assist debug view under "Roh". **Real home 55/55.**
+Engine 0.5.1, integration 0.3.1.
 
 ### 2026-09-21 (late evening) — numeric conditions evaluated by Hunch
 

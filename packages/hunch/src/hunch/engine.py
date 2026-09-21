@@ -139,6 +139,24 @@ class Engine:
                 trace.note("follow_up:replay")
                 return Resolved(previous.actions, None, shape.follow_up_conf, trace)
             if shape.follow_up == SAME_DEVICES:
+                # "doch auf 50%" after "Kücheninsel auf 1%": the devices constrain the verb. A
+                # fired verb none of them can do ("set_position" co-firing on "auf 50%") is not
+                # what was meant; with nothing left, the previous verb carries on with the new
+                # value. A fired verb that IS the previous verb rides on the follow-up judgment.
+                prev_verb_names = {a.verb.name for a in previous.actions}
+                applicable = tuple(
+                    v for v in shape.fired_verbs if any(v.name in e.verbs for e in prev_targets)
+                )
+                for v in shape.fired_verbs:
+                    if v not in applicable:
+                        trace.note(f"dropped:{v.name}:no_previous_targets")
+                if not applicable:
+                    applicable = tuple(dict.fromkeys(a.verb for a in previous.actions))
+                    carried_verbs.update(v.name for v in applicable)
+                    trace.note("follow_up:verb_carried")
+                if applicable != shape.fired_verbs:
+                    shape = dataclasses.replace(shape, fired_verbs=applicable)
+                carried_verbs.update(v.name for v in applicable if v.name in prev_verb_names)
                 for verb in shape.fired_verbs:
                     forced[verb.name] = tuple(e for e in prev_targets if verb.name in e.verbs)
             else:  # SAME_ACTION / ADD_DEVICES: the previous verb(s) unless this turn names one

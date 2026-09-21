@@ -129,8 +129,8 @@ async def main() -> int:
     try:
         for row in rows:
             previous = None
-            for earlier in row.get("turns", [])[:-1]:
-                first = await engine.decide(home, earlier)
+            for earlier in row.get("turns", [])[:-1]:  # each earlier turn sees its predecessor
+                first = await engine.decide(home, earlier, previous)
                 if isinstance(first, Resolved | NeedsConfirmation):
                     previous = PreviousTurn(earlier, first.actions)
             t0 = time.perf_counter()

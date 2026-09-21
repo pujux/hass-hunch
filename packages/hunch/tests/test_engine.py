@@ -888,3 +888,32 @@ async def test_a_device_named_after_a_room_does_not_scope_to_that_room(vocab, co
     assert "area_shadowed:terrace" in r.trace.notes
     assert isinstance(r, NeedsClarification)
     assert {c.entity_id for c in r.candidates} == {"cover.b", "cover.g"}
+
+
+async def test_same_devices_follow_up_drops_verbs_the_devices_cannot_do(home, vocab, config):
+    # "doch auf 50%" after "bedside lamp to 1%": set_position co-fires on "auf 50%" and even wins
+    # the hesitant comparison; the lamp cannot do it, so set_brightness (the previous verb) it is.
+    from hunch.round1 import SAME_DEVICES
+
+    prev = _previous(home, "set_brightness", "light.bedroom_left", params={"brightness_pct": 1.0})
+    client, calls = _scripted(
+        {
+            "verb:set_position": NoulA(0.72),
+            "verb:set_brightness": NoulA(0.66),
+            "verb_primary": ChoiceA("set_position", 0.53, {}),
+            "area_primary": ChoiceA("none", 0.9, {}),
+            "follow_up": ChoiceA(SAME_DEVICES, 0.98, {}),
+        },
+        {
+            "param_value:set_brightness": ChoiceA("50%", 0.97, {}),
+            "param_relative:set_brightness": NoulA(0.05),
+            "param:set_brightness": ScoreA(3.0, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "doch auf 50%", prev)
+    assert isinstance(r, Resolved), r
+    assert [a.verb.name for a in r.actions] == ["set_brightness"]
+    assert r.actions[0].params == {"brightness_pct": 50.0}
+    assert {e.entity_id for e in r.actions[0].targets} == {"light.bedroom_left"}
+    assert "dropped:set_position:no_previous_targets" in r.trace.notes
+    assert r.confidence >= 0.9  # the follow-up judgment carries the verb, not its 0.66 Noul
