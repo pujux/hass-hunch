@@ -632,3 +632,24 @@ async def test_a_query_beside_a_command_is_answered_and_executed(hass: HomeAssis
         result = await _say(hass, "Spots aus, und ist die Tür offen?", conversation_id="c21")
     assert len(svc) == 1 and svc[0].data["entity_id"] == ["light.kuche_spots"]
     assert _speech(result) == "Tür (Galerie): offen\nErledigt: Spots (Küche) ausgeschaltet."
+
+
+async def test_a_condition_hand_off_tells_the_fallback_to_check_it_first(
+    hass: HomeAssistant, setup_hunch
+):
+    await _home(hass)
+    client, calls = scripted(
+        {
+            **R1_TURN_OFF_KITCHEN,
+            "flag:has_condition": NoulA(0.95),
+            "flag:condition_numeric": NoulA(0.95),
+            "condition_domain": ChoiceA("sensor", 0.95, {}),
+        }
+    )
+    await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    fake = AsyncMock(return_value=_fallback_result())
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _say(hass, "Licht in der Küche aus wenn es unter 20 Grad hat", conversation_id="c7")
+    assert fake.await_count == 1
+    extra = fake.await_args.kwargs["extra_system_prompt"]
+    assert extra and "condition" in extra and "act only if it holds" in extra

@@ -226,3 +226,47 @@ def test_a_sensor_reading_is_not_a_state_a_condition_can_hold(home, thresholds):
     plan = plan_round2(home, shape, {"close": ()}, thresholds, 60)
     assert plan.condition_candidates == ()
     assert "cond_subject" not in build_round2_questions(shape, plan, home)
+
+
+def test_two_named_rooms_with_a_specific_device_ask_per_room(home, thresholds):
+    # "turn on the kitchen lights and the reading lamp in the living room": a set in one room and
+    # one device in the other -> one Choice per room: all of them / a device / none.
+    from hunch.round2 import ALL_IN_ROOM, named_place_count
+
+    prompt = "turn on the kitchen lights and the reading lamp in the living room"
+    assert named_place_count(home, prompt) == 2
+    assert named_place_count(home, "lights downstairs on") == 1
+    assert named_place_count(home, "lamp on") == 0
+    shape = _shape(
+        home, ["turn_on"], {"collective": 0.4, "names_specific": 0.75}, areas=("kitchen", "living")
+    )
+    cands = _ents(
+        home,
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+        "light.living_main",
+        "light.reading_lamp",
+    )
+    plan = plan_round2(home, shape, {"turn_on": cands}, thresholds, 60, prompt)
+    assert set(plan.room_targets["turn_on"]) == {"kitchen", "living"}
+    assert "turn_on" not in plan.singular and "turn_on" not in plan.all_of
+    assert "turn_on" not in plan.collective
+    qs = build_round2_questions(shape, plan, home)
+    q = qs["room_target:turn_on:living"]
+    assert q.options[0] == ALL_IN_ROOM and q.options[-1] == NO_MATCH
+    assert {"Living room main", "Reading lamp"} <= set(q.options)
+    assert "Living room" in q.instructions
+    assert {e.entity_id for e in plan.all_candidates()} == {e.entity_id for e in cands}
+    # one named room stays on the single-target path
+    shape1 = _shape(
+        home, ["turn_on"], {"collective": 0.4, "names_specific": 0.75}, areas=("living",)
+    )
+    plan1 = plan_round2(
+        home,
+        shape1,
+        {"turn_on": _ents(home, "light.living_main", "light.reading_lamp")},
+        thresholds,
+        60,
+        "reading lamp in the living room on",
+    )
+    assert plan1.room_targets == {} and "turn_on" in plan1.singular

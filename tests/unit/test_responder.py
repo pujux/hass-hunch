@@ -234,3 +234,10 @@ def test_targets_without_a_known_area_render_the_bare_count():
     many = [_e(f"light.{i}", f"L{i}", None) for i in range(5)]
     assert describe_targets(many, AREAS, "en") == "5 devices"
     assert describe_targets(many, AREAS, "de") == "5 Geräte"
+
+
+def test_condition_context_names_the_check():
+    from custom_components.hunch.responder import condition_context
+
+    text = condition_context()
+    assert "condition" in text and "current state" in text

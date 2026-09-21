@@ -514,3 +514,102 @@ async def test_scope_time_clarification_has_verb_but_no_params(home, vocab):
     assert r.verb is not None and r.verb.name == "turn_on"
     assert r.params == {}
     assert calls["n"] == 1  # scope-time clarification: no Round 2 spent
+
+
+async def test_a_set_in_one_room_and_a_device_in_another(home, vocab, config):
+    # "turn on the kitchen lights and the reading lamp in the living room"
+    from hunch.round2 import ALL_IN_ROOM
+
+    client, calls = _scripted(
+        {
+            "verb:turn_on": NoulA(0.97),
+            "domain:light": NoulA(0.97),
+            "area:kitchen": NoulA(0.98),
+            "area:living": NoulA(0.98),
+            "flag:collective": NoulA(0.4),
+            "flag:names_specific": NoulA(0.75),
+            "verb_primary": ChoiceA("turn_on", 0.98, {}),
+            "area_primary": ChoiceA("several", 0.95, {}),
+        },
+        {
+            "room_target:turn_on:kitchen": ChoiceA(ALL_IN_ROOM, 0.93, {}),
+            "room_target:turn_on:living": ChoiceA("Reading lamp", 0.96, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "turn on the kitchen lights and the reading lamp in the living room"
+    )
+    assert isinstance(r, Resolved)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+        "light.reading_lamp",
+    }
+    assert "room_all:turn_on:kitchen" in r.trace.notes
+    assert "room_pick:turn_on:living" in r.trace.notes
+    assert r.confidence >= 0.9  # the room Choices carry it, not the 0.4 collective flag
+    assert calls["n"] == 2
+
+
+async def test_a_hesitant_room_verdict_asks_instead_of_dropping_the_room(home, vocab, config):
+    from hunch.round2 import ALL_IN_ROOM, NO_MATCH
+
+    client, _ = _scripted(
+        {
+            "verb:turn_on": NoulA(0.97),
+            "domain:light": NoulA(0.97),
+            "area:kitchen": NoulA(0.98),
+            "area:living": NoulA(0.98),
+            "flag:collective": NoulA(0.4),
+            "flag:names_specific": NoulA(0.75),
+            "verb_primary": ChoiceA("turn_on", 0.98, {}),
+            "area_primary": ChoiceA("several", 0.95, {}),
+        },
+        {
+            "room_target:turn_on:kitchen": ChoiceA(
+                NO_MATCH, 0.55, {NO_MATCH: 0.55, ALL_IN_ROOM: 0.4}
+            ),
+            "room_target:turn_on:living": ChoiceA("Reading lamp", 0.96, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "turn on the kitchen lights and the reading lamp in the living room"
+    )
+    assert isinstance(r, NeedsConfirmation)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+        "light.reading_lamp",
+    }
+    assert "room_unsure:turn_on:kitchen" in r.trace.notes
+
+
+async def test_two_rooms_both_as_sets_go_through_the_room_choices(home, vocab, config):
+    from hunch.round2 import ALL_IN_ROOM
+
+    client, calls = _scripted(
+        {
+            "verb:turn_on": NoulA(0.97),
+            "domain:light": NoulA(0.97),
+            "area:kitchen": NoulA(0.98),
+            "area:living": NoulA(0.98),
+            "flag:collective": NoulA(0.8),
+            "verb_primary": ChoiceA("turn_on", 0.98, {}),
+            "area_primary": ChoiceA("several", 0.95, {}),
+        },
+        {
+            "room_target:turn_on:kitchen": ChoiceA(ALL_IN_ROOM, 0.95, {}),
+            "room_target:turn_on:living": ChoiceA(ALL_IN_ROOM, 0.93, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "lights on in the kitchen and in the living room"
+    )
+    assert isinstance(r, Resolved)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+        "light.living_main",
+        "light.reading_lamp",
+    }
+    assert calls["n"] == 2

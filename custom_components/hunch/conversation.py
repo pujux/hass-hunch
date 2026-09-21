@@ -34,6 +34,7 @@ from .pending import PendingClarify, PendingConfirm
 from .responder import (
     action_clause,
     condition_clause,
+    condition_context,
     describe_state,
     describe_targets,
     pending_context,
@@ -339,7 +340,8 @@ class HunchConversationEntity(conversation.ConversationEntity):
             return self._result(turn, question, result.trace, "NeedsClarification", cont=True)
 
         assert isinstance(result, Escalate)  # step 7
-        return await self._escalate(turn, result.trace, f"Escalate:{result.reason}")
+        extra = condition_context() if result.reason == "condition" else None
+        return await self._escalate(turn, result.trace, f"Escalate:{result.reason}", extra)
 
     def _confirm_question(
         self,

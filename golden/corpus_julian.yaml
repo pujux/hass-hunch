@@ -110,3 +110,9 @@
 - prompt: Rollos oben runter
   # 10 upstairs blinds; asking to confirm is fine
   expect: {kinds: [resolved, confirm], verb: close, targets: [cover.badezimmer_oben_fenster_rollo_links, cover.badezimmer_oben_fenster_rollo_mitte, cover.badezimmer_oben_fenster_rollo_rechts, cover.galerie_dachterrasse_rollo, cover.galerie_fenster_rollo_links, cover.galerie_fenster_rollo_mitte, cover.galerie_fenster_rollo_rechts, cover.galerie_stiege_fenster_rollo, cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}
+
+# ---- mixed places: a set in one room, a specific device in another (2026-09-21, live test) ----
+- prompt: schalte licht in der küche und esszimmer stehlampe ein
+  expect: {kind: resolved, verb: turn_on, targets: [light.kuche_spots, light.kuche_kucheninsel, light.esszimmer_stehlampe]}
+- prompt: Schalte das Licht in der Küche und die Esszimmer Stehlampe ein
+  expect: {kinds: [resolved, confirm], verb: turn_on, targets: [light.kuche_spots, light.kuche_kucheninsel, light.esszimmer_stehlampe]}

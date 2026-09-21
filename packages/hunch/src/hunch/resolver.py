@@ -19,7 +19,7 @@ from hunch.resolution import (
     Trace,
 )
 from hunch.round1 import Shape
-from hunch.round2 import NO_MATCH, Round2Plan, parse_number
+from hunch.round2 import ALL_IN_ROOM, NO_MATCH, Round2Plan, parse_number
 from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec, Verb
 
 
@@ -146,6 +146,37 @@ def resolve(
                         trace.note(f"collective_backed_by_scope:{verb.name}")
                         collective = backing
                 local.append(collective)
+        elif verb.name in plan.room_targets and round2 is not None:
+            # Several rooms, mixed set/specific: Jev compared per room.
+            picked: list[Entity] = []
+            for area_id, opts in plan.room_targets[verb.name].items():
+                c = round2.choice(f"room_target:{verb.name}:{area_id}")
+                sure = trace.decide(
+                    f"room_target:{verb.name}:{area_id}", c.confidence, th.target_choice_conf
+                )
+                choice = c.choice
+                if not sure and choice in (NO_MATCH, ALL_IN_ROOM):
+                    # Hesitant between "all of them" and "nothing here": the room WAS said, so
+                    # dropping it silently is the worst outcome. Take all and let the
+                    # confirmation question show the user what is about to happen.
+                    trace.note(f"room_unsure:{verb.name}:{area_id}")
+                    choice = ALL_IN_ROOM
+                    local.append(max(c.confidence, th.confirm_band))
+                else:
+                    local.append(c.confidence)
+                if choice == NO_MATCH:
+                    trace.note(f"room_none:{verb.name}:{area_id}")
+                    continue
+                if choice == ALL_IN_ROOM:
+                    picked.extend(e for o in opts for e in o.entities)
+                    trace.note(f"room_all:{verb.name}:{area_id}")
+                else:
+                    opt = next((o for o in opts if o.label == c.choice), None)
+                    if opt is None:
+                        continue
+                    picked.extend(opt.entities)
+                    trace.note(f"room_pick:{verb.name}:{area_id}")
+            targets = tuple(picked)
         elif verb.name in plan.exclude and round2 is not None:
             kept: list[Entity] = []
             # The set was justified by the plural OR by the exception ("Licht aus außer …" has

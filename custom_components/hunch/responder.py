@@ -222,6 +222,17 @@ def render(outcome: str, language: str, **slots: Any) -> str:
     return tpl.format(**slots)
 
 
+def condition_context() -> str:
+    """English context for `extra_system_prompt` when a request is handed off because of a
+    condition Hunch cannot evaluate (a numeric threshold, a sensor without discrete states)."""
+    return (
+        "Context from the Hunch assistant: this request makes its action depend on a condition "
+        "('if', 'when', 'wenn', 'falls'). Check the condition against the current state first and "
+        "act only if it holds right now. If it does not hold, do nothing and tell the user the "
+        "current value instead."
+    )
+
+
 def pending_context(question: str, description: str) -> str:
     """English context for `extra_system_prompt` when a pending question got a non-yes/no reply."""
     return (

@@ -59,6 +59,15 @@ class Phrasebook:
     condition_domain_descriptions: Mapping[str, str] = field(default_factory=dict)
     # domain -> state -> what that state means in everyday words (descriptions of cond_state)
     condition_state_descriptions: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    # Choice per named room when a request mixes a set and a device: {room} {kind} {phrasing}
+    room_target_question: str = (
+        "The request names several rooms; this question is about the room '{room}', which it "
+        "does mention. Does the request mean ALL of the {kind} devices there (the room is named "
+        "with only the kind of device, like 'licht in der küche' or 'Rollos im Schlafzimmer'), "
+        "or ONE particular device there (named by its own name, like 'Esszimmer Stehlampe')? "
+        "Choose none of these only if the request does not refer to this room at all. The "
+        "request asks to {phrasing}."
+    )
 
     def phrasing_for(self, verb_name: str, default: str) -> str:
         return self.verb_phrasing.get(verb_name, default)
@@ -160,6 +169,11 @@ EN = Phrasebook(
             "none of the listed devices is the thing the condition observes — e.g. it is about "
             "darkness, rain or presence and nothing here measures that"
         ),
+        "all_in_room": (
+            "every device of this kind in the room — the request names the room with only the "
+            "kind of device, no particular one"
+        ),
+        "none_in_room": "the request does not refer to this room or to any device in it",
     },
     exclusion_question=(
         "The request in `request` names an exception — something that must NOT be affected. "
@@ -395,6 +409,11 @@ DE = Phrasebook(
             "keines der aufgezählten Geräte ist das, was die Bedingung beobachtet — z. B. geht "
             "es um Dunkelheit, Regen oder Anwesenheit und nichts hier misst das"
         ),
+        "all_in_room": (
+            "jedes Gerät dieser Art im Raum — die Anfrage nennt den Raum nur mit der Geräteart, "
+            "ohne bestimmtes Gerät"
+        ),
+        "none_in_room": "die Anfrage bezieht sich weder auf diesen Raum noch auf ein Gerät darin",
     },
     exclusion_question=(
         "Die Anfrage in `request` nennt eine Ausnahme — etwas, das NICHT betroffen sein darf. "
@@ -585,6 +604,13 @@ DE = Phrasebook(
         },
         "person": {"home": "zu Hause", "not_home": "abwesend, nicht zu Hause"},
     },
+    room_target_question=(
+        "Die Anfrage nennt mehrere Räume; diese Frage betrifft den Raum '{room}', den sie "
+        "erwähnt. Meint die Anfrage ALLE {kind} dort (der Raum ist nur mit der Geräteart genannt, "
+        "wie 'licht in der küche' oder 'Rollos im Schlafzimmer') oder EIN bestimmtes Gerät dort "
+        "(mit eigenem Namen, wie 'Esszimmer Stehlampe')? Wähle none of these nur, wenn die "
+        "Anfrage diesen Raum gar nicht meint. Die Anfrage will {phrasing}."
+    ),
     domain_synonyms={
         "light": ("licht", "lichter", "lampe", "lampen", "leuchte", "leuchten", "beleuchtung"),
         "cover": (

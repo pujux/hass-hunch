@@ -452,6 +452,19 @@ strength; a device-level answer or a "confirm reading 26 lights?" is wrong for a
 generalises the earlier over-cap rule (`query_over_cap`). Singular queries ("Wie warm ist es im
 Wohnzimmer?", "Ist die Dachterrassentür offen?") are unchanged.
 
+**Several named rooms, mixed set and device (2026-09-21, from the first live test).** "Schalte
+Licht in der Küche und Esszimmer Stehlampe ein" names a set in one room and one device in the
+other; one target mode per verb (pick one / all of them) cannot express it, and the singular path
+picked the Stehlampe alone. Now, whenever the prompt names two or more places (a whole floor counts
+as one) and a verb's candidates span two or more rooms, Round 2 asks **one Choice per room**:
+*all of them* (described: "the room is named with only the kind of device") / each device in the
+room / *none of these* ("the request does not refer to this room"). Code assembles the targets;
+each Choice's confidence is a contribution. A hesitant verdict between *all* and *none*
+(confidence < `target_choice_conf`) takes all with contribution `max(conf, confirm_band)`, so the
+room is confirmed rather than silently dropped. Exceptions ("… außer") still take the exclusion
+path first. Measured: 4 phrasings × 3 runs correct; per-candidate include Nouls were tried first
+and hovered at 0.3–0.6 on the set side — a comparison per room is the right primitive.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

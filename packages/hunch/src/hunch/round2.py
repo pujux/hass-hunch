@@ -11,12 +11,13 @@ from hunch.model import Entity, HomeModel
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
 from hunch.round1 import Shape
-from hunch.scope import device_label
+from hunch.scope import device_label, verbatim_areas
 from hunch.vocabulary import ChoiceSpec, ScoreSpec
 
 # Sentinel option appended to every Round 2 Choice so the model can say nothing fits,
 # rather than being forced to pick among options that all miss.
 NO_MATCH = "none of these"
+ALL_IN_ROOM = "all of them"
 
 # Known states per domain for condition questions. Extend as domains are added.
 DOMAIN_STATES: dict[str, tuple[str, ...]] = {
@@ -127,12 +128,20 @@ class Round2Plan:
     include: Mapping[str, tuple[Entity, ...]] = field(default_factory=dict)
     # verbs whose candidates lie outside the named room/floor: Jev is asked whether they were meant
     outside_scope: tuple[str, ...] = ()
+    # verbs over several named places mixing a set and a specific device ("Licht in der Küche
+    # und Esszimmer Stehlampe"): one Choice per room — all of them / one device / none
+    room_targets: Mapping[str, Mapping[str, tuple[TargetOption, ...]]] = field(default_factory=dict)
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
         for ents in (*self.exclude.values(), *self.collective.values(), self.condition_candidates):
             for e in ents:
                 seen.setdefault(e.entity_id, e)
+        for rooms in self.room_targets.values():
+            for opts in rooms.values():
+                for o in opts:
+                    for e in o.entities:
+                        seen.setdefault(e.entity_id, e)
         for opts in self.singular.values():
             for o in opts:
                 for e in o.entities:
@@ -160,6 +169,20 @@ def numeric_literals(prompt: str) -> tuple[str, ...]:
 def parse_number(literal: str) -> float | None:
     m = re.match(r"\d{1,3}(?:[.,]\d+)?", literal)
     return float(m.group(0).replace(",", ".")) if m else None
+
+
+def named_place_count(home: HomeModel, prompt: str) -> int:
+    """How many distinct places the prompt names out loud: a floor named as a whole counts once,
+    every other named room once: 'Licht im Untergeschoss' -> 1, 'Küche und Esszimmer' -> 2."""
+    named = set(verbatim_areas(home, prompt))
+    if not named:
+        return 0
+    count = 0
+    for f in home.floors:
+        if f.area_ids and set(f.area_ids) <= named:
+            count += 1
+            named -= set(f.area_ids)
+    return count + len(named)
 
 
 def plan_round2(
@@ -191,6 +214,8 @@ def plan_round2(
     ambiguous_by_area: list[str] = []
     all_of: list[str] = []
     include: dict[str, tuple[Entity, ...]] = {}
+    room_targets: dict[str, dict[str, tuple[TargetOption, ...]]] = {}
+    places_named = named_place_count(home, prompt)
     for verb in shape.fired_verbs:
         cands = per_verb.get(verb.name, ())
         if not cands:
@@ -199,13 +224,23 @@ def plan_round2(
             params.append(verb.name)
             if literals and isinstance(verb.param, ScoreSpec):
                 numeric[verb.name] = literals
-        if collective and not has_exception:
+        if collective and has_exception:
+            exclude[verb.name] = cands
+        elif places_named >= 2 and not verb.is_query and len({e.area_id for e in cands}) >= 2:
+            # Two rooms said: each may mean a set ("Licht in der Küche") or one device
+            # ("Esszimmer Stehlampe"). Neither "pick one" nor "all of them" fits the whole
+            # request, so Jev compares per room — whatever the plural/specific flags said.
+            by_area: dict[str, list[Entity]] = {}
+            for e in cands:
+                by_area.setdefault(e.area_id or "", []).append(e)
+            room_targets[verb.name] = {
+                area: target_options(tuple(ents), area_names) for area, ents in by_area.items()
+            }
+        elif collective:
             coll[verb.name] = cands
             if len({e.domain for e in cands}) > 1:
                 # "kitchen lights" over lights AND a fridge switch: Jev judges each candidate.
                 include[verb.name] = cands
-        elif collective:
-            exclude[verb.name] = cands
         else:
             opts = target_options(cands, area_names)
             if len(opts) == 1:
@@ -254,6 +289,7 @@ def plan_round2(
                 or any(e.area_id not in shape.scope_areas for e in per_verb.get(v.name, ()))
             )
         ),
+        room_targets,
     )
 
 
@@ -319,6 +355,22 @@ def build_round2_questions(
         )
     for verb_name in plan.all_of:
         qs[f"all_of:{verb_name}"] = NoulQ(pb.all_of_question)
+    for verb_name, rooms in plan.room_targets.items():
+        verb = next(v for v in shape.fired_verbs if v.name == verb_name)
+        for area_id, opts in rooms.items():
+            area = home.area_by_id(area_id) if area_id else None
+            room = area.name if area else "no room"
+            kind = pb.domain_label(opts[0].entities[0].domain) if opts else "device"
+            qs[f"room_target:{verb_name}:{area_id}"] = ChoiceQ(
+                pb.room_target_question.format(
+                    room=room, kind=kind, phrasing=pb.phrasing_for(verb.name, verb.phrasing)
+                ),
+                (ALL_IN_ROOM, *(o.label for o in opts), NO_MATCH),
+                {
+                    ALL_IN_ROOM: pb.special_descriptions["all_in_room"],
+                    NO_MATCH: pb.special_descriptions["none_in_room"],
+                },
+            )
     for verb_name, ents in plan.include.items():
         verb = next(v for v in shape.fired_verbs if v.name == verb_name)
         for e in ents:

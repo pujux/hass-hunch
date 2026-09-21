@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 41 rows) 41/41 (40–41 across runs) — the
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 43 rows) 42–43/43 — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,25 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (live test) — several rooms, set + device: one Choice per room
+
+First live prompts through Assist. "schalte licht in der küche und esszimmer stehlampe ein" lit
+only the Stehlampe: `names_specific` 0.72 beat `collective` 0.45, the singular path asked "which
+one?" and the Küche fell away. Tried per-candidate include Nouls first (8 candidates): the set
+side hovered at 0.3–0.6 and flipped with casing. Replaced by one Choice per named room (all of
+them / device / none) — the comparison Jev is good at, mirroring the sentence structure. Also:
+every two-place request now takes this path regardless of the plural/specific flags (Round 1
+variance had routed "Rollos im Schlafzimmer und die Galerie Dachterrasse Rollo runter" to the
+collective path and closed every Galerie blind), and a hesitant all/none verdict confirms instead
+of dropping the room. Results (3 runs each): lowercase Küche sentence 0.81–0.85 Resolved (Küche
+"all of them" 0.86–0.89), proper-case 0.98, Rollos 0.72–0.79 with the right three blinds, both-sets
+sentence 1.0. Two corpus rows added. **Fixture 24/24, real home 42–43/43.** Engine 0.3.0.
+
+Same live session: a numeric condition ("… wenn es unter 20 Grad hat") was correctly handed off,
+and the LLM fallback read 23.1 °C and switched the TV off anyway. Hunch now sends
+`extra_system_prompt` on condition hand-offs telling the agent to check the condition first and
+act only if it holds (integration 0.1.1).
 
 ### 2026-09-21 (late) — Julian trimmed Assist exposure to 153 entities; questions about a set hand off
 
