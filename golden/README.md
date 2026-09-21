@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 58 rows incl. 8 multi-turn rows) 57–58/58 — the
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 59 rows incl. 8 multi-turn rows) 58–59/59 — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -72,6 +72,11 @@ Julian removed the Virtuell groups (Rollos ×3, Ventilatoren) and the virtual wi
 sensors from Assist: 114 entities, `area:virtuell` no longer pulls at 0.62, and a group can no
 longer close the excepted room. Three lights were renamed by their new rooms; corpus ids updated.
 **Real home 58/58, fixture 24/24.**
+
+Same pass: "Rollos runter" (no place) narrowed silently to the Untergeschoss's 9 blinds in 1 of 5
+runs — the floor Noul at 0.70 beat `area_primary` *none* at 0.54. A hesitant *none* now still drops
+rooms and floors that are under `place_override` (0.9) when nothing is named. 5/5 → 19 blinds with
+the blast-radius question; row added. **Real home 59/59.**
 
 ### 2026-09-21 (late night) — a fragment with nothing before it must never execute
 

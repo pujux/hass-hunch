@@ -518,6 +518,14 @@ Stehlampe", "außer dem Mini Kühlschrank"), answers *none* (measured 0.78–1.0
 covers ("Rollos") left Assist the same night: a group named like its kind pulled `area:virtuell`
 to 0.62 on every blind sentence and would have closed the excepted room through the group.
 
+**A hesitant "none" still beats a barely-fired place (2026-09-21, night).** "Rollos runter" with
+no place: the Untergeschoss floor Noul hovered 0.62–0.70 and, when it cleared 0.7, narrowed the
+sweep to that floor's 9 blinds silently, although `area_primary` said *none* (0.54, under the 0.6
+bar that used to be needed to clear Jev's rooms). Now, when the comparison's pick is *none*,
+nothing is named, and every fired room/floor is under `place_override` (0.9), the rooms are
+dropped anyway (`areas_dropped:no_place_hesitant`): narrowing a sweep without a named place needs
+real conviction. Measured 5/5 → all 19 blinds with the blast-radius confirmation.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

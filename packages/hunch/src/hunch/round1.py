@@ -101,6 +101,10 @@ def _place_options(home: HomeModel) -> list[str]:
     return [f.name for f in home.floors] + [_label(a) for a in home.areas]
 
 
+def _floor_areas(home: HomeModel, floor_id: str) -> tuple[str, ...]:
+    return next((f.area_ids for f in home.floors if f.floor_id == floor_id), ())
+
+
 def _place_lookup(home: HomeModel) -> dict[str, tuple[str, ...]]:
     """Option label -> the area ids it stands for."""
     out: dict[str, tuple[str, ...]] = {f.name: tuple(f.area_ids) for f in home.floors}
@@ -292,6 +296,19 @@ def interpret_round1(
         if ap.choice == "none":
             if trace.decide("area_primary:none", ap.confidence, thresholds.flag) and scope_areas:
                 trace.note("areas_dropped:no_place:" + ",".join(scope_areas))
+                scope_areas = []
+            elif scope_areas and all(
+                max(
+                    area_probs.get(a, 0.0),
+                    *(p for f, p in floor_probs.items() if a in _floor_areas(home, f)),
+                )
+                < thresholds.place_override
+                for a in scope_areas
+            ):
+                # Even a hesitant "none" beats rooms and floors that only just cleared the bar
+                # ("Rollos runter": floor 0.70 vs none 0.54 narrowed a sweep to one floor,
+                # silently). Narrowing without a named place needs real conviction.
+                trace.note("areas_dropped:no_place_hesitant:" + ",".join(scope_areas))
                 scope_areas = []
         elif ap.choice == "whole home":
             if trace.decide("area_primary:whole_home", ap.confidence, thresholds.flag):
