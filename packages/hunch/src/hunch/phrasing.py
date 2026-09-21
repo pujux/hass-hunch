@@ -59,6 +59,14 @@ class Phrasebook:
     condition_domain_descriptions: Mapping[str, str] = field(default_factory=dict)
     # domain -> state -> what that state means in everyday words (descriptions of cond_state)
     condition_state_descriptions: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    # Exceptions that name a whole place ("außer das in der Küche"): which one?
+    exception_place_question: str = (
+        "If the request excludes something with 'außer' / 'except' / 'but not': is what it "
+        "excludes a whole room or floor (everything of that kind there), and which one? Choose "
+        "none if the exception is a particular device rather than a place, or if there is no "
+        "exception at all. A room named as the PLACE of the action ('Licht in der Küche aus') is "
+        "not an exception."
+    )
     # Numeric conditions: which number is the threshold, and which side of it holds?
     cond_threshold_question: str = (
         "The request's condition compares a measured value with a number. Which of these "
@@ -225,6 +233,9 @@ EN = Phrasebook(
             "kind of device, no particular one"
         ),
         "none_in_room": "the request does not refer to this room or to any device in it",
+        "no_exception_place": (
+            "the exception is a particular device, not a room or floor — or there is no exception"
+        ),
         "no_condition_number": "none of these numbers is the condition's threshold",
         "condition_below": "the condition holds while the value is lower than the number",
         "condition_above": "the condition holds while the value is higher than the number",
@@ -476,6 +487,10 @@ DE = Phrasebook(
             "ohne bestimmtes Gerät"
         ),
         "none_in_room": "die Anfrage bezieht sich weder auf diesen Raum noch auf ein Gerät darin",
+        "no_exception_place": (
+            "die Ausnahme ist ein bestimmtes Gerät, kein Raum oder Stockwerk — oder es gibt "
+            "keine Ausnahme"
+        ),
         "no_condition_number": "keine dieser Zahlen ist die Schwelle der Bedingung",
         "condition_below": "die Bedingung gilt, solange der Wert kleiner als die Zahl ist",
         "condition_above": "die Bedingung gilt, solange der Wert größer als die Zahl ist",
@@ -714,6 +729,12 @@ DE = Phrasebook(
     cond_direction_question=(
         "Wann gilt die Bedingung: wenn der Messwert UNTER der Zahl liegt ('unter', 'weniger als', "
         "'kälter als', 'niedriger') oder ÜBER ihr ('über', 'mehr als', 'wärmer als', 'höher')?"
+    ),
+    exception_place_question=(
+        "Falls die Anfrage etwas mit 'außer' / 'aber nicht' ausnimmt: Ist das Ausgenommene ein "
+        "ganzer Raum oder ein Stockwerk (alles dieser Art dort), und welcher? Wähle none, wenn "
+        "die Ausnahme ein bestimmtes Gerät ist oder es keine Ausnahme gibt. Ein Raum als ORT der "
+        "Aktion ('Licht in der Küche aus') ist keine Ausnahme."
     ),
     domain_synonyms={
         "light": ("licht", "lichter", "lampe", "lampen", "leuchte", "leuchten", "beleuchtung"),

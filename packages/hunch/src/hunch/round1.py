@@ -169,6 +169,11 @@ def build_round1_questions(
             "none": pb.special_descriptions["no_place"],
         },
     )
+    qs["exception_place"] = ChoiceQ(
+        pb.exception_place_question,
+        tuple(_place_options(home)) + ("none",),
+        {"none": pb.special_descriptions["no_exception_place"]},
+    )
     if home.domains:
         descriptions = {
             d: pb.condition_domain_descriptions[d]
@@ -201,6 +206,9 @@ class Shape:
     follow_up: str | None = None  # SAME_DEVICES | SAME_ACTION | ADD_DEVICES | MORE_SAME
     follow_up_conf: float = 0.0
     condition_numeric: bool = False  # the condition compares a measurement with a number
+    # "alle Rollos außer das in der Küche": the exception is a whole place, not a device;
+    # these areas leave the scope and their devices the candidates
+    exception_areas: tuple[str, ...] = ()
     # numeric conditions: every device type Jev found plausible for the condition, best first
     # ("unter 20 Grad" may be the room thermometer or the weather); the subject Choice decides
     condition_domains: tuple[str, ...] = ()
@@ -320,6 +328,16 @@ def interpret_round1(
         ):
             scene = next((s for s in home.scenes if s.name == c.choice), None)
 
+    exception_areas: tuple[str, ...] = ()
+    if "exception_place" in answers.answers and flags["has_exception"] >= thresholds.flag:
+        ep = answers.choice("exception_place")
+        lookup = _place_lookup(home)
+        if ep.choice in lookup and trace.decide(
+            "exception_place", ep.confidence, thresholds.target_choice_conf
+        ):
+            exception_areas = lookup[ep.choice]
+            trace.note("exception_place:" + ",".join(exception_areas))
+
     condition_domain: str | None = None
     condition_numeric = False
     has_condition = trace.decide("flag:has_condition", flags["has_condition"], thresholds.flag)
@@ -375,4 +393,5 @@ def interpret_round1(
         follow_up_conf=follow_up_conf,
         condition_numeric=condition_numeric,
         condition_domains=condition_domains,
+        exception_areas=exception_areas,
     )

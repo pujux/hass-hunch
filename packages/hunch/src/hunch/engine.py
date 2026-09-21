@@ -198,6 +198,13 @@ class Engine:
         # whole home, or none). Code adds one lookup: a room or floor whose name or alias is in
         # the prompt is the scope, whatever else half-fired.
         named_areas = verbatim_areas(home, prompt)
+        if shape.exception_areas:
+            # "alle Rollos außer das in der Küche": the Küche is the exception, not the scope
+            named_areas = tuple(a for a in named_areas if a not in shape.exception_areas)
+            shape = dataclasses.replace(
+                shape,
+                scope_areas=tuple(a for a in shape.scope_areas if a not in shape.exception_areas),
+            )
         shadowed = areas_shadowed_by_device_names(
             home,
             prompt,
@@ -287,6 +294,15 @@ class Engine:
                 if v.name not in per_verb and f"dropped:{v.name}:scope" not in trace.notes:
                     trace.note(f"dropped:{v.name}:scope")
 
+        if shape.exception_areas:
+            per_verb = {
+                name: tuple(e for e in ents if e.area_id not in shape.exception_areas)
+                for name, ents in per_verb.items()
+            }
+            per_verb = {name: ents for name, ents in per_verb.items() if ents}
+            trace.note("exception_area:" + ",".join(shape.exception_areas))
+            if not per_verb:
+                return Escalate("scope", (), trace)
         plan = plan_round2(
             home,
             shape,

@@ -1359,7 +1359,7 @@ wheels = [
 
 [[package]]
 name = "hunch-engine"
-version = "0.5.2"
+version = "0.5.3"
 source = { editable = "packages/hunch" }
 dependencies = [
     { name = "typesafe-sdk" },

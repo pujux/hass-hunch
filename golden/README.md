@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 57 rows incl. 8 multi-turn rows) 56–57/57 — the
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 58 rows incl. 8 multi-turn rows) 57–58/58 — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,19 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (late night, 2) — "Alle Rollos außer das in der Küche runter"
+
+Escalated as `low_confidence`; the 8B fallback then tried to move exactly the Küche blind to 0
+(the opposite), failed on slot info twice and blamed the configuration. Cause in Hunch: the named
+room is the scope by rule, but here it is the exception; the scope shrank to the Küche's one blind,
+the exclusion Noul (0.95, correct) removed it, nothing was left. Engine 0.5.3: Round 1 asks
+`exception_place`; a named place leaves scope and candidates instead. Measured 0.72–0.86 on the
+sentence, *none* at 0.78–1.0 for device exceptions and for rooms that are the place of the action.
+Julian removed the Virtuell groups (Rollos ×3, Ventilatoren) and the virtual window/door status
+sensors from Assist: 114 entities, `area:virtuell` no longer pulls at 0.62, and a group can no
+longer close the excepted room. Three lights were renamed by their new rooms; corpus ids updated.
+**Real home 58/58, fixture 24/24.**
 
 ### 2026-09-21 (late night) — a fragment with nothing before it must never execute
 

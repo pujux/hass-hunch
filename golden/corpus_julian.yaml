@@ -2,7 +2,7 @@
 - prompt: Mach das Licht im Arbeitszimmer aus
   expect: {kind: resolved, verb: turn_off, targets: [light.arbeitszimmer_lichtschalter]}
 - prompt: Schalte alle Lichter unten aus
-  expect: {kind: resolved, verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+  expect: {kind: resolved, verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.balkon_lichtschalter, light.loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 - prompt: Fahr die Rollos im Schlafzimmer runter
   expect: {kind: resolved, verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}
 - prompt: Mach das Rollo in der Küche auf
@@ -93,10 +93,10 @@
   # state condition: the door contact in the same room; 'offen' = binary_sensor 'on'
   expect: {kinds: [resolved, confirm], verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo], condition: {subject: binary_sensor.schlafzimmer_dachterrassentur_tur, state: 'on'}}
 - prompt: Licht im Untergeschoss an
-  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.balkon_lichtschalter, light.loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 - prompt: Licht im Untergeschoss aus ausser Wohnzimmer Stehlampe
   # all downstairs lights except the Wohnzimmer Stehlampe; 13 targets, asking is fine
-  expect: {kinds: [resolved, confirm], verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+  expect: {kinds: [resolved, confirm], verb: turn_off, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.kuche_kucheninsel, light.kuche_spots, light.balkon_lichtschalter, light.loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 
 # ---- numbers: code lists them, Jev decides what they mean (2026-09-20) ----
 - prompt: Rollos im Schlafzimmer 15% zu
@@ -113,9 +113,9 @@
 
 # ---- floor aliases set in HA 2026-09-21 ('oben' / 'unten') ----
 - prompt: Licht oben aus
-  expect: {kind: resolved, verb: turn_off, targets: [light.ankleide_deckenlampe_lichtschalter, light.ankleide_spiegel, light.badezimmer_oben_lichtschalter_deckenlampe, light.badezimmer_oben_lichtschalter_spiegel, light.galerie_dachterrasse_lichtschalter, light.galerie_deckenlampe_lichtschalter, light.galerie_stiegenlampe, light.schlafzimmer_lichtschalter, light.schlafzimmer_wandlicht]}
+  expect: {kind: resolved, verb: turn_off, targets: [light.ankleide_deckenlampe_lichtschalter, light.ankleide_spiegel, light.badezimmer_oben_lichtschalter_deckenlampe, light.badezimmer_oben_lichtschalter_spiegel, light.dachterrasse_lichtschalter, light.galerie_deckenlampe_lichtschalter, light.galerie_stiegenlampe, light.schlafzimmer_lichtschalter, light.schlafzimmer_wandlicht]}
 - prompt: Mach unten das Licht an
-  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
+  expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.balkon_lichtschalter, light.loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 - prompt: Rollos oben runter
   # 10 upstairs blinds; asking to confirm is fine
   expect: {kinds: [resolved, confirm], verb: close, targets: [cover.badezimmer_oben_fenster_rollo_links, cover.badezimmer_oben_fenster_rollo_mitte, cover.badezimmer_oben_fenster_rollo_rechts, cover.galerie_dachterrasse_rollo, cover.galerie_fenster_rollo_links, cover.galerie_fenster_rollo_mitte, cover.galerie_fenster_rollo_rechts, cover.galerie_stiege_fenster_rollo, cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}
@@ -151,3 +151,7 @@
   expect: {kind: escalate, reason: incomplete}
 - prompt: bitte auf 1%
   expect: {kind: escalate, reason: incomplete}
+# ---- the exception names a room (live 2026-09-21): the room leaves the scope, not the other way round ----
+- prompt: Alle Rollos außer das in der Küche runter
+  # 18 covers (the Virtuell group covers left Assist 2026-09-21); blast radius asks
+  expect: {kinds: [confirm, resolved], verb: close, targets: [cover.arbeitszimmer_couch_fenster_rollo, cover.arbeitszimmer_schreibtisch_fenster_rollo_links, cover.arbeitszimmer_schreibtisch_fenster_rollo_rechts, cover.badezimmer_oben_fenster_rollo_links, cover.badezimmer_oben_fenster_rollo_mitte, cover.badezimmer_oben_fenster_rollo_rechts, cover.esszimmer_fenster_rollo, cover.esszimmer_loggia_rollo, cover.galerie_dachterrasse_rollo, cover.galerie_fenster_rollo_links, cover.galerie_fenster_rollo_mitte, cover.galerie_fenster_rollo_rechts, cover.galerie_stiege_fenster_rollo, cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo, cover.vorzimmer_fenster_rollo_links, cover.vorzimmer_fenster_rollo_rechts, cover.wohnzimmer_loggia_rollo]}

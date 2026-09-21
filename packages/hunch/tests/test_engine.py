@@ -963,3 +963,29 @@ async def test_a_fragment_with_a_previous_turn_is_a_follow_up(home, vocab, confi
     assert isinstance(r, Resolved)
     assert r.actions[0].params == {"brightness_pct": 15.0}
     assert {e.entity_id for e in r.actions[0].targets} == {"light.kitchen_ceiling"}
+
+
+async def test_an_exception_that_names_a_room_removes_the_room_not_the_scope(home, vocab, config):
+    # "turn off all lights except the kitchen": Küche is the exception, everything else is meant
+    from hunch.config import EngineConfig
+
+    cfg = EngineConfig(model="m", max_silent_targets=100)
+    client, calls = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "domain:light": NoulA(0.97),
+            "area:kitchen": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+            "flag:has_exception": NoulA(0.97),
+            "verb_primary": ChoiceA("turn_off", 0.98, {}),
+            "area_primary": ChoiceA("Kitchen", 0.7, {}),
+            "exception_place": ChoiceA("Kitchen", 0.95, {}),
+        }
+    )
+    r = await Engine(client, vocab, cfg).decide(home, "turn off all lights except the kitchen")
+    assert isinstance(r, Resolved), r
+    ids = {e.entity_id for e in r.actions[0].targets}
+    assert not any(i.startswith("light.kitchen") for i in ids)
+    assert {"light.living_main", "light.reading_lamp", "light.hallway", "light.office_desk"} <= ids
+    assert "exception_place:kitchen" in r.trace.notes and "exception_area:kitchen" in r.trace.notes
+    assert calls["n"] == 1  # no per-device exclusion Nouls needed

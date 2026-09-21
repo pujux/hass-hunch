@@ -210,7 +210,7 @@ def plan_round2(
     carried_verbs: frozenset[str] = frozenset(),
     prefer_pick: frozenset[str] = frozenset(),
 ) -> Round2Plan:
-    has_exception = shape.flag("has_exception") >= thresholds.flag
+    has_exception = shape.flag("has_exception") >= thresholds.flag and not shape.exception_areas
     # An exception ("außer der Stehlampe") only makes sense over a set: it implies collective
     # even when the plural flag is low ("Licht im Untergeschoss aus ausser ...").
     collective = shape.flag("collective") >= thresholds.collective or has_exception

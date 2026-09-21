@@ -507,6 +507,17 @@ request escalates as `incomplete` — the fallback agent has the chat history. W
 the `follow_up` Choice governs as before. Measured: fragments 0.85–0.96, complete short sentences
 ("Licht aus", "Rollos runter", "Kücheninsel auf 1%") 0.07–0.15.
 
+**An exception that names a place (2026-09-21, night).** "Alle Rollos außer das in der Küche
+runter": the verbatim room match made the Küche the scope, the exclusion Noul then removed its
+only blind, nothing was left, `low_confidence`. Round 1 now also asks `exception_place` (the place
+options + none): when `has_exception` fired and Jev names a room or floor with ≥ `target_choice_conf`,
+that place leaves the scope (named or judged) and its devices leave the candidates
+(`exception_place:` / `exception_area:` notes); the per-device exclusion Nouls are not asked for
+it. A room that is the place of the action, or an exception that is a device ("außer Wohnzimmer
+Stehlampe", "außer dem Mini Kühlschrank"), answers *none* (measured 0.78–1.0). The Virtuell group
+covers ("Rollos") left Assist the same night: a group named like its kind pulled `area:virtuell`
+to 0.62 on every blind sentence and would have closed the excepted room through the group.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:
