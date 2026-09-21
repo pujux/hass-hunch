@@ -110,7 +110,11 @@ def resolve(
     for verb in shape.fired_verbs:
         # Per-verb contributions stay local until the verb actually yields targets: a verb
         # that resolves to nothing must not drag down the confidence of the ones that did.
-        local: list[float] = [_verb_prob(trace, verb.name)]
+        local: list[float] = [
+            shape.follow_up_conf
+            if verb.name in plan.carried_verbs  # borrowed from the previous turn, never asked
+            else _verb_prob(trace, verb.name)
+        ]
         targets: tuple[Entity, ...] = ()
 
         if verb.name in plan.outside_scope and round2 is not None:
@@ -132,7 +136,10 @@ def resolve(
                     else:
                         trace.note(f"not_meant:{verb.name}:{e.entity_id}")
                 targets = tuple(kept_inc)
-            if len(targets) > 1:  # a single candidate never relied on the collective flag
+            if verb.name in plan.forced:
+                # a follow-up over the previous turn's devices: the follow-up judgment carries it
+                local.append(shape.follow_up_conf)
+            elif len(targets) > 1:  # a single candidate never relied on the collective flag
                 collective = shape.flag("collective")
                 in_scope = shape.scope_areas and all(
                     e.area_id in shape.scope_areas for e in targets
@@ -308,6 +315,9 @@ def resolve(
                         params[spec.name] = value
                         local.extend((picked.confidence, 1.0 - p_rel, inv_conf))
                         trace.note(f"param:number:{verb.name}:{value}")
+        if not params and verb.name in plan.carried_params:
+            params = dict(plan.carried_params[verb.name])
+            trace.note(f"param:carried:{verb.name}")
         if not params and (
             spec is not None and round2 is not None and f"param:{verb.name}" in round2.answers
         ):

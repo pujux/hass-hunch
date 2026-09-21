@@ -59,6 +59,39 @@ class Phrasebook:
     condition_domain_descriptions: Mapping[str, str] = field(default_factory=dict)
     # domain -> state -> what that state means in everyday words (descriptions of cond_state)
     condition_state_descriptions: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    # Follow-ups: does the sentence lean on `previous` (the last turn), and how?
+    follow_up_question: str = (
+        "`previous` is what this conversation did just before: the sentence and the devices it "
+        "acted on. Is the new `request` a complete request of its own, or a follow-up that "
+        "leaves out something the previous turn stated? A follow-up cannot be carried out on "
+        "its own: 'aus' or 'auf 50%' name no devices (same devices, new action); 'und im "
+        "Esszimmer' or 'im Schlafzimmer auch' name no action (same action, other place); 'die "
+        "Stehlampe auch' adds a device to the same action; 'was genau steht drauf' or 'und?' "
+        "asks more about the same thing. A sentence with its own action AND its own devices "
+        "or place is a new request even if it resembles the previous one."
+    )
+    follow_up_descriptions: Mapping[str, str] = field(
+        default_factory=lambda: {
+            "new request": "complete on its own: names what to do and to what",
+            "same devices, new action": (
+                "a new action for the devices of the previous turn, no device named ('aus', "
+                "'heller', 'auf 50%')"
+            ),
+            "same action, other place": (
+                "the previous action again for another room or floor, no action named ('und "
+                "im Esszimmer', 'oben auch')"
+            ),
+            "add devices": (
+                "the previous action, extended to more devices ('die Stehlampe auch', 'und "
+                "die Spots')"
+            ),
+            "more about the same": (
+                "asks again or in more detail about what the previous turn answered ('was "
+                "genau steht drauf', 'und die Luftfeuchtigkeit?' is NOT this — that is a new "
+                "request)"
+            ),
+        }
+    )
     # Choice per named room when a request mixes a set and a device: {room} {kind} {phrasing}
     room_target_question: str = (
         "The request names several rooms; this question is about the room '{room}', which it "
@@ -611,6 +644,35 @@ DE = Phrasebook(
         "(mit eigenem Namen, wie 'Esszimmer Stehlampe')? Wähle none of these nur, wenn die "
         "Anfrage diesen Raum gar nicht meint. Die Anfrage will {phrasing}."
     ),
+    follow_up_question=(
+        "`previous` ist, was dieses Gespräch unmittelbar zuvor getan hat: der Satz und die "
+        "Geräte, auf die er wirkte. Ist die neue `request` eine vollständige eigene Anfrage oder "
+        "eine Anschlussäußerung, die etwas auslässt, das der vorige Satz gesagt hat? Eine "
+        "Anschlussäußerung ist allein nicht ausführbar: 'aus' oder 'auf 50%' nennen keine Geräte "
+        "(same devices, new action); 'und im Esszimmer' oder 'im Schlafzimmer auch' nennen keine "
+        "Aktion (same action, other place); 'die Stehlampe auch' fügt der Aktion ein Gerät hinzu; "
+        "'was genau steht drauf' fragt genauer nach demselben. Ein Satz mit eigener Aktion UND "
+        "eigenen Geräten oder eigenem Ort ist eine neue Anfrage, auch wenn er dem vorigen ähnelt."
+    ),
+    follow_up_descriptions={
+        "new request": "vollständig für sich: sagt, was zu tun ist und womit",
+        "same devices, new action": (
+            "eine neue Aktion für die Geräte des vorigen Satzes, kein Gerät genannt ('aus', "
+            "'heller', 'auf 50%')"
+        ),
+        "same action, other place": (
+            "die vorige Aktion noch einmal für einen anderen Raum oder ein anderes Stockwerk, "
+            "keine Aktion genannt ('und im Esszimmer', 'oben auch')"
+        ),
+        "add devices": (
+            "die vorige Aktion, um weitere Geräte erweitert ('die Stehlampe auch', 'und die Spots')"
+        ),
+        "more about the same": (
+            "fragt noch einmal oder genauer nach dem, was der vorige Satz beantwortet hat ('was "
+            "genau steht drauf'; 'und die Luftfeuchtigkeit?' ist das NICHT — das ist eine neue "
+            "Anfrage)"
+        ),
+    },
     domain_synonyms={
         "light": ("licht", "lichter", "lampe", "lampen", "leuchte", "leuchten", "beleuchtung"),
         "cover": (

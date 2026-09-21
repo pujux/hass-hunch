@@ -24,6 +24,8 @@ real Jev API before building the corresponding engine component.
 
 ## Home Assistant integration
 
+> **Follow-ups:** a sentence that leaves out what the previous one said ("und im Esszimmer", "aus", "was genau steht drauf") is completed from the last turn, for five minutes per conversation.
+
 `custom_components/hunch` puts the engine in front of any conversation agent already
 configured in your Home Assistant instance. It answers what it's confident about itself
 and hands everything else off unchanged.

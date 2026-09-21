@@ -116,3 +116,20 @@
   expect: {kind: resolved, verb: turn_on, targets: [light.kuche_spots, light.kuche_kucheninsel, light.esszimmer_stehlampe]}
 - prompt: Schalte das Licht in der Küche und die Esszimmer Stehlampe ein
   expect: {kinds: [resolved, confirm], verb: turn_on, targets: [light.kuche_spots, light.kuche_kucheninsel, light.esszimmer_stehlampe]}
+
+# ---- follow-ups: the second sentence leans on the first (2026-09-21) ----
+- turns: ["was steht auf der einkaufsliste?", "was genau steht drauf"]
+  expect: {kind: resolved, verb: query_state, targets: [todo.shopping_list]}
+- turns: ["Licht in der Küche an", "und im Esszimmer"]
+  expect: {kind: resolved, verb: turn_on, targets: [light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_loggia_lichtschalter, light.esszimmer_stehlampe]}
+- turns: ["Licht in der Küche an", "aus"]
+  expect: {kind: resolved, verb: turn_off, targets: [light.kuche_kucheninsel, light.kuche_spots]}
+- turns: ["Licht in der Küche an", "die Esszimmer Stehlampe auch"]
+  expect: {kind: resolved, verb: turn_on, targets: [light.esszimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots]}
+- turns: ["Wie warm ist es im Wohnzimmer?", "und im Schlafzimmer?"]
+  expect: {kind: resolved, verb: query_state, targets: [sensor.schlafzimmer_temperatursensor_temperatur]}
+- turns: ["Kücheninsel auf 35%", "und die Spots"]
+  expect: {kind: resolved, verb: set_brightness, targets: [light.kuche_kucheninsel, light.kuche_spots], params: {brightness_pct: [35, 35]}}
+- turns: ["Licht in der Küche an", "Rollos im Schlafzimmer runter"]
+  # a complete sentence after another: a new request, not a follow-up
+  expect: {kind: resolved, verb: close, targets: [cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo]}

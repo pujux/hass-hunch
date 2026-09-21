@@ -242,6 +242,14 @@ use the HA locale's decimal separator; units from the state's `unit_of_measureme
 
 ## 10. Pending turns
 
+**Last turn (added 2026-09-21).** `LastTurnStore` keeps, per conversation id, the `PreviousTurn`
+of the last completed turn (executed commands or answered query), for 5 minutes, read without
+removing, replaced by every completed turn. The entity passes it to `Engine.decide(...,
+previous)` on every turn that is not a reply to a pending question, so follow-ups ("und im
+Esszimmer", "aus", "was genau steht drauf") are resolved by the engine. Escalated turns do not
+replace it.
+
+
 `PendingStore`: `put(conversation_id, turn)`, `take(conversation_id) -> turn | None` (removes;
 returns `None` if missing or older than 120 s). One pending turn per conversation id; a new
 request replaces it. In-memory only; lost on restart by design.

@@ -55,3 +55,20 @@ def test_put_sweeps_expired_turns_of_other_conversations():
     assert list(store._turns) == ["c4"]
     # the fresh turn itself survives its own put
     assert store.take("c4").question == "c4"
+
+
+def test_last_turn_store_keeps_the_latest_and_expires():
+    from hunch import PreviousTurn
+
+    from custom_components.hunch.pending import LastTurnStore
+
+    t = [0.0]
+    store = LastTurnStore(ttl_seconds=300, clock=lambda: t[0])
+    a = PreviousTurn("a", ())
+    b = PreviousTurn("b", ())
+    store.put("c", a)
+    assert store.get("c") is a and store.get("c") is a  # reading does not remove
+    store.put("c", b)
+    assert store.get("c") is b
+    t[0] = 301.0
+    assert store.get("c") is None

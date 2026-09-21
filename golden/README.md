@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 43 rows) 42–43/43 — the
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 50 rows incl. 7 two-turn rows) 49–50/50 — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,22 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (evening) — follow-ups: the sentence leans on the previous turn
+
+"was genau steht drauf" after the shopping list went to the fallback (and got hallucinated).
+Engine 0.4.0: `decide(home, prompt, previous)`; with a previous turn the Round 1 state carries it
+and one Choice asks new request / same devices / same action / add devices / more about the same.
+Live on Julian's export, all correct at 0.95–1.0: "was genau steht drauf" → replay; "und im
+Esszimmer" → turn_on all four dining-room lights (the previous turn was a set); "aus" → the same
+two kitchen lights off; "die Esszimmer Stehlampe auch" → union; "und im Schlafzimmer?" → the
+bedroom *temperature* (previous domain carried, `previous` in Round 2 picks Temperatur over
+Luftfeuchtigkeit); "und die Spots" after "Kücheninsel auf 35%" → both at 35 (params carried,
+all_of not asked for add-devices); "Rollos im Schlafzimmer runter" and "Wie warm ist es im
+Wohnzimmer?" after a lights command → new request 1.0. Downstream fixes needed on the way: a
+carried verb's Noul is 0.05 (never asked) so the follow-up confidence stands in; a place-only
+follow-up after a set is the whole set there. Runner: `turns: [first, second]` rows. **Real home
+50/50 (49–50), fixture 24/24.** Integration 0.2.0 keeps the last completed turn for 5 minutes.
 
 ### 2026-09-21 (later) — disabled entities out of the model
 

@@ -653,3 +653,46 @@ async def test_a_condition_hand_off_tells_the_fallback_to_check_it_first(
     assert fake.await_count == 1
     extra = fake.await_args.kwargs["extra_system_prompt"]
     assert extra and "condition" in extra and "act only if it holds" in extra
+
+
+async def test_a_follow_up_leans_on_the_previous_turn(hass: HomeAssistant, setup_hunch):
+    # "Licht in der Küche aus" then "und die Galerie?" — the second sentence names no action;
+    # the engine borrows turn_off from the first turn (scripted follow-up verdict).
+    from hunch.round1 import SAME_ACTION
+
+    await _home(hass)
+    reg = er.async_get(hass)
+    e = reg.async_get_or_create(
+        "light", "test", "9", suggested_object_id="galerie_lampe", original_name="Lampe"
+    )
+    reg.async_update_entity(
+        e.entity_id, area_id=ar.async_get(hass).async_get_area_by_name("Galerie").id
+    )
+    hass.states.async_set(e.entity_id, "on")
+    async_expose_entity(hass, "conversation", e.entity_id, True)
+    calls_seen: list[dict] = []
+    client, calls = scripted(R1_TURN_OFF_KITCHEN)
+    inner = client._script
+
+    def script(state, qs):
+        calls_seen.append(dict(state))
+        out = inner(state, qs)
+        if "follow_up" in qs:  # second turn: no verb fires, the room is the Galerie
+            out["follow_up"] = ChoiceA(SAME_ACTION, 0.95, {})
+            out["verb:turn_off"] = NoulA(0.05)
+            out["verb_primary"] = ChoiceA("none", 0.9, {})
+            out["area:kuche"] = NoulA(0.05)
+            out["area:galerie"] = NoulA(0.98)
+            out["area_primary"] = ChoiceA("Galerie", 0.98, {})
+            out["domain:light"] = NoulA(0.05)
+        return out
+
+    client._script = script
+    await setup_hunch(client, calls)
+    svc = async_mock_service(hass, "homeassistant", "turn_off")
+    await _say(hass, "Licht in der Küche aus", conversation_id="f1")
+    assert len(svc) == 1 and "previous" not in calls_seen[0]
+    second = await _say(hass, "und die Galerie?", conversation_id="f1")
+    assert calls_seen[-1].get("previous", {}).get("request") == "Licht in der Küche aus"
+    assert len(svc) == 2 and svc[1].data["entity_id"] == [e.entity_id]
+    assert "ausgeschaltet" in second.response.speech["plain"]["speech"]

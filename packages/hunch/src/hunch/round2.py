@@ -10,7 +10,8 @@ from hunch.config import Thresholds
 from hunch.model import Entity, HomeModel
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
-from hunch.round1 import Shape
+from hunch.resolution import PreviousTurn
+from hunch.round1 import Shape, previous_turn_state
 from hunch.scope import device_label, verbatim_areas
 from hunch.vocabulary import ChoiceSpec, ScoreSpec
 
@@ -131,6 +132,13 @@ class Round2Plan:
     # verbs over several named places mixing a set and a specific device ("Licht in der Küche
     # und Esszimmer Stehlampe"): one Choice per room — all of them / one device / none
     room_targets: Mapping[str, Mapping[str, tuple[TargetOption, ...]]] = field(default_factory=dict)
+    # follow-ups: verbs whose candidates ARE the targets (the previous turn's devices), no picking
+    forced: tuple[str, ...] = ()
+    # follow-ups: verb -> params of the previous turn, used when this turn names none
+    carried_params: Mapping[str, Mapping[str, float | str]] = field(default_factory=dict)
+    # follow-ups: verbs this turn never said (borrowed from the previous turn); the follow-up
+    # judgment stands in for their verb probability
+    carried_verbs: tuple[str, ...] = ()
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
@@ -193,6 +201,10 @@ def plan_round2(
     scope_cap: int,
     prompt: str = "",
     widened: frozenset[str] = frozenset(),
+    forced: frozenset[str] = frozenset(),
+    carried_params: Mapping[str, Mapping[str, float | str]] | None = None,
+    carried_verbs: frozenset[str] = frozenset(),
+    prefer_pick: frozenset[str] = frozenset(),
 ) -> Round2Plan:
     has_exception = shape.flag("has_exception") >= thresholds.flag
     # An exception ("außer der Stehlampe") only makes sense over a set: it implies collective
@@ -220,11 +232,16 @@ def plan_round2(
         cands = per_verb.get(verb.name, ())
         if not cands:
             continue
-        if verb.param is not None:
+        if verb.param is not None and not (
+            carried_params and verb.name in carried_params and not literals
+        ):  # a follow-up naming no number keeps the previous value: nothing to ask
             params.append(verb.name)
             if literals and isinstance(verb.param, ScoreSpec):
                 numeric[verb.name] = literals
-        if collective and has_exception:
+        verb_collective = collective and verb.name not in prefer_pick
+        if verb.name in forced:
+            coll[verb.name] = cands  # a follow-up: these devices, no question about which
+        elif verb_collective and has_exception:
             exclude[verb.name] = cands
         elif places_named >= 2 and not verb.is_query and len({e.area_id for e in cands}) >= 2:
             # Two rooms said: each may mean a set ("Licht in der Küche") or one device
@@ -236,7 +253,7 @@ def plan_round2(
             room_targets[verb.name] = {
                 area: target_options(tuple(ents), area_names) for area, ents in by_area.items()
             }
-        elif collective:
+        elif verb_collective:
             coll[verb.name] = cands
             if len({e.domain for e in cands}) > 1:
                 # "kitchen lights" over lights AND a fridge switch: Jev judges each candidate.
@@ -252,8 +269,10 @@ def plan_round2(
                     # 'Dachterrasse Rollo' in Galerie and Schlafzimmer, no room said: nothing
                     # in the request can tell them apart, whatever the model claims.
                     ambiguous_by_area.append(verb.name)
-                if not verb.is_query:
-                    all_of.append(verb.name)  # Jev, not code, decides "one of them or all of them"
+                if not verb.is_query and verb.name not in prefer_pick:
+                    # Jev, not code, decides "one of them or all of them" — except for an
+                    # "add devices" follow-up, which names what joins: pick, never sweep.
+                    all_of.append(verb.name)
     cond: tuple[Entity, ...] = ()
     if (
         shape.condition_domain in DOMAIN_STATES  # a sensor's number is not a state Jev can pick
@@ -290,6 +309,9 @@ def plan_round2(
             )
         ),
         room_targets,
+        tuple(v.name for v in shape.fired_verbs if v.name in forced),
+        dict(carried_params or {}),
+        tuple(v.name for v in shape.fired_verbs if v.name in carried_verbs),
     )
 
 
@@ -319,11 +341,17 @@ def scope_description(home: HomeModel, shape: Shape) -> JSON:
 
 
 def build_round2_state(
-    prompt: str, plan: Round2Plan, home: HomeModel, shape: Shape | None = None
+    prompt: str,
+    plan: Round2Plan,
+    home: HomeModel,
+    shape: Shape | None = None,
+    previous: PreviousTurn | None = None,
 ) -> JSON:
     state: dict[str, JSON] = {"request": prompt}
     if shape is not None:
         state["scope"] = scope_description(home, shape)
+    if previous is not None:
+        state["previous"] = previous_turn_state(home, previous)
     state["candidates"] = [
         {
             "name": e.name,

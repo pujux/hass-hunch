@@ -21,6 +21,7 @@ from hunch import (
     HomeModel,
     NeedsClarification,
     NeedsConfirmation,
+    PreviousTurn,
     Resolved,
     Risk,
     Trace,
@@ -225,6 +226,13 @@ class HunchConversationEntity(conversation.ConversationEntity):
 
     # ---- executing -------------------------------------------------------------------
 
+    def _remember(self, turn: _Turn, actions: tuple[Action, ...]) -> None:
+        """A completed turn becomes the context the next sentence may lean on."""
+        if actions:
+            self._rt.last_turns.put(
+                turn.chat_log.conversation_id, PreviousTurn(turn.user_input.text, actions)
+            )
+
     async def _run(
         self,
         turn: _Turn,
@@ -257,9 +265,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 label = f"{reading.name} ({room})" if room else reading.name
                 lines.append(f"{label}: {describe_state(reading, lang)}")
         if not commands:  # an empty plan reads nothing, safely
+            self._remember(turn, actions)
             return self._result(turn, render("query_answer", lang, lines=lines), trace, outcome)
         results = await executor.execute(commands, turn.user_input.context)
         failed = [r.entity_id for r in results if not r.ok]
+        self._remember(turn, actions)
         if failed:
             by_id = {e.entity_id: e for a in commands for e in a.targets}
             text = render(
@@ -294,8 +304,9 @@ class HunchConversationEntity(conversation.ConversationEntity):
         if pending is not None:
             return await self._handle_reply(turn, home, pending)
 
-        # Step 2: decide.
-        result = await rt.engine.decide(home, user_input.text)
+        # Step 2: decide — with the last completed turn as context for follow-ups.
+        previous = rt.last_turns.get(chat_log.conversation_id)
+        result = await rt.engine.decide(home, user_input.text, previous)
         areas = self._area_names(home)
 
         if isinstance(result, Resolved):  # step 3

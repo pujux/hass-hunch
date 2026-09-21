@@ -93,6 +93,16 @@ class Action:
 
 
 @dataclass(frozen=True)
+class PreviousTurn:
+    """What the last turn in this conversation did — the executed (or answered) actions and
+    the sentence that asked for them. Lets a follow-up ("und im Esszimmer", "aus", "was genau
+    steht drauf") borrow the half it leaves out."""
+
+    prompt: str
+    actions: tuple[Action, ...]
+
+
+@dataclass(frozen=True)
 class Condition:
     subject: Entity
     expected_state: str

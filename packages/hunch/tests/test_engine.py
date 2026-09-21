@@ -2,7 +2,7 @@ from hunch.client import DecisionBackendError, FakeDecisionClient
 from hunch.config import EngineConfig
 from hunch.engine import Engine
 from hunch.questions import ChoiceA, ChoiceQ, NoulA, ScoreA, ScoreQ
-from hunch.resolution import Escalate, NeedsClarification, NeedsConfirmation, Resolved
+from hunch.resolution import Action, Escalate, NeedsClarification, NeedsConfirmation, Resolved
 from hunch.round2 import NO_MATCH
 
 
@@ -613,3 +613,141 @@ async def test_two_rooms_both_as_sets_go_through_the_room_choices(home, vocab, c
         "light.reading_lamp",
     }
     assert calls["n"] == 2
+
+
+# ---- follow-ups: the sentence leans on the previous turn ----------------------------------
+
+
+def _previous(home, verb, *ids, params=None):
+    from hunch import PreviousTurn
+
+    return PreviousTurn(
+        "lights on in the kitchen",
+        (Action(vocab_verb(verb), tuple(home.entity_by_id(i) for i in ids), params or {}),),
+    )
+
+
+def vocab_verb(name):
+    from hunch import DEFAULT_VOCABULARY
+
+    return DEFAULT_VOCABULARY.by_name(name)
+
+
+async def test_no_previous_turn_asks_no_follow_up_question(home, vocab, config):
+    client, calls_ = _scripted({"verb:turn_on": NoulA(0.9), "domain:light": NoulA(0.9)})
+    seen = []
+    inner = client._script
+
+    def spy(state, qs):
+        seen.append((dict(state), set(qs)))
+        return inner(state, qs)
+
+    client._script = spy
+    await Engine(client, vocab, config).decide(home, "lights on")
+    assert "follow_up" not in seen[0][1] and "previous" not in seen[0][0]
+
+
+async def test_same_devices_new_action_reuses_the_previous_targets(home, vocab, config):
+    from hunch.round1 import SAME_DEVICES
+
+    prev = _previous(home, "turn_on", "light.kitchen_ceiling", "light.kitchen_counter")
+    client, calls = _scripted(
+        {
+            "verb:turn_off": NoulA(0.9),
+            "verb_primary": ChoiceA("turn_off", 0.95, {}),
+            "area_primary": ChoiceA("none", 0.9, {}),
+            "follow_up": ChoiceA(SAME_DEVICES, 0.92, {}),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "aus", prev)
+    assert isinstance(r, Resolved)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+    }
+    assert r.actions[0].verb.name == "turn_off"
+    assert calls["n"] == 1  # no Round 2 needed: nothing to pick, no parameter
+    assert "follow_up:same devices, new action" in r.trace.notes
+
+
+async def test_same_action_other_place_carries_the_verb_and_params(home, vocab, config):
+    from hunch.round1 import SAME_ACTION
+
+    prev = _previous(
+        home, "set_brightness", "light.kitchen_ceiling", params={"brightness_pct": 50.0}
+    )
+    client, calls = _scripted(
+        {
+            "area:living": NoulA(0.98),
+            "flag:collective": NoulA(0.8),
+            "verb_primary": ChoiceA("none", 0.9, {}),
+            "area_primary": ChoiceA("Living room (lounge)", 0.95, {}),
+            "follow_up": ChoiceA(SAME_ACTION, 0.9, {}),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "und im Wohnzimmer", prev)
+    assert isinstance(r, Resolved), r
+    assert r.actions[0].verb.name == "set_brightness"
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.living_main",
+        "light.reading_lamp",
+    }
+    assert r.actions[0].params == {"brightness_pct": 50.0}
+    assert "follow_up:verb_carried" in r.trace.notes
+    assert "param:carried:set_brightness" in r.trace.notes
+
+
+async def test_add_devices_unions_with_the_previous_targets(home, vocab, config):
+    from hunch.round1 import ADD_DEVICES
+
+    prev = _previous(home, "turn_on", "light.kitchen_ceiling", "light.kitchen_counter")
+    client, _ = _scripted(
+        {
+            "area:living": NoulA(0.98),
+            "flag:names_specific": NoulA(0.9),
+            "verb_primary": ChoiceA("none", 0.9, {}),
+            "area_primary": ChoiceA("Living room (lounge)", 0.95, {}),
+            "follow_up": ChoiceA(ADD_DEVICES, 0.9, {}),
+        },
+        {"target:turn_on": ChoiceA("Reading lamp", 0.95, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "die Leselampe auch", prev)
+    assert isinstance(r, Resolved)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.reading_lamp",
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+    }
+    assert "follow_up:added_previous_targets" in r.trace.notes
+
+
+async def test_more_about_the_same_replays_the_previous_action(home, vocab, config):
+    from hunch.round1 import MORE_SAME
+
+    prev = _previous(home, "query_state", "lock.front_door")
+    client, calls = _scripted(
+        {
+            "verb_primary": ChoiceA("none", 0.9, {}),
+            "area_primary": ChoiceA("none", 0.9, {}),
+            "follow_up": ChoiceA(MORE_SAME, 0.9, {}),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "was genau", prev)
+    assert isinstance(r, Resolved)
+    assert r.actions == prev.actions and calls["n"] == 1
+    assert "follow_up:replay" in r.trace.notes
+
+
+async def test_a_hesitant_follow_up_verdict_is_a_new_request(home, vocab, config):
+    from hunch.round1 import SAME_DEVICES
+
+    prev = _previous(home, "turn_on", "light.kitchen_ceiling")
+    client, _ = _scripted(
+        {
+            "verb_primary": ChoiceA("none", 0.9, {}),
+            "area_primary": ChoiceA("none", 0.9, {}),
+            "follow_up": ChoiceA(SAME_DEVICES, 0.5, {}),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "hm", prev)
+    assert isinstance(r, Escalate) and r.reason == "no_intent"  # today's behaviour, unchanged

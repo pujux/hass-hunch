@@ -465,6 +465,21 @@ room is confirmed rather than silently dropped. Exceptions ("… außer") still 
 path first. Measured: 4 phrasings × 3 runs correct; per-candidate include Nouls were tried first
 and hovered at 0.3–0.6 on the set side — a comparison per room is the right primitive.
 
+**Follow-ups (2026-09-21).** `Engine.decide(home, prompt, previous: PreviousTurn | None)`.
+`PreviousTurn(prompt, actions)` is what the last completed turn did. When it is given, the Round 1
+state carries it structured (`previous`: request, actions, devices with rooms, values) and one extra
+Choice `follow_up` asks whether the sentence is complete on its own or leans on the previous turn:
+*new request* / *same devices, new action* ("aus", "auf 50%") / *same action, other place* ("und im
+Esszimmer") / *add devices* ("die Stehlampe auch") / *more about the same* ("was genau steht
+drauf"). A verdict under `target_choice_conf` is a new request (today's behaviour). Code fills the
+missing half: same devices → the previous targets are the candidates, no picking; same action →
+the previous verb, params and device kinds are carried, a previous *set* means the whole set in the
+new place, a previous single device means a pick with `previous` visible in Round 2; add devices →
+pick (never `all_of`), then union with the previous targets; more about the same → replay. A
+carried verb's confidence contribution is the follow-up confidence (it never fired). Without a
+previous turn nothing is sent or asked. Measured: 7 two-turn scenarios plus 2 negatives, all
+correct, verdicts 0.95–1.0; golden rows use `turns: [first, second]`.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

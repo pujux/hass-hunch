@@ -9,7 +9,7 @@ from hunch.config import Thresholds
 from hunch.model import Area, Entity, HomeModel
 from hunch.phrasing import EN, PHRASEBOOKS, Phrasebook
 from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
-from hunch.resolution import Trace
+from hunch.resolution import PreviousTurn, Trace
 from hunch.vocabulary import Verb, Vocabulary
 
 FLAGS = (
@@ -27,7 +27,33 @@ def _label(area: Area) -> str:
     return f"{area.name} ({', '.join(area.aliases)})" if area.aliases else area.name
 
 
-def build_round1_state(home: HomeModel, prompt: str) -> JSON:
+NEW_REQUEST = "new request"
+SAME_DEVICES = "same devices, new action"
+SAME_ACTION = "same action, other place"
+ADD_DEVICES = "add devices"
+MORE_SAME = "more about the same"
+FOLLOW_UP_OPTIONS = (NEW_REQUEST, SAME_DEVICES, SAME_ACTION, ADD_DEVICES, MORE_SAME)
+
+
+def previous_turn_state(home: HomeModel, previous: PreviousTurn) -> JSON:
+    """The last turn, structured: what was asked, what was done, to which devices."""
+    areas = {a.area_id: a.name for a in home.areas}
+    return {
+        "request": previous.prompt,
+        "actions": [
+            {
+                "action": a.verb.name,
+                "devices": [
+                    {"name": e.name, "area": areas.get(e.area_id or "")} for e in a.targets
+                ],
+                **({"values": dict(a.params)} if a.params else {}),
+            }
+            for a in previous.actions
+        ],
+    }
+
+
+def build_round1_state(home: HomeModel, prompt: str, previous: PreviousTurn | None = None) -> JSON:
     from hunch.scope import verbatim_matches  # local import: scope imports this module's Shape
 
     # Code fetches, Jev decides: the exposed devices whose name, alias or device name appears in
@@ -57,13 +83,16 @@ def build_round1_state(home: HomeModel, prompt: str) -> JSON:
     loose = [_label(a) for a in home.areas if a.area_id not in on_floor]
     if loose:
         hierarchy.append({"floor": None, "areas": loose})
-    return {
+    state: dict[str, JSON] = {
         "request": prompt,
         "home": hierarchy,
         "domains": list(home.domains),
         "scenes": [s.name for s in home.scenes],
         "mentioned_devices": mentioned,
     }
+    if previous is not None:
+        state["previous"] = previous_turn_state(home, previous)
+    return state
 
 
 def _place_options(home: HomeModel) -> list[str]:
@@ -79,9 +108,17 @@ def _place_lookup(home: HomeModel) -> dict[str, tuple[str, ...]]:
 
 
 def build_round1_questions(
-    home: HomeModel, vocab: Vocabulary, pb: Phrasebook = EN
+    home: HomeModel,
+    vocab: Vocabulary,
+    pb: Phrasebook = EN,
+    previous: PreviousTurn | None = None,
 ) -> dict[str, Question]:
     qs: dict[str, Question] = {}
+    if previous is not None:
+        # Only when a last turn exists: does this sentence lean on it, and how?
+        qs["follow_up"] = ChoiceQ(
+            pb.follow_up_question, FOLLOW_UP_OPTIONS, pb.follow_up_descriptions
+        )
 
     def _cued(v: Verb) -> str:
         words: list[str] = []
@@ -160,6 +197,8 @@ class Shape:
     whole_home: bool = False
     primary_verb: str | None = None  # the verb Choice's pick, when it named one
     several_verbs: bool = False  # the verb Choice said the request asks for several actions
+    follow_up: str | None = None  # SAME_DEVICES | SAME_ACTION | ADD_DEVICES | MORE_SAME
+    follow_up_conf: float = 0.0
 
     def flag(self, name: str) -> float:
         return self.flags.get(name, 0.0)
@@ -287,6 +326,16 @@ def interpret_round1(
         ):
             condition_domain = c.choice
 
+    follow_up: str | None = None
+    follow_up_conf = 0.0
+    if "follow_up" in answers.answers:
+        fu = answers.choice("follow_up")
+        if fu.choice != NEW_REQUEST and trace.decide(
+            "follow_up", fu.confidence, thresholds.target_choice_conf
+        ):
+            follow_up, follow_up_conf = fu.choice, fu.confidence
+            trace.note(f"follow_up:{fu.choice}")
+
     return Shape(
         fired_verbs=fired_verbs,
         scope_areas=tuple(scope_areas),
@@ -300,4 +349,6 @@ def interpret_round1(
         whole_home=whole_home,
         primary_verb=primary_verb,
         several_verbs=several_verbs,
+        follow_up=follow_up,
+        follow_up_conf=follow_up_conf,
     )

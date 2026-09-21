@@ -24,6 +24,7 @@ from hunch import (
     Escalate,
     NeedsClarification,
     NeedsConfirmation,
+    PreviousTurn,
     Resolved,
     TypeSafeDecisionClient,
 )
@@ -106,6 +107,9 @@ async def main() -> int:
         return 2
 
     rows = yaml.safe_load(pathlib.Path(args.corpus or ROOT / "golden/corpus.yaml").read_text())
+    for row in rows:  # two-turn rows: `turns: [first, second]`, expectation on the second
+        if "turns" in row:
+            row["prompt"] = row["turns"][-1]
     if args.only:
         rows = [r for r in rows if args.only in r["prompt"]]
     if args.home:
@@ -124,8 +128,13 @@ async def main() -> int:
     ok, latencies, tokens = 0, [], 0
     try:
         for row in rows:
+            previous = None
+            for earlier in row.get("turns", [])[:-1]:
+                first = await engine.decide(home, earlier)
+                if isinstance(first, Resolved | NeedsConfirmation):
+                    previous = PreviousTurn(earlier, first.actions)
             t0 = time.perf_counter()
-            r = await engine.decide(home, row["prompt"])
+            r = await engine.decide(home, row["prompt"], previous)
             ms = (time.perf_counter() - t0) * 1000
             latencies.append(ms)
             toks = sum(t or 0 for t in r.trace.input_tokens)
@@ -134,7 +143,8 @@ async def main() -> int:
             ok += not problems
             mark = "PASS" if not problems else "FAIL"
             rounds = len(r.trace.models)
-            print(f"{mark}  {ms:6.0f} ms  rounds={rounds}  {row['prompt']!r}")
+            shown = " → ".join(row["turns"]) if "turns" in row else row["prompt"]
+            print(f"{mark}  {ms:6.0f} ms  rounds={rounds}  {shown!r}")
             for pr in problems:
                 print(f"        - {pr}")
             if problems and args.verbose:

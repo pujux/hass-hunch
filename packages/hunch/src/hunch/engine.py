@@ -3,15 +3,31 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping
 
 from hunch.client import DecisionBackendError, DecisionClient
 from hunch.config import EngineConfig
 from hunch.model import Entity, HomeModel
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import ChoiceQ, Question
-from hunch.resolution import Escalate, NeedsClarification, Resolution, Trace
+from hunch.resolution import (
+    Escalate,
+    NeedsClarification,
+    NeedsConfirmation,
+    PreviousTurn,
+    Resolution,
+    Resolved,
+    Trace,
+)
 from hunch.resolver import resolve
-from hunch.round1 import build_round1_questions, build_round1_state, interpret_round1
+from hunch.round1 import (
+    ADD_DEVICES,
+    MORE_SAME,
+    SAME_DEVICES,
+    build_round1_questions,
+    build_round1_state,
+    interpret_round1,
+)
 from hunch.round2 import (
     NO_MATCH,
     build_round2_questions,
@@ -43,7 +59,9 @@ class Engine:
         self._config = config
         self._pb = phrasebook
 
-    async def decide(self, home: HomeModel, prompt: str) -> Resolution:
+    async def decide(
+        self, home: HomeModel, prompt: str, previous: PreviousTurn | None = None
+    ) -> Resolution:
         """Decide what `prompt` asks of `home`. Never executes, never raises on backend trouble.
 
         Returns one of four `Resolution` variants:
@@ -80,7 +98,7 @@ class Engine:
         if not prompt or len(prompt) > self._config.max_prompt_chars:
             return Escalate("prompt_invalid", (), trace)
         try:
-            return await self._decide(home, prompt, trace)
+            return await self._decide(home, prompt, trace, previous)
         except (DecisionBackendError, KeyError, TypeError) as exc:
             # KeyError/TypeError mean the backend answered with a missing id or the wrong
             # primitive; like an explicit backend error, that degrades, it never raises.
@@ -88,12 +106,15 @@ class Engine:
             trace.note(f"backend_error:{reason}")
             return Escalate("decision_backend_unavailable", (), trace)
 
-    async def _decide(self, home: HomeModel, prompt: str, trace: Trace) -> Resolution:
+    async def _decide(
+        self, home: HomeModel, prompt: str, trace: Trace, previous: PreviousTurn | None
+    ) -> Resolution:
         th = self._config.thresholds
         rounds = 0
 
         answers = await self._client.ask(
-            build_round1_state(home, prompt), build_round1_questions(home, self._vocab, self._pb)
+            build_round1_state(home, prompt, previous),
+            build_round1_questions(home, self._vocab, self._pb, previous),
         )
         rounds += 1
         shape = interpret_round1(home, self._vocab, answers, th, trace)
@@ -108,6 +129,45 @@ class Engine:
             # shape; code only refuses to pretend.
             trace.note("condition:numeric")
             return Escalate("condition", (), trace)
+        # Follow-ups: the sentence leans on the previous turn; code fills the half it leaves out.
+        forced: dict[str, tuple[Entity, ...]] = {}
+        forced_all: set[str] = set()  # verbs whose scoped candidates are all meant, no picking
+        carried: dict[str, Mapping[str, float | str]] = {}
+        carried_verbs: set[str] = set()
+        prefer_pick: set[str] = set()
+        add_previous = False
+        if previous is not None and shape.follow_up:
+            prev_targets = tuple(dict.fromkeys(e for a in previous.actions for e in a.targets))
+            if shape.follow_up == MORE_SAME:
+                trace.note("follow_up:replay")
+                return Resolved(previous.actions, None, shape.follow_up_conf, trace)
+            if shape.follow_up == SAME_DEVICES:
+                for verb in shape.fired_verbs:
+                    forced[verb.name] = tuple(e for e in prev_targets if verb.name in e.verbs)
+            else:  # SAME_ACTION / ADD_DEVICES: the previous verb(s) unless this turn names one
+                if not shape.fired_verbs:
+                    prev_verbs = tuple(dict.fromkeys(a.verb for a in previous.actions))
+                    shape = dataclasses.replace(shape, fired_verbs=prev_verbs)
+                    carried_verbs.update(v.name for v in prev_verbs)
+                    trace.note("follow_up:verb_carried")
+                for a in previous.actions:
+                    if a.params:
+                        carried[a.verb.name] = a.params
+                add_previous = shape.follow_up == ADD_DEVICES
+                if add_previous:
+                    # "und die Spots": the sentence names what joins; pick it, Jev may still say
+                    # "all of these" through the usual all_of question.
+                    prefer_pick.update(v.name for v in shape.fired_verbs)
+                if not add_previous:
+                    # "und im Esszimmer": the same kind of device as before, in the new place;
+                    # a set before means the whole set there now, one device before means a pick
+                    # (Round 2 sees `previous` and picks the matching one, e.g. the thermometer).
+                    if not shape.scope_domains:
+                        prev_domains = tuple(dict.fromkeys(e.domain for e in prev_targets))
+                        shape = dataclasses.replace(shape, scope_domains=prev_domains)
+                        trace.note("follow_up:domains_carried")
+                    if len(prev_targets) > 1:
+                        forced_all.update(v.name for v in shape.fired_verbs)
         if not shape.fired_verbs:
             return Escalate("no_intent", (), trace)
 
@@ -134,6 +194,12 @@ class Engine:
         pending_clarify: Clarify | None = None
         pending_clarify_verb: Verb | None = None
         for verb in shape.fired_verbs:
+            if verb.name in forced:
+                if forced[verb.name]:
+                    per_verb[verb.name] = forced[verb.name]
+                else:
+                    trace.note(f"dropped:{verb.name}:no_previous_targets")
+                continue
             if shape.scene is not None and verb.name == "activate":
                 per_verb[verb.name] = (shape.scene,)
                 continue
@@ -185,7 +251,17 @@ class Engine:
                     trace.note(f"dropped:{v.name}:scope")
 
         plan = plan_round2(
-            home, shape, per_verb, th, self._config.scope_cap, prompt, frozenset(widened)
+            home,
+            shape,
+            per_verb,
+            th,
+            self._config.scope_cap,
+            prompt,
+            frozenset(widened),
+            frozenset(forced) | frozenset(forced_all),
+            carried,
+            frozenset(carried_verbs),
+            frozenset(prefer_pick),
         )
         collective_queries = [
             v.name
@@ -212,10 +288,30 @@ class Engine:
                 trace.note("max_rounds_reached_before_round2")
                 return Escalate("round_budget", (), trace)
             round2 = await self._client.ask(
-                build_round2_state(prompt, plan, home, shape), questions
+                build_round2_state(prompt, plan, home, shape, previous), questions
             )
             rounds += 1
-        return resolve(shape, plan, round2, self._config, trace, self._pb)
+        result = resolve(shape, plan, round2, self._config, trace, self._pb)
+        if (
+            add_previous
+            and previous is not None
+            and isinstance(result, Resolved | NeedsConfirmation)
+        ):
+            # "die Stehlampe auch": the previous turn's devices join the same action
+            merged = []
+            for a in result.actions:
+                extra = tuple(
+                    e
+                    for p in previous.actions
+                    if p.verb.name == a.verb.name
+                    for e in p.targets
+                    if e not in a.targets
+                )
+                merged.append(dataclasses.replace(a, targets=(*a.targets, *extra)) if extra else a)
+            if merged != list(result.actions):
+                trace.note("follow_up:added_previous_targets")
+                result = dataclasses.replace(result, actions=tuple(merged))
+        return result
 
     async def _device_round(
         self, home: HomeModel, prompt: str, entities: tuple[Entity, ...], trace: Trace

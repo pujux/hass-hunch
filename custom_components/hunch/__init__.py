@@ -30,7 +30,7 @@ from .const import (
     TRACE_BUFFER,
 )
 from .home_model import HomeModelBuilder
-from .pending import PendingStore
+from .pending import LastTurnStore, PendingStore
 
 PLATFORMS = [Platform.CONVERSATION]
 
@@ -41,6 +41,7 @@ class HunchRuntime:
     engine: Engine
     builder: HomeModelBuilder
     pending: PendingStore
+    last_turns: LastTurnStore
     traces: deque[dict[str, Any]]
     fallback_agent_id: str | None
     response_language: str
@@ -96,6 +97,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HunchConfigEntry) -> boo
         engine=Engine(client, DEFAULT_VOCABULARY, engine_config),
         builder=builder,
         pending=PendingStore(),
+        last_turns=LastTurnStore(),
         traces=deque(maxlen=TRACE_BUFFER),
         fallback_agent_id=entry.options.get(OPT_FALLBACK_AGENT) or None,
         response_language=entry.options.get(OPT_RESPONSE_LANGUAGE, DEFAULT_RESPONSE_LANGUAGE),
