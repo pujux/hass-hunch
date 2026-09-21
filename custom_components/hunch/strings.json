@@ -18,7 +18,7 @@
           "response_language": "Response language",
           "timeout_ms": "Jev timeout (ms)",
           "max_silent_targets": "Max silent targets",
-          "device_round": "Ask individual devices when unsure",
+          "device_round": "Extra Jev round over device names when too many candidates",
           "max_rounds": "Max clarification rounds",
           "threshold_verb_fire": "Verb-fire confidence (default 0.7)",
           "threshold_scope_fire": "Scope-fire confidence (default 0.7)",
