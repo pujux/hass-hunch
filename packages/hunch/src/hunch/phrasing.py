@@ -163,6 +163,13 @@ EN = Phrasebook(
             "more than two people are home' — rather than checking a state such as open/closed, "
             "on/off, home/away, dark/bright, running/stopped? No if there is no condition at all."
         ),
+        "is_fragment": (
+            "Is the request a FRAGMENT that cannot be carried out on its own because it names "
+            "neither a device, nor a kind of device, nor a room — it only makes sense after an "
+            "earlier sentence? Fragments: 'doch auf 15%', 'aus', 'bitte auf 1%', 'und im "
+            "Esszimmer', 'die auch', 'heller'. Not fragments: 'Licht aus', 'Rollos runter', "
+            "'Kücheninsel auf 1%', 'Wie warm ist es im Wohnzimmer?', 'Mach alles aus'."
+        ),
         "has_timing": (
             "Does the request ask to delay, schedule, sequence or time a device action, e.g. 'in "
             "ten minutes', 'after', 'later', 'then', 'for 15 minutes'? Not a condition ('if', "
@@ -407,6 +414,13 @@ DE = Phrasebook(
             "Personen zu Hause sind' — statt einen Zustand zu prüfen wie offen/geschlossen, "
             "an/aus, zu Hause/abwesend, dunkel/hell, läuft/steht? Nein, wenn es gar keine "
             "Bedingung gibt."
+        ),
+        "is_fragment": (
+            "Ist die Anfrage ein FRAGMENT, das allein nicht ausführbar ist, weil es weder ein "
+            "Gerät noch eine Geräteart noch einen Raum nennt — es ergibt nur nach einem früheren "
+            "Satz Sinn? Fragmente: 'doch auf 15%', 'aus', 'bitte auf 1%', 'und im Esszimmer', "
+            "'die auch', 'heller'. Keine Fragmente: 'Licht aus', 'Rollos runter', 'Kücheninsel "
+            "auf 1%', 'Wie warm ist es im Wohnzimmer?', 'Mach alles aus'."
         ),
         "has_timing": (
             "Verlangt die Anfrage, eine Geräteaktion zu verzögern, zu planen, zeitlich zu steuern "

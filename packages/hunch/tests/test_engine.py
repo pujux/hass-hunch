@@ -917,3 +917,49 @@ async def test_same_devices_follow_up_drops_verbs_the_devices_cannot_do(home, vo
     assert {e.entity_id for e in r.actions[0].targets} == {"light.bedroom_left"}
     assert "dropped:set_position:no_previous_targets" in r.trace.notes
     assert r.confidence >= 0.9  # the follow-up judgment carries the verb, not its 0.66 Noul
+
+
+async def test_a_fragment_without_a_previous_turn_is_never_executed(home, vocab, config):
+    # "doch auf 15%": set_position fires on "auf 15%", Jev would even pick a blind — no.
+    client, calls = _scripted(
+        {
+            "verb:set_position": NoulA(0.8),
+            "domain:cover": NoulA(0.7),
+            "flag:is_fragment": NoulA(0.93),
+            "verb_primary": ChoiceA("set_position", 0.8, {}),
+            "area_primary": ChoiceA("none", 0.9, {}),
+        },
+        {
+            "target:set_position": ChoiceA("Living room blinds", 0.9, {}),
+            "all_of:set_position": NoulA(0.1),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "doch auf 15%")
+    assert isinstance(r, Escalate) and r.reason == "incomplete"
+    assert calls["n"] == 1
+
+
+async def test_a_fragment_with_a_previous_turn_is_a_follow_up(home, vocab, config):
+    from hunch.round1 import SAME_DEVICES
+
+    prev = _previous(
+        home, "set_brightness", "light.kitchen_ceiling", params={"brightness_pct": 1.0}
+    )
+    client, _ = _scripted(
+        {
+            "verb:set_brightness": NoulA(0.7),
+            "flag:is_fragment": NoulA(0.93),
+            "verb_primary": ChoiceA("set_brightness", 0.8, {}),
+            "area_primary": ChoiceA("none", 0.9, {}),
+            "follow_up": ChoiceA(SAME_DEVICES, 0.97, {}),
+        },
+        {
+            "param_value:set_brightness": ChoiceA("15%", 0.97, {}),
+            "param_relative:set_brightness": NoulA(0.05),
+            "param:set_brightness": ScoreA(2.0, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "doch auf 15%", prev)
+    assert isinstance(r, Resolved)
+    assert r.actions[0].params == {"brightness_pct": 15.0}
+    assert {e.entity_id for e in r.actions[0].targets} == {"light.kitchen_ceiling"}

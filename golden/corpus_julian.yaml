@@ -146,3 +146,8 @@
 - turns: ["Kücheninsel auf 5%", "bitte auf 1%", "doch auf 50%"]
   # live 2026-09-21: 'auf 50%' co-fires set_position, which a light cannot do; the previous verb carries
   expect: {kinds: [resolved, confirm], verb: set_brightness, targets: [light.kuche_kucheninsel], params: {brightness_pct: [50, 50]}}
+# ---- fragments with nothing before them must never execute (live 2026-09-21: 'doch auf 15%' moved a blind) ----
+- prompt: doch auf 15%
+  expect: {kind: escalate, reason: incomplete}
+- prompt: bitte auf 1%
+  expect: {kind: escalate, reason: incomplete}

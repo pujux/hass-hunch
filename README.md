@@ -26,6 +26,8 @@ real Jev API before building the corresponding engine component.
 
 > **Conditions:** "wenn es unter 20 Grad hat" is checked against the live sensor value before acting, and the answer names the value when nothing happens. Conditions Hunch cannot express ("wenn es dunkel wird", "sobald …") are handed to the fallback agent.
 >
+> **Assist pipeline setting:** leave "Prefer handling commands locally" **off**. With it on, HA's built-in agent handles simple sentences before Hunch sees them, so Hunch has no memory of them and follow-ups cannot work; fragments then reach Hunch without context and are handed off.
+>
 > **Follow-ups:** a sentence that leaves out what the previous one said ("und im Esszimmer", "aus", "was genau steht drauf") is completed from the last turn, for five minutes per conversation.
 
 `custom_components/hunch` puts the engine in front of any conversation agent already

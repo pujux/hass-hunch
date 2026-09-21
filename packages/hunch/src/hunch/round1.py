@@ -18,6 +18,7 @@ FLAGS = (
     "has_exception",
     "has_condition",
     "condition_numeric",
+    "is_fragment",
     "has_timing",
     "is_destructive",
 )

@@ -7,7 +7,7 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 - **Model:** `jev-1.13.0`
 - **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 55 rows incl. 8 multi-turn rows) 54–55/55 — the
+- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 57 rows incl. 8 multi-turn rows) 56–57/57 — the
   one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
   5/5 in isolation)
 - **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
@@ -59,6 +59,17 @@ Summary line:
   `PRICE_PER_M_TOKENS = 0.042` ($ per million input tokens).
 
 ## Tuning log
+
+### 2026-09-21 (late night) — a fragment with nothing before it must never execute
+
+Julian had "prefer local" back on: the built-in agent handled "Kücheninsel auf 1%", Hunch never
+saw it, and "doch auf 15%" reached Hunch with no previous turn — `set_position` fired on "auf
+15%", the target Choice picked a blind, and Hunch moved the Loggia Rollo to 15 %. Engine 0.5.2:
+Round 1 always asks `is_fragment`; a fragment with no previous turn escalates as `incomplete`
+(the fallback has the history). Measured: 7 fragments 0.85–0.96, 10 complete short sentences
+0.07–0.15 ("Hallo!" 0.51, escalates as no_intent anyway). Two rows added. **Real home 57/57,
+fixture 24/24.** Also: with "prefer local" on, follow-ups cannot work at all — Hunch does not see
+the turns the built-in agent handled. The toggle must stay off.
 
 ### 2026-09-21 (night) — "doch auf 50%": the previous devices constrain the verb
 

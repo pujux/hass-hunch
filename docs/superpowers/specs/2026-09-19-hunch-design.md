@@ -498,6 +498,15 @@ executor compares with the live value (a weather entity's `temperature` attribut
 → `Escalate("condition")` as before. Measured 15/15 on five sentences; the weather entity is
 chosen for "draußen". State conditions ("wenn die Tür offen ist") are unchanged.
 
+**Fragments (2026-09-21, night).** "doch auf 15%" arrived at Hunch with no previous turn (HA's
+"prefer local" toggle had let the built-in agent handle the sentence before it) and Hunch moved a
+blind: `set_position` fires on "auf 15%" and a target Choice will pick something. New Round 1 flag
+`is_fragment` ("names neither a device, nor a kind of device, nor a room — only makes sense after
+an earlier sentence"), asked always; when it fires (≥ `flag`) and there is no `previous`, the
+request escalates as `incomplete` — the fallback agent has the chat history. With a previous turn
+the `follow_up` Choice governs as before. Measured: fragments 0.85–0.96, complete short sentences
+("Licht aus", "Rollos runter", "Kücheninsel auf 1%") 0.07–0.15.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

@@ -82,6 +82,7 @@ class Engine:
           | `prompt_invalid` | empty prompt, or longer than `max_prompt_chars` |
           | `timing` | the request schedules, delays or sequences something |
           | `no_intent` | no verb fired |
+          | `incomplete` | a fragment ("doch auf 15%") with no previous turn to lean on |
           | `destructive` | a `DESTRUCTIVE` verb fired, or `is_destructive` did |
           | `low_confidence` | actions were built but confidence is below `confirm_band` |
           | `scope` | every fired verb resolved to no candidates |
@@ -126,6 +127,13 @@ class Engine:
             # "wenn es wärmer als 23 Grad ist": Round 2 asks for the sensor, the number and the
             # direction; the executor compares with the live value. Unresolvable -> hand-off.
             trace.note("condition:numeric")
+        if previous is None and trace.decide(
+            "flag:is_fragment", shape.flag("is_fragment"), th.flag
+        ):
+            # "doch auf 15%" with nothing before it: a fragment names no device, kind or room,
+            # and a verb like set_position can still fire on "auf 15%". Guessing a target here
+            # once moved a blind nobody asked about. The fallback agent has the chat history.
+            return Escalate("incomplete", (), trace)
         # Follow-ups: the sentence leans on the previous turn; code fills the half it leaves out.
         forced: dict[str, tuple[Entity, ...]] = {}
         forced_all: set[str] = set()  # verbs whose scoped candidates are all meant, no picking
