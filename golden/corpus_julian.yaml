@@ -113,7 +113,8 @@
 
 # ---- mixed places: a set in one room, a specific device in another (2026-09-21, live test) ----
 - prompt: schalte licht in der küche und esszimmer stehlampe ein
-  expect: {kind: resolved, verb: turn_on, targets: [light.kuche_spots, light.kuche_kucheninsel, light.esszimmer_stehlampe]}
+  # the Küche room verdict sits at 0.8–0.9 'all of them'; a hesitant run asks to confirm, never drops the room
+  expect: {kinds: [resolved, confirm], verb: turn_on, targets: [light.kuche_spots, light.kuche_kucheninsel, light.esszimmer_stehlampe]}
 - prompt: Schalte das Licht in der Küche und die Esszimmer Stehlampe ein
   expect: {kinds: [resolved, confirm], verb: turn_on, targets: [light.kuche_spots, light.kuche_kucheninsel, light.esszimmer_stehlampe]}
 
@@ -121,7 +122,7 @@
 - turns: ["was steht auf der einkaufsliste?", "was genau steht drauf"]
   expect: {kind: resolved, verb: query_state, targets: [todo.shopping_list]}
 - turns: ["Licht in der Küche an", "und im Esszimmer"]
-  expect: {kind: resolved, verb: turn_on, targets: [light.esszimmer_balkon_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_loggia_lichtschalter, light.esszimmer_stehlampe]}
+  expect: {kind: resolved, verb: turn_on, targets: [light.esszimmer_deckenlampe, light.esszimmer_stehlampe]}
 - turns: ["Licht in der Küche an", "aus"]
   expect: {kind: resolved, verb: turn_off, targets: [light.kuche_kucheninsel, light.kuche_spots]}
 - turns: ["Licht in der Küche an", "die Esszimmer Stehlampe auch"]

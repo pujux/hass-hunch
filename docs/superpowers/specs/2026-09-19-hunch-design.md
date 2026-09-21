@@ -480,6 +480,12 @@ carried verb's confidence contribution is the follow-up confidence (it never fir
 previous turn nothing is sent or asked. Measured: 7 two-turn scenarios plus 2 negatives, all
 correct, verdicts 0.95–1.0; golden rows use `turns: [first, second]`.
 
+**A device named after a room (2026-09-21).** "Dachterrasse Rollo zu" when a room "Dachterrasse"
+exists but the blinds so named sit in other rooms: the room match strands the request. An area
+whose name or alias lies inside a device label present in the prompt, and which holds no candidate
+for the fired verbs (of the fired device types), is dropped from both the verbatim and Jev's scope
+(`area_shadowed:`). A room that holds candidates is a room. Lookup, not judgment.
+
 ### Step 5 — Resolve
 
 Build `Action`s. Confidence = min over contributing decisions. Then, in order:

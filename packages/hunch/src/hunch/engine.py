@@ -40,6 +40,7 @@ from hunch.scope import (
     Clarify,
     DeviceRound,
     ScopeEscalate,
+    areas_shadowed_by_device_names,
     scope_candidates,
     verbatim_areas,
 )
@@ -155,8 +156,8 @@ class Engine:
                         carried[a.verb.name] = a.params
                 add_previous = shape.follow_up == ADD_DEVICES
                 if add_previous:
-                    # "und die Spots": the sentence names what joins; pick it, Jev may still say
-                    # "all of these" through the usual all_of question.
+                    # "und die Spots": the sentence names what joins — pick it; the planner asks
+                    # no "all of these?" for it and the pick joins the previous targets.
                     prefer_pick.update(v.name for v in shape.fired_verbs)
                 if not add_previous:
                     # "und im Esszimmer": the same kind of device as before, in the new place;
@@ -175,6 +176,20 @@ class Engine:
         # whole home, or none). Code adds one lookup: a room or floor whose name or alias is in
         # the prompt is the scope, whatever else half-fired.
         named_areas = verbatim_areas(home, prompt)
+        shadowed = areas_shadowed_by_device_names(
+            home,
+            prompt,
+            tuple(dict.fromkeys((*named_areas, *shape.scope_areas))),
+            shape.fired_verbs,
+            shape.scope_domains,
+        )
+        if shadowed:
+            # "Dachterrasse Rollo zu": the word names the blind, not the (candidate-less) terrace.
+            trace.note("area_shadowed:" + ",".join(shadowed))
+            named_areas = tuple(a for a in named_areas if a not in shadowed)
+            shape = dataclasses.replace(
+                shape, scope_areas=tuple(a for a in shape.scope_areas if a not in shadowed)
+            )
         if shape.whole_home and not named_areas:
             kept: tuple[str, ...] = ()
             trace.note("whole_home")

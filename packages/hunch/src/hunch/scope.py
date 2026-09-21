@@ -46,6 +46,47 @@ def _words(text: str) -> str:
     return " " + re.sub(r"[^\w]+", " ", text.casefold()) + " "
 
 
+def areas_shadowed_by_device_names(
+    home: HomeModel,
+    prompt: str,
+    areas: tuple[str, ...],
+    verbs: tuple[Verb, ...],
+    domains: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    """Areas the prompt seems to name only because a device is named after them: 'Dachterrasse
+    Rollo zu' names the blind, not the terrace. An area is shadowed when its name or alias sits
+    inside a device label that itself occurs in the prompt AND the area holds no candidate for
+    any fired verb (of the fired device types, when Jev named some — a query fits every entity,
+    but 'Ist die Dachterrassentür offen?' is about door contacts, not the terrace light) — a
+    room that does hold candidates was meant as a room."""
+    if not prompt or not areas:
+        return ()
+    text = _words(prompt)
+    labels_in_prompt: list[str] = []
+    for e in home.entities:
+        for label in (e.name, e.device_name, *e.aliases):
+            if label and _words(label) in text:
+                labels_in_prompt.append(label.casefold())
+    if not labels_in_prompt:
+        return ()
+    out: list[str] = []
+    for area_id in areas:
+        area = home.area_by_id(area_id)
+        if area is None:
+            continue
+        area_labels = [lbl.casefold() for lbl in (area.name, *area.aliases) if lbl]
+        inside_a_device = any(al in dl for al in area_labels for dl in labels_in_prompt)
+        holds_candidate = any(
+            e.area_id == area_id
+            and any(v.name in e.verbs for v in verbs)
+            and (not domains or e.domain in domains)
+            for e in home.entities
+        )
+        if inside_a_device and not holds_candidate:
+            out.append(area_id)
+    return tuple(out)
+
+
 def verbatim_matches(entities: tuple[Entity, ...], prompt: str) -> tuple[Entity, ...]:
     """Code calculates: entities whose name, alias or device name appears whole-word in the
     prompt. Deterministic and language-agnostic; Jev is never asked what code can look up."""

@@ -135,3 +135,54 @@ def test_scope_cap_applies_to_strict_sets_too(home, vocab):
     r = scope_candidates(home, vocab.by_name("turn_on"), shape, cfg, Trace())
     assert isinstance(r, Clarify) and r.question_key == "which_area"
     assert len(r.candidates) > 2
+
+
+def test_an_area_named_inside_a_device_name_is_shadowed_only_when_it_holds_no_candidate():
+    from hunch import DEFAULT_VOCABULARY as V
+    from hunch.model import Area, Entity, Floor, HomeModel
+    from hunch.scope import areas_shadowed_by_device_names
+
+    def e(eid, name, area, device=None, verbs=frozenset({"close", "open"})):
+        return Entity(eid, eid.split(".")[0], name, (), area, None, device or name, verbs, None)
+
+    home = HomeModel(
+        floors=(Floor("up", "Upstairs", ("bedroom", "gallery", "terrace")),),
+        areas=(
+            Area("bedroom", "Bedroom", (), "up"),
+            Area("gallery", "Gallery", (), "up"),
+            Area("terrace", "Terrace", (), "up"),
+        ),
+        entities=(
+            e("cover.b", "Terrace blind", "bedroom"),
+            e("cover.g", "Terrace blind", "gallery"),
+            e(
+                "light.t",
+                "Terrace light",
+                "terrace",
+                verbs=frozenset({"turn_on", "turn_off", "query_state"}),
+            ),
+        ),
+        scenes=(),
+    )
+    close = (V.by_name("close"),)
+    # the terrace holds no blind: the word belongs to the device name
+    assert areas_shadowed_by_device_names(home, "close the terrace blind", ("terrace",), close) == (
+        "terrace",
+    )
+    # for a light the terrace does hold a candidate: it is a room
+    on = (V.by_name("turn_on"),)
+    assert areas_shadowed_by_device_names(home, "terrace light on", ("terrace",), on) == ()
+    # no device label in the prompt: nothing is shadowed
+    assert (
+        areas_shadowed_by_device_names(home, "close the blinds on the terrace", ("terrace",), close)
+        == ()
+    )
+
+    # a query fits every entity; with the door-contact type fired, the terrace light is no candidate
+    query = (V.by_name("query_state"),)
+    assert areas_shadowed_by_device_names(
+        home, "is the terrace blind open", ("terrace",), query, ("cover",)
+    ) == ("terrace",)
+    assert (
+        areas_shadowed_by_device_names(home, "is the terrace blind open", ("terrace",), query) == ()
+    )

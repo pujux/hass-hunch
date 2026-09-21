@@ -751,3 +751,47 @@ async def test_a_hesitant_follow_up_verdict_is_a_new_request(home, vocab, config
     )
     r = await Engine(client, vocab, config).decide(home, "hm", prev)
     assert isinstance(r, Escalate) and r.reason == "no_intent"  # today's behaviour, unchanged
+
+
+async def test_a_device_named_after_a_room_does_not_scope_to_that_room(vocab, config):
+    # 'close the terrace blind': two blinds are called 'Terrace blind' (bedroom, gallery) and a
+    # room 'Terrace' exists without blinds. Jev's room pick would strand the request; the word
+    # belongs to the device, so the two twins are offered instead.
+    from hunch.model import Area, Entity, Floor, HomeModel
+
+    def e(eid, name, area, verbs):
+        return Entity(eid, eid.split(".")[0], name, (), area, None, name, verbs, None)
+
+    home = HomeModel(
+        floors=(Floor("up", "Upstairs", ("bedroom", "gallery", "terrace")),),
+        areas=(
+            Area("bedroom", "Bedroom", (), "up"),
+            Area("gallery", "Gallery", (), "up"),
+            Area("terrace", "Terrace", (), "up"),
+        ),
+        entities=(
+            e("cover.b", "Terrace blind", "bedroom", frozenset({"close", "open"})),
+            e("cover.g", "Terrace blind", "gallery", frozenset({"close", "open"})),
+            e("light.t", "Terrace light", "terrace", frozenset({"turn_on", "turn_off"})),
+        ),
+        scenes=(),
+    )
+    client, _ = _scripted(
+        {
+            "verb:close": NoulA(0.97),
+            "domain:cover": NoulA(0.97),
+            "area:terrace": NoulA(0.9),
+            "flag:names_specific": NoulA(0.8),
+            "verb_primary": ChoiceA("close", 0.98, {}),
+            "area_primary": ChoiceA("Terrace", 0.96, {}),
+        },
+        {
+            "target:close": ChoiceA("Terrace blind (Gallery)", 0.6, {}),
+            "all_of:close": NoulA(0.1),
+            "outside_scope:close": NoulA(0.4),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "close the terrace blind")
+    assert "area_shadowed:terrace" in r.trace.notes
+    assert isinstance(r, NeedsClarification)
+    assert {c.entity_id for c in r.candidates} == {"cover.b", "cover.g"}

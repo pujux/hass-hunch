@@ -60,6 +60,21 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-21 (night) — re-export: new areas Loggia and Dachterrasse; a device named after a room
+
+Julian added the areas Loggia (Untergeschoss) and Dachterrasse (Obergeschoss) and moved three
+lights into them; 124 entities as before. Corpus: the "und im Esszimmer" follow-up now lists the
+two remaining dining-room lights. Two rows broke for a structural reason: "Dachterrasse Rollo zu"
+and "Ist die Dachterrassentür offen?" — the blinds and door contacts are *named* after the
+terrace but live in Galerie and Schlafzimmer; the new room "Dachterrasse" matched (verbatim or via
+`area_primary` 0.99), holds neither, widening found the devices but the "outside the room?" gate
+dropped them at 0.4. Rule (a lookup): an area whose name or alias sits inside a device label that
+occurs in the prompt, and that holds no candidate for the fired verbs of the fired device types,
+is not a place — `area_shadowed:` note; Jev's remaining room Nouls (0.5/0.63) do not fire, the
+twins are offered, both rows clarify as before. A room that does hold candidates ("Wohnzimmer
+Stehlampe aufdrehen") is untouched. The lowercase mixed-room row accepts `confirm` (Küche verdict
+0.8–0.9). **Real home 50/50, fixture 24/24.**
+
 ### 2026-09-21 (evening) — follow-ups: the sentence leans on the previous turn
 
 "was genau steht drauf" after the shopping list went to the fallback (and got hallucinated).
