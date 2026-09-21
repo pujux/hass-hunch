@@ -129,3 +129,20 @@ def test_verbs_state_and_scenes():
     assert home.entity_by_id("light.hue_go").state == "on"
     assert [s.entity_id for s in home.scenes] == ["scene.film"]
     assert "scene" not in home.domains
+
+
+def test_disabled_and_hidden_entities_are_skipped_even_when_exposed():
+    export = {
+        "floors": [],
+        "areas": [{"area_id": "k", "name": "Küche", "aliases": [], "floor_id": None}],
+        "devices": [],
+        "entities": [
+            {"entity_id": "light.live", "name": "Live", "area_id": "k", "disabled_by": None},
+            {"entity_id": "light.off", "name": "Off", "area_id": "k", "disabled_by": "user"},
+            {"entity_id": "light.hid", "name": "Hid", "area_id": "k", "hidden_by": "user"},
+        ],
+        "exposed": ["light.live", "light.off", "light.hid", "fan.ghost"],
+        "states": {"light.live": {"state": "on"}},
+    }
+    home = home_from_export(export)  # fan.ghost: exposed once, gone from registry and states
+    assert [e.entity_id for e in home.entities] == ["light.live"]

@@ -48,6 +48,10 @@ def home_from_export(
     for entity_id in exposed:
         reg = registry.get(entity_id, {})
         st = states.get(entity_id, {})
+        if reg.get("disabled_by") or reg.get("hidden_by") or (not reg and not st):
+            # Exposure flags outlive the entity: Assist itself skips disabled and hidden
+            # entities and ids that no longer exist anywhere, so must the model.
+            continue
         device = devices.get(reg.get("device_id") or "")
         domain = entity_id.split(".", 1)[0]
         device_name = None

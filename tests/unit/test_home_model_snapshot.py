@@ -104,6 +104,8 @@ def test_golden_export_parity():
             aliases=e.get("aliases"),
             area_id=e.get("area_id"),
             device_id=e.get("device_id"),
+            disabled_by=e.get("disabled_by"),
+            hidden_by=e.get("hidden_by"),
         )
         for e in export["entities"]
     ]
@@ -118,3 +120,39 @@ def test_golden_export_parity():
         e for e in export["exposed"] if e not in registry_ids
     }
     assert home_from_export(shape) == home_from_export({**export, "exposed": shape["exposed"]})
+
+
+def test_export_shape_carries_disabled_and_hidden_markers():
+    from enum import StrEnum
+
+    class Disabler(StrEnum):
+        USER = "user"
+
+    ents = [
+        NS(
+            entity_id="light.a",
+            name=None,
+            original_name="A",
+            aliases=set(),
+            area_id="k",
+            device_id=None,
+            disabled_by=Disabler.USER,
+            hidden_by=None,
+        ),
+        NS(
+            entity_id="light.b",
+            name=None,
+            original_name="B",
+            aliases=set(),
+            area_id="k",
+            device_id=None,
+            disabled_by=None,
+            hidden_by=None,
+        ),
+    ]
+    areas = [NS(id="k", name="Küche", aliases=set(), floor_id=None)]
+    shape = export_shape([], areas, [], ents, {"light.a", "light.b"})
+    by_id = {e["entity_id"]: e for e in shape["entities"]}
+    assert by_id["light.a"]["disabled_by"] == "user" and by_id["light.b"]["disabled_by"] is None
+    home = home_from_export(shape)
+    assert [e.entity_id for e in home.entities] == ["light.b"]

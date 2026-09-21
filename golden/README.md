@@ -60,6 +60,17 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-21 (later) — disabled entities out of the model
+
+Re-export showed 167 "exposed" ids while HA's Assist page said 124. The 43 extra were disabled
+entities (24 by Julian, 17 by integrations) and two ids gone from the registry entirely, all with
+a stale exposure flag. Assist skips them; Hunch had carried them as candidates with state None.
+`home_from_export` now skips entities with `disabled_by`/`hidden_by` set and ids with neither a
+registry entry nor a state; the exporter and the integration's `export_shape` record the two
+fields. Model = 124 entities = HA's count. Corpus rows adjusted: the 'Mobile Klimaanlage' was
+disabled, so bare 'Klimaanlage' now resolves to the PortaSplit; Galerie Stiegenlampe 1–3 were
+disabled. **Real home 42–43/43.** Engine 0.3.1, integration 0.1.2.
+
 ### 2026-09-21 (live test) — several rooms, set + device: one Choice per room
 
 First live prompts through Assist. "schalte licht in der küche und esszimmer stehlampe ein" lit

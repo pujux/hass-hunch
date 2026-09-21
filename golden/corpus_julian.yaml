@@ -24,8 +24,8 @@
 - prompt: Fernseher im Schlafzimmer leiser
   expect: {kind: resolved, verb: set_volume, targets: [media_player.schlafzimmer_fernseher]}
 - prompt: Stell die Klimaanlage auf 22 Grad
-  # two climate units without a room ('Mobile Klimaanlage', 'Midea PortaSplit') since 2026-09-21: ask which
-  expect: {kind: clarify}
+  # one live climate unit since disabled entities left the model (the 'Mobile Klimaanlage' was disabled)
+  expect: {kinds: [resolved, confirm], verb: set_temperature, targets: [climate.midea_portasplit], params: {temperature: [22, 22]}}
 - prompt: Wie warm ist es im Schlafzimmer?
   expect: {kind: resolved, verb: query_state}
 - prompt: Ist das Fenster im Esszimmer offen?
@@ -99,12 +99,12 @@
 - prompt: Fernseher im Wohnzimmer um 20% leiser
   expect: {kind: escalate, reason: relative_change}
 - prompt: Stell die Klimaanlage wärmer, draußen sind 5 Grad
-  # the 5 is the weather, not the setpoint (param_value says none of these); with two units it asks which
-  expect: {kind: clarify}
+  # the 5 is the weather, not the setpoint (param_value says none of these): rubric decides, never 5°C
+  expect: {kinds: [resolved, confirm], verb: set_temperature, targets: [climate.midea_portasplit], params: {temperature: [16, 26]}}
 
 # ---- floor aliases set in HA 2026-09-21 ('oben' / 'unten') ----
 - prompt: Licht oben aus
-  expect: {kind: resolved, verb: turn_off, targets: [light.ankleide_deckenlampe_lichtschalter, light.ankleide_spiegel, light.badezimmer_oben_lichtschalter_deckenlampe, light.badezimmer_oben_lichtschalter_spiegel, light.galerie_dachterrasse_lichtschalter, light.galerie_deckenlampe_lichtschalter, light.galerie_stiegenlampe, light.galerie_stiegenlampe_1, light.galerie_stiegenlampe_2, light.galerie_stiegenlampe_3, light.schlafzimmer_lichtschalter, light.schlafzimmer_wandlicht]}
+  expect: {kind: resolved, verb: turn_off, targets: [light.ankleide_deckenlampe_lichtschalter, light.ankleide_spiegel, light.badezimmer_oben_lichtschalter_deckenlampe, light.badezimmer_oben_lichtschalter_spiegel, light.galerie_dachterrasse_lichtschalter, light.galerie_deckenlampe_lichtschalter, light.galerie_stiegenlampe, light.schlafzimmer_lichtschalter, light.schlafzimmer_wandlicht]}
 - prompt: Mach unten das Licht an
   expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_bushira_max, light.wohnzimmer_deckenlampe, light.wohnzimmer_stehlampe, light.kuche_kucheninsel, light.kuche_spots, light.esszimmer_balkon_lichtschalter, light.esszimmer_loggia_lichtschalter, light.esszimmer_deckenlampe, light.esszimmer_stehlampe, light.vorzimmer_deckenlampe, light.vorzimmer_wandlampe, light.arbeitszimmer_lichtschalter, light.badezimmer_unten_lichtschalter_deckenlampe, light.badezimmer_unten_lichtschalter_spiegel]}
 - prompt: Rollos oben runter

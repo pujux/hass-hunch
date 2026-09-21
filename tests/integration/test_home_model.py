@@ -80,3 +80,21 @@ async def test_builder_uses_exposed_entities_and_live_state(hass: HomeAssistant)
     await hass.async_block_till_done()
     assert {e.entity_id for e in b.build().entities} == {e1.entity_id, e2.entity_id, e3.entity_id}
     b.async_stop()
+
+
+async def test_disabled_entities_stay_out_even_when_exposed(hass: HomeAssistant):
+    assert await async_setup_component(hass, "homeassistant", {})
+    reg = er.async_get(hass)
+    live = reg.async_get_or_create(
+        "light", "test", "live", suggested_object_id="live", original_name="Live"
+    )
+    dead = reg.async_get_or_create(
+        "light", "test", "dead", suggested_object_id="dead", original_name="Dead"
+    )
+    hass.states.async_set(live.entity_id, "on")
+    async_expose_entity(hass, "conversation", live.entity_id, True)
+    async_expose_entity(hass, "conversation", dead.entity_id, True)
+    reg.async_update_entity(dead.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+    await hass.async_block_till_done()
+    b = HomeModelBuilder(hass, DEFAULT_VOCABULARY)
+    assert {e.entity_id for e in b.build().entities} == {live.entity_id}

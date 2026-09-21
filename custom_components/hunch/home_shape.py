@@ -17,6 +17,13 @@ def _aliases(raw: Iterable[Any] | None) -> list[str]:
     return sorted(a for a in (raw or ()) if isinstance(a, str))
 
 
+def _enum_str(value: Any) -> str | None:
+    """RegistryEntryDisabler/Hider enums (or None) → their string value."""
+    if value is None:
+        return None
+    return str(getattr(value, "value", value))
+
+
 def export_shape(
     floors: Iterable[Any],
     areas: Iterable[Any],
@@ -50,6 +57,8 @@ def export_shape(
                 "aliases": _aliases(e.aliases),
                 "area_id": e.area_id,
                 "device_id": e.device_id,
+                "disabled_by": _enum_str(getattr(e, "disabled_by", None)),
+                "hidden_by": _enum_str(getattr(e, "hidden_by", None)),
             }
             for e in entities
             if e.entity_id in exposed_ids

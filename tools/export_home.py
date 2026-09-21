@@ -134,6 +134,8 @@ async def export(url: str, token: str) -> dict[str, Any]:
                 "aliases": e.get("aliases", []),
                 "area_id": e.get("area_id"),
                 "device_id": e.get("device_id"),
+                "disabled_by": e.get("disabled_by"),
+                "hidden_by": e.get("hidden_by"),
             }
             for e in entities
         ],
