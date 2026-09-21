@@ -91,6 +91,8 @@ class _Turn:
 
 
 class HunchConversationEntity(conversation.ConversationEntity):
+    # Without CONTROL, Assist shows "this assistant can't control your home".
+    _attr_supported_features = conversation.ConversationEntityFeature.CONTROL
     _attr_has_entity_name = False
 
     def __init__(self, entry: HunchConfigEntry) -> None:

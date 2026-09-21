@@ -46,3 +46,13 @@ async def test_a_failed_platform_unload_leaves_the_client_open(hass: HomeAssista
     with patch.object(hass.config_entries, "async_unload_platforms", AsyncMock(return_value=False)):
         assert not await hass.config_entries.async_unload(entry.entry_id)
     assert client.aclose.await_count == 0
+
+
+async def test_entity_declares_home_control(hass: HomeAssistant, setup_hunch):
+    from homeassistant.components import conversation
+
+    client, calls = scripted({})
+    await setup_hunch(client, calls)
+    state = hass.states.get("conversation.hunch")
+    assert state is not None
+    assert state.attributes["supported_features"] & conversation.ConversationEntityFeature.CONTROL
