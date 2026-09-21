@@ -77,3 +77,12 @@ uv run --group ha --no-group dev pytest tests/integration # HA integration suite
 
 Python 3.14 is required: Home Assistant 2026.9 requires it, and this repo targets that
 release.
+
+### Releasing the engine
+
+```bash
+uv build --package hunch-engine && uv run python tools/check_dist.py
+set -a && source .env && set +a && uv publish dist/*
+```
+
+Build and check immediately before publishing; then bump the pin in `custom_components/hunch/manifest.json`, push, and `gh release create vX.Y.Z --target main`.
