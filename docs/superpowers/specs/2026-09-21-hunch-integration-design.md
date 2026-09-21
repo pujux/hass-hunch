@@ -289,9 +289,11 @@ Saving with `fallback_agent` equal to this entry's own conversation entity → f
 
 Every turn appends an `agent_detail` event to HA's conversation trace: `{"hunch": {"outcome",
 "answered_by": "hunch", "spoken"}}` for Hunch's own answers, `{"hunch": {"outcome",
-"handed_off_to", "with_context"}}` right before a hand-off. The Assist debug view shows it under
-"Roh", so a user can see whether a spoken sentence came from Hunch or from the fallback agent.
-Nothing is added to the chat log for hand-offs: the chat log is the fallback's context.
+"handed_off_to", "with_context"}}` right before a hand-off. In addition — because the Assist
+debug view prints the pipeline run, not the conversation trace — the same mark is stamped onto
+`speech.plain.extra_data.hunch` of every response Hunch returns, its own and the fallback's, so
+`intent_output` in the debug view says who answered and why. Nothing is added to the chat log for
+hand-offs: the chat log is the fallback's context.
 
 ## 12. Diagnostics
 

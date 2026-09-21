@@ -772,3 +772,27 @@ async def test_every_turn_leaves_an_agent_detail_event_on_the_conversation_trace
     ]
     assert events and events[-1]["outcome"] == "Escalate:timing"
     assert events[-1]["handed_off_to"] == "conversation.other"
+
+
+async def test_the_spoken_response_says_who_answered(hass: HomeAssistant, setup_hunch):
+    await _home(hass)
+    client, calls = scripted(R1_TURN_OFF_KITCHEN)
+    await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    async_mock_service(hass, "homeassistant", "turn_off")
+    own = await _say(hass, "Licht in der Küche aus")
+    assert own.response.speech["plain"]["extra_data"]["hunch"] == {
+        "outcome": "Resolved",
+        "answered_by": "hunch",
+    }
+    client2, _ = scripted({"flag:has_timing": NoulA(0.95), "verb:turn_off": NoulA(0.9)})
+    entry = hass.config_entries.async_entries("hunch")[0]
+    entry.runtime_data.client = client2
+    entry.runtime_data.engine._client = client2
+    fake_response = _fallback_result()
+    fake_response.response.async_set_speech("Timer gestellt.")
+    fake = AsyncMock(return_value=fake_response)
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        handed = await _say(hass, "Licht in 10 Minuten aus")
+    mark = handed.response.speech["plain"]["extra_data"]["hunch"]
+    assert mark["outcome"] == "Escalate:timing" and mark["handed_off_to"] == "conversation.other"
+    assert handed.response.speech["plain"]["speech"] == "Timer gestellt."

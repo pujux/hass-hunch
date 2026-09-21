@@ -75,13 +75,24 @@ async def async_setup_entry(
     async_add_entities([HunchConversationEntity(entry)])
 
 
-def _response(language: str, text: str, *, error: bool = False) -> intent.IntentResponse:
+def _response(
+    language: str, text: str, *, error: bool = False, mark: Mapping[str, Any] | None = None
+) -> intent.IntentResponse:
     resp = intent.IntentResponse(language=language)
     if error:
         resp.async_set_error(intent.IntentResponseErrorCode.FAILED_TO_HANDLE, text)
     else:
-        resp.async_set_speech(text)
+        resp.async_set_speech(text, extra_data={"hunch": dict(mark)} if mark else None)
     return resp
+
+
+def _mark_speech(response: intent.IntentResponse, mark: Mapping[str, Any]) -> None:
+    """Stamp `extra_data.hunch` onto every speech variant of a response we hand back — the
+    Assist debug view shows it under intent_output, so a spoken sentence can be traced to Hunch
+    or to the fallback agent."""
+    for variant in response.speech.values():
+        if isinstance(variant, dict):
+            variant["extra_data"] = {"hunch": dict(mark)}
 
 
 @dataclass(frozen=True)
@@ -153,7 +164,12 @@ class HunchConversationEntity(conversation.ConversationEntity):
         )
         self._trace_event({"outcome": outcome, "answered_by": "hunch", "spoken": text})
         return conversation.ConversationResult(
-            response=_response(turn.user_input.language, text, error=error),
+            response=_response(
+                turn.user_input.language,
+                text,
+                error=error,
+                mark={"outcome": outcome, "answered_by": "hunch"},
+            ),
             conversation_id=turn.chat_log.conversation_id,
             continue_conversation=cont,
         )
@@ -192,6 +208,14 @@ class HunchConversationEntity(conversation.ConversationEntity):
             except (ValueError, HomeAssistantError) as err:
                 _LOGGER.warning("Fallback agent %s failed: %s", agent_id, err)
             else:
+                _mark_speech(
+                    result.response,
+                    {
+                        "outcome": outcome,
+                        "handed_off_to": agent_id or "home_assistant_default_agent",
+                        "with_context": extra_system_prompt is not None,
+                    },
+                )
                 # The fallback writes its own chat-log entry; only the trace buffer is ours.
                 self._rt.traces.append(
                     {
