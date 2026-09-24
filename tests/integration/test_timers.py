@@ -1,7 +1,6 @@
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
-import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
@@ -57,7 +56,6 @@ async def test_cancel_disarms(hass: HomeAssistant, hass_storage, freezer):
     fired.assert_not_awaited()
 
 
-@pytest.mark.parametrize("expected_lingering_timers", [True])
 async def test_load_rearms_and_fires_overdue_timers(hass: HomeAssistant, hass_storage, freezer):
     due = dt_util.utcnow() - timedelta(seconds=30)
     later = dt_util.utcnow() + timedelta(seconds=300)
@@ -116,3 +114,4 @@ async def test_load_rearms_and_fires_overdue_timers(hass: HomeAssistant, hass_st
         and a[0].kind == "delayed"
         and 299 <= a[0].remaining_seconds <= 300
     )
+    await store.async_stop()
