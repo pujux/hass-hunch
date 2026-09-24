@@ -1067,9 +1067,11 @@ async def test_cancel_with_one_timer_offers_no_all_timers_option(home, vocab, co
     r = await Engine(client, vocab, config).decide(home, "Timer abbrechen", timers=(t,))
     assert isinstance(r, Resolved) and r.timer.timers == (t,)
     # with one timer "all timers" is the same set as that timer: not offered (it split the mass)
-    assert ALL_TIMERS not in timer_questions("cancel", (), (), (t,))["timer_pick"].options
+    one_q = timer_questions("cancel", (), (), (t,))["timer_pick"]
+    assert ALL_TIMERS not in one_q.options and ALL_TIMERS not in one_q.instructions
     two = (t, ActiveTimer("b", "Reis", 600, "timer"))
-    assert ALL_TIMERS in timer_questions("cancel", (), (), two)["timer_pick"].options
+    two_q = timer_questions("cancel", (), (), two)["timer_pick"]
+    assert ALL_TIMERS in two_q.options and ALL_TIMERS in two_q.instructions
 
 
 async def test_timer_start_sums_hours_and_minutes_and_drops_hesitant_label(home, vocab, config):

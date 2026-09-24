@@ -14,7 +14,7 @@
         "title": "Hunch options",
         "data": {
           "fallback_agent": "Fallback conversation agent",
-          "timer_script": "Script to run when a timer finishes (gets name, duration, device as variables)",
+          "timer_script": "Script to run when a timer finishes (gets label, description, duration_seconds, device_id, area_id and more as variables; see the README)",
           "model": "Jev model",
           "response_language": "Response language",
           "timeout_ms": "Jev timeout (ms)",

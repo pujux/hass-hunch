@@ -1,17 +1,19 @@
 # Golden corpus
 
-24 fixture prompts (plus 39 German rows against Julian's export) run against the real Jev API. This is the regression net for future model bumps —
+24 fixture prompts (plus 77 German rows against Julian's export) run against the real Jev API. This is the regression net for future model bumps —
 when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 
 ## Latest result
 
 - **Model:** `jev-1.13.0`
-- **Date:** 2026-09-21 (export with 153 exposed entities; collective queries escalate)
-- **Agreement:** fixture 24/24; real German home (`corpus_julian.yaml`, 59 rows incl. 8 multi-turn rows) 58–59/59 — the
-  one row that flips is "Wie warm ist es im Vorzimmer?" (`domain:sensor` sits at the 0.7 bar;
-  5/5 in isolation)
-- **Latency:** p50 ≈ 400 ms (fixture) / 700 ms (real home, two rounds nearly always), p95 ≈ 800 ms
-- **Cost:** ≈ $0.0034 (fixture) / $0.0077 (real home) per full run
+- **Date:** 2026-09-25 (export with 153 exposed entities; timers and timed device actions)
+- **Agreement:** fixture 23/24 — "what's the weather like tomorrow" now hands off as `timing`
+  (Jev: `timing_kind` "at a clock time or date" 0.91) instead of `no_intent`; a hand-off either
+  way, already so on the branch before the fix wave. Real German home (`corpus_julian.yaml`, 77
+  rows incl. 8 multi-turn rows) 76–77/77 — the one row that flips is the follow-up "was genau
+  steht drauf" (see the 2026-09-21 (evening) entry)
+- **Latency:** p50 ≈ 520 ms (fixture) / 615 ms (real home), p95 ≈ 690 ms
+- **Cost:** ≈ $0.0045 (fixture) / $0.019 (real home) per full run
 
 ## How to run
 
@@ -60,6 +62,24 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-25 — timers, final fix wave
+
+- **A delay and a duration together** ("In 5 Minuten das Licht in der Küche für 10 Minuten
+  an") would have been summed into one span (900 s) under either device kind. Before the fix
+  Jev split `timing_kind` 0.54 "after a delay" / 0.45 "for a duration" — it handed off only
+  because the pick was hesitant. The `other timing` description now names "a delay AND a
+  duration together ('in 5 Minuten für 10 Minuten')" (EN + DE); measured three times after:
+  "other timing" 0.93–0.95. New row → `escalate timing`. No code heuristic.
+- **"half an hour" / "a quarter of an hour"** are one literal each (0.5 h / 0.25 h); before, they
+  split into a bare "half" plus "an hour". **Known gap:** "an hour and a half" reads as "an
+  hour" only (a bare fraction after an article is no literal) — 1 h, too short but never a wrong
+  1.5 h guess. Number words now run to ninety (siebzig/achtzig/neunzig, seventy/eighty/ninety,
+  compounds) and "zweieinhalb" … "neuneinhalb".
+- `timer_pick_question` names 'all timers' only when the option is offered (two or more
+  timers). The cancel/remaining rows re-ran green (5/5).
+- Full corpus after the fix wave: real home 76/77 (the one miss is "was genau steht drauf"
+  again, 1 of 3 re-runs passes), fixture 23/24 (the weather row, see "Latest result").
+
 ### 2026-09-24 — timers and timed device actions
 
 New corpus rows for sub-project 2b (`docs/superpowers/specs/2026-09-24-hunch-timers-design.md`):
@@ -68,13 +88,15 @@ the Round-1 `timing_kind` comparison (start / cancel / read-remaining a timer, a
 (duration literals summed from digits, number words and compounds; a spoken unit word looked up
 in code rather than asked as a judgment), `timer_label` (what the timer is for), `timer_pick`
 (which running timer a "Timer abbrechen" / "wie lange noch?" means), and "für"/"in" timing
-attached to ordinary device actions. Ten new rows in `corpus_julian.yaml` cover timer
-start/remaining/cancel/all-timers and für/in on lights and covers, plus the two existing
-"Licht in zehn Minuten aus" rows, which move from `escalate timing` to resolved/confirm/clarify
-carrying `timing: {kind: delayed}` now that the engine recognises the delay instead of only
-flagging it.
+attached to ordinary device actions. Seventeen new rows in `corpus_julian.yaml` (51 → 68
+single-turn rows, plus the 8 multi-turn rows) cover timer start/remaining/cancel/all-timers,
+für/in on lights and covers, and the timing Hunch still hands off (a value with "für", a clock
+time, a timed query). Three existing rows change: the two "Licht in zehn Minuten aus" rows (one
+per corpus) move from `escalate timing` to resolved/confirm/clarify carrying `timing: {kind:
+delayed}` now that the engine recognises the delay instead of only flagging it, and "für 15
+Minuten" on the Schlafzimmer Wandlicht moves from `escalate timing` to a resolved `for_duration`.
 
-**Real German home (`corpus_julian.yaml`): timer rows 10/10; full corpus 75/76** — the one
+**Real German home (`corpus_julian.yaml`): new rows 17/17 (count corrected and re-run on 2026-09-25); full corpus 75/76** — the one
 failure is the pre-existing follow-up-variance row "was genau steht drauf" (`timing_kind: none`,
 unrelated to this change; see the 2026-09-21 (evening) entry below).
 
@@ -91,7 +113,7 @@ tuned away:
   (`1 − P(not a duration)`) — the 0.51/0.49 split no longer drags the turn's confidence down.
 - **"all timers" is not offered against a single running timer.** With one timer running,
   "that timer" and "all timers" name the same set; offering both as separate options split
-  Jev's mass 0.55/0.45 between two answers meaning the same thing. `timer_pick_question` omits
+  Jev's mass 0.55/0.45 between two answers meaning the same thing. `timer_questions` omits
   the `all timers` option whenever only one timer is active — cancelling still always asks
   which timer is meant even then (per §3 of the spec: a bare "Timer abbrechen" must not
   silently cancel a pending "für" revert meant for a different, already-rung timer).

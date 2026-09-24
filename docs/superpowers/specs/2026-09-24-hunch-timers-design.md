@@ -47,8 +47,10 @@ Non-goals (v1)
 - Timed queries ("wie warm ist es in 10 Minuten") and timed conditional actions ("in 10 Minuten
   aus, wenn …") → `Escalate("timing")`.
 - Restoring arbitrary previous state after "für": only invertible verbs; "Rollo auf 20% für
-  10 Minuten" → `Escalate("timing")`. The revert ignores the device's state before the request
-  ("Licht für 15 Minuten an" on a lamp that is already on still turns it off afterwards).
+  10 Minuten" → `Escalate("timing")`. The revert covers only the targets whose state before
+  the request differed from the state the command sets (code table `COMMANDED_STATE`): "Licht
+  für 15 Minuten an" on a lamp that is already on leaves it on afterwards and stores no revert
+  (addendum 2026-09-25, item 4). Nothing else (brightness, position) is restored.
 - A clock time hidden inside a duration request ("um 18 Uhr für 10 Minuten") is not detected
   separately; Jev's `timing_kind` decides which reading wins.
 - A second "für" on the same device stacks a second revert timer; nothing merges them.
@@ -479,3 +481,49 @@ Golden: the rows of §6 pass against `julian.json` with `--phrasebook en` (the t
 3. Golden runner + corpus rows; run against the real home; tuning-log entry in
    `golden/README.md`; engine spec addendum pointer.
 4. Julian publishes engine 0.6.0 (`tools/check_dist.py` first); release v0.4.0.
+
+## Addendum (2026-09-25) — rulings from the final review
+
+1. **Spoken units are looked up, not judged.** Supersedes §4.3 "*not* interpreted by code" and
+   "Code never decides the unit". `DurationLiteral` gains `unit: str | None = None`: the unit
+   word that follows a number ("Minuten", "Std", glued "Viertelstunde") is looked up by code
+   (`unit_of`); only a bare number ("Timer 8") takes Jev's `duration:{i}` unit. For a literal
+   with a spoken unit Jev's answer decides only "duration or not", and its confidence is
+   `1 − P(not a duration)` — asked for the unit of "halbe Stunde", Jev split minutes/hours
+   0.51/0.49, sure it is a duration and unsure how to name it. Lookups added in the same spirit:
+   a fraction with an article before its unit is one literal ("half an hour" 0.5 h, "a quarter
+   of an hour" 0.25 h); a bare fraction after an article is none ("an hour and a half" reads as
+   1 h — a known gap, never a wrong 1.5 h); number words run to ninety (siebzig … neunzig,
+   seventy … ninety, compounds) and "zweieinhalb" … "neuneinhalb".
+2. **`all timers` only for two or more timers.** Supersedes §4.3 "plus `all timers`": with one
+   timer, "that timer" and "all timers" name the same set and split Jev's mass, so neither the
+   `timer_pick` options nor its question text (`{all_hint}`) mention it. The integration's
+   which-timer question follows the same rule. Cancel still always asks (§3).
+3. **`NO_MATCH` is duplicated in `timing.py`.** Supersedes §4.5 "`NO_MATCH` reused from
+   `round2.py`": `round2` imports `timing`, so `timing` cannot import `round2`; the string is
+   defined in both and `test_timing` asserts they are equal.
+4. **"für" reverts only what changed.** Supersedes §2's "the revert ignores the device's state"
+   and extends §5.4. Before a `for_duration` plan runs, the integration reads each target's
+   state (`hass.states`, a lookup). A target is reverted only if its service call succeeded and
+   its prior state differed from `COMMANDED_STATE[verb]` (`turn_on` on, `turn_off` off, `open`
+   open, `close` closed, `unlock` unlocked, `media_play` playing, `media_pause` paused; a verb
+   missing from the table counts as a change). Targets already in the commanded state are
+   neither reverted nor named in the "wieder aus" sentence. If no target changed, no revert
+   timer is stored and the reply is the plain `action_done`. After a partial failure the revert
+   sentence is `for_duration_rest` ("{body}, in {duration} wieder {revert}.") under the
+   `execution_failed` line, not a second "Erledigt:".
+5. **A timed turn or a timer command clears the last turn.** Extends §3 and §5.4 `_remember`:
+   not remembering a timed turn is not enough — "Licht Küche an", "Licht Küche in 10 Minuten
+   aus", "und im Esszimmer" would lean on the first turn and switch the Esszimmer light on at
+   once. `LastTurnStore.forget(conversation_id)` runs whenever a timed device turn
+   (`delayed` / `for_duration`) runs, a timer command resolves, or a which-timer question is
+   asked.
+6. Also ruled in, each keeping §3's safety rules:
+   - a hand-off after a which-device question (reply NO_MATCH, hesitant or failed) carries the
+     timing clause (" in 15 minutes") in its context, like the confirm hand-off;
+   - a failed timer-pick judgment answers `cancelled` locally (outcome
+     `TimerPickJudgmentFailed`); a timer pick never reaches the fallback;
+   - a delay and a duration in one sentence ("in 5 Minuten für 10 Minuten") is `other timing`
+     by its phrasebook description, so it escalates as `timing` (golden row); no code heuristic;
+   - `resolve_timer` honours `supports_clarification=False`: a hesitant cancel returns
+     `Escalate("low_confidence")` instead of `NeedsClarification("which_timer")`.

@@ -301,7 +301,7 @@ def timer_questions(kind, literals, labels, timers, pb: Phrasebook = EN) -> dict
         # and that timer are the same set, so the option is not offered (it split Jev's mass).
         several = len(timers) > 1
         qs["timer_pick"] = ChoiceQ(
-            pb.timer_pick_question,
+            pb.timer_pick_question.format(all_hint=pb.timer_pick_all_hint if several else ""),
             (*timer_options(timers), *((ALL_TIMERS,) if several else ()), NO_MATCH),
             {
                 **({ALL_TIMERS: pb.special_descriptions["all_timers"]} if several else {}),

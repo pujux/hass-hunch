@@ -180,10 +180,13 @@ class Phrasebook:
         "timed ('Nudeln', 'Tee', 'Wäsche', 'pasta')? Pick 'no label' when the request only says "
         "timer and a duration."
     )
+    # `{all_hint}` is `timer_pick_all_hint` when 'all timers' is offered (two or more timers),
+    # else empty: a question must not name an option that is not there
     timer_pick_question: str = (
         "Which running timer does the request mean? `timers` lists them with their remaining "
-        "time. Pick 'all timers' when every one of them is meant."
+        "time.{all_hint}"
     )
+    timer_pick_all_hint: str = " Pick 'all timers' when every one of them is meant."
 
     def phrasing_for(self, verb_name: str, default: str) -> str:
         return self.verb_phrasing.get(verb_name, default)
@@ -899,9 +902,10 @@ DE = Phrasebook(
         "Timer und Dauer nennt."
     ),
     timer_pick_question=(
-        "Welchen laufenden Timer meint die Anfrage? `timers` listet sie mit ihrer Restzeit auf. "
-        "Wähle 'all timers', wenn jeder davon gemeint ist."
+        "Welchen laufenden Timer meint die Anfrage? `timers` listet sie mit ihrer Restzeit "
+        "auf.{all_hint}"
     ),
+    timer_pick_all_hint=" Wähle 'all timers', wenn jeder davon gemeint ist.",
 )
 
 PHRASEBOOKS: dict[str, Phrasebook] = {"en": EN, "de": DE}

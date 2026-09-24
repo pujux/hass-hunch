@@ -73,8 +73,9 @@ unchanged text to the fallback agent you configured.
 Hunch runs its own timers: no `timer.*` helper entity and no voice satellite with a timer
 handler required. "Timer 8 Minuten", "Stell einen Timer für die Nudeln auf 8 Minuten", "Wie
 lange läuft der Timer für die Nudeln noch?" and "Timer abbrechen" all work out of the box, as
-do timed device actions — "Wandlampe an für 15 Minuten" (turns it on now, undoes it after) and
-"Wandlampe in 15 Minuten aus" (turns it off later). Timers are persisted in a Home Assistant
+do timed device actions — "Wandlampe an für 15 Minuten" (turns it on now, undoes it after; a
+lamp that was already on is left on afterwards, since nothing changed) and "Wandlampe in 15
+Minuten aus" (turns it off later). Timers are persisted in a Home Assistant
 `Store` and survive a restart; one that expired while Home Assistant was down fires as soon as
 it starts back up.
 
@@ -104,13 +105,13 @@ player's TTS:
 ```yaml
 alias: Timer finished
 sequence:
-  - service: tts.speak
+  - action: tts.speak
     target:
       entity_id: tts.piper
     data:
       media_player_entity_id: media_player.kueche_lautsprecher
       message: >-
-        {{ label or description or (duration_seconds // 60) ~ ' Minuten' }} ist fertig.
+        {{ label or description or (duration_seconds // 60) | int ~ ' Minuten' }} ist fertig.
 ```
 
 Without a timer script set, only the event fires — write a plain automation on
