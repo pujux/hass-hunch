@@ -28,8 +28,10 @@ from hunch.questions import ChoiceA, NoulA
 from hunch.round2 import NO_MATCH
 from hunch.timing import (
     ALL_TIMERS,
+    CLOCK_TIME,
     DELAYED,
     FOR_DURATION,
+    HOURS,
     MINUTES,
     TIMER_CANCEL,
     TIMER_REMAINING,
@@ -970,7 +972,10 @@ async def test_two_timers_which_timer_clarification_cancels_the_pick(
     assert fake.await_count == 0
     # the reply was judged over exactly the labels the user heard, plus all/none
     state, qs = calls[-1]
-    assert state["question"].startswith("Welchen Timer meinst du")
+    assert state["question"] == (
+        "Welchen Timer meinst du: Timer für Nudeln (3 Minuten 20 Sekunden), "
+        "Timer für Reis (10 Minuten)?"
+    )
     assert qs["reply_pick"].options == (
         "Timer für Nudeln (3 Minuten 20 Sekunden)",
         "Timer für Reis (10 Minuten)",
@@ -1282,9 +1287,19 @@ async def test_for_duration_on_a_set_reverts_only_what_changed(
     r1 = {**R1_TURN_ON_FOR_DURATION, "flag:collective": NoulA(0.9)}
     client, calls = scripted(r1, {"duration:0": ChoiceA(MINUTES, 0.95, {})})
     entry, _ = await setup_hunch(client, calls)
-    on = async_mock_service(hass, "homeassistant", "turn_on")
+    on = []
+
+    async def turn_on(call):
+        # a real handler: after it the lights *are* on, so a state read taken after the
+        # command (instead of before it) would find nothing to change back
+        on.append(call)
+        for eid in call.data["entity_id"]:
+            hass.states.async_set(eid, "on")
+
+    hass.services.async_register("homeassistant", "turn_on", turn_on)
     off = async_mock_service(hass, "homeassistant", "turn_off")
     result = await _say(hass, "Licht in der Küche für 10 Minuten an")
+    assert hass.states.get("light.kuche_kucheninsel").state == "on"
     assert len(on) == 1
     assert sorted(on[0].data["entity_id"]) == ["light.kuche_kucheninsel", "light.kuche_spots"]
     assert (
@@ -1448,6 +1463,70 @@ async def test_a_timed_pick_whose_value_is_missing_hands_off_with_its_timing(
         _speech(first), "set the brightness of Spots (Küche) in 15 minutes"
     )
     assert rt.timers.active() == ()
+
+
+async def test_for_duration_on_a_thermostat_that_already_heats_stores_no_revert(
+    hass: HomeAssistant, setup_hunch
+):
+    await _home(hass)
+    reg = er.async_get(hass)
+    e = reg.async_get_or_create(
+        "climate", "test", "6", suggested_object_id="kuche_heizung", original_name="Heizung"
+    )
+    reg.async_update_entity(
+        e.entity_id, area_id=ar.async_get(hass).async_get_area_by_name("Küche").id
+    )
+    hass.states.async_set(e.entity_id, "heat", {"hvac_modes": ["off", "heat"]})
+    async_expose_entity(hass, "conversation", e.entity_id, True)
+    client, calls = scripted(
+        {
+            "verb:turn_on": NoulA(0.95),
+            "domain:climate": NoulA(0.95),
+            "area:kuche": NoulA(0.99),
+            "verb_primary": ChoiceA("turn_on", 0.95, {}),
+            "area_primary": ChoiceA("Küche", 0.99, {}),
+            "timing_kind": ChoiceA(FOR_DURATION, 0.95, {}),
+        },
+        {
+            "target:turn_on": ChoiceA("Heizung", 0.95, {}),
+            "duration:0": ChoiceA(HOURS, 0.95, {}),
+        },
+    )
+    entry, _ = await setup_hunch(client, calls)
+    on = async_mock_service(hass, "homeassistant", "turn_on")
+    result = await _say(hass, "Heizung in der Küche für eine Stunde an")
+    # heating is "on" for a thermostat: nothing changed, so nothing is switched off later
+    assert len(on) == 1 and on[0].data["entity_id"] == ["climate.kuche_heizung"]
+    assert _speech(result) == "Erledigt: Heizung (Küche) eingeschaltet."
+    assert entry.runtime_data.timers.active() == ()
+
+
+async def test_a_timed_request_handed_off_still_clears_the_turn_before_it(
+    hass: HomeAssistant, setup_hunch
+):
+    await _home(hass)
+    answers: dict = {
+        "verb:turn_on": NoulA(0.95),
+        "domain:light": NoulA(0.95),
+        "area:kuche": NoulA(0.99),
+        "flag:collective": NoulA(0.9),
+        "verb_primary": ChoiceA("turn_on", 0.95, {}),
+        "area_primary": ChoiceA("Küche", 0.99, {}),
+    }
+    client, calls = scripted(answers)  # read by reference per call
+    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    rt = entry.runtime_data
+    async_mock_service(hass, "homeassistant", "turn_on")
+    await _say(hass, "Licht Küche an", conversation_id="m2")
+    assert rt.last_turns.get("m2").prompt == "Licht Küche an"
+    answers["timing_kind"] = ChoiceA(CLOCK_TIME, 0.95, {})
+    fake = AsyncMock(return_value=_fallback_result("m2"))
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _say(hass, "Licht Küche um 18 Uhr aus", conversation_id="m2")
+    assert fake.await_count == 1
+    assert rt.traces[-1]["outcome"] == "Escalate:timing"
+    # a later "und im Esszimmer" cannot lean on the turn from before the timed request
+    assert rt.last_turns.get("m2") is None
 
 
 async def test_a_timed_turn_or_timer_command_clears_the_turn_before_it(

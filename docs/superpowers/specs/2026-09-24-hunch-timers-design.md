@@ -493,7 +493,8 @@ Golden: the rows of §6 pass against `julian.json` with `--phrasebook en` (the t
    0.51/0.49, sure it is a duration and unsure how to name it. Lookups added in the same spirit:
    a fraction with an article before its unit is one literal ("half an hour" 0.5 h, "a quarter
    of an hour" 0.25 h); a bare fraction after an article is none ("an hour and a half" reads as
-   1 h — a known gap, never a wrong 1.5 h); number words run to ninety (siebzig … neunzig,
+   1 h — a known gap, never a wrong 1.5 h; "one and a half hours" is a known gap too: it reads
+   as a bare "one" plus "half hours", 30 min plus whatever unit Jev gives the "one"); number words run to ninety (siebzig … neunzig,
    seventy … ninety, compounds) and "zweieinhalb" … "neuneinhalb".
 2. **`all timers` only for two or more timers.** Supersedes §4.3 "plus `all timers`": with one
    timer, "that timer" and "all timers" name the same set and split Jev's mass, so neither the
@@ -507,7 +508,12 @@ Golden: the rows of §6 pass against `julian.json` with `--phrasebook en` (the t
    state (`hass.states`, a lookup). A target is reverted only if its service call succeeded and
    its prior state differed from `COMMANDED_STATE[verb]` (`turn_on` on, `turn_off` off, `open`
    open, `close` closed, `unlock` unlocked, `media_play` playing, `media_pause` paused; a verb
-   missing from the table counts as a change). Targets already in the commanded state are
+   missing from the table, or a target with no state, counts as a change). Two lookups refine
+   the table (`is_already_done`, round 2 of the review): `turn_on` is already done in any
+   state but `off`, `unavailable` and `unknown`, because thermostats (`heat`, `cool`, `auto`)
+   and media players (`playing`, `idle`, …) are never `on`; and a cover that reports
+   `current_position` is already open only at 100 and already closed only at 0 (a blind at 50%
+   reports `open`), otherwise its state word decides. Targets already in the commanded state are
    neither reverted nor named in the "wieder aus" sentence. If no target changed, no revert
    timer is stored and the reply is the plain `action_done`. After a partial failure the revert
    sentence is `for_duration_rest` ("{body}, in {duration} wieder {revert}.") under the
@@ -515,9 +521,11 @@ Golden: the rows of §6 pass against `julian.json` with `--phrasebook en` (the t
 5. **A timed turn or a timer command clears the last turn.** Extends §3 and §5.4 `_remember`:
    not remembering a timed turn is not enough — "Licht Küche an", "Licht Küche in 10 Minuten
    aus", "und im Esszimmer" would lean on the first turn and switch the Esszimmer light on at
-   once. `LastTurnStore.forget(conversation_id)` runs whenever a timed device turn
-   (`delayed` / `for_duration`) runs, a timer command resolves, or a which-timer question is
-   asked.
+   once. `LastTurnStore.forget(conversation_id)` runs right after `decide` whenever the result
+   carries timing (a `Resolved`, `NeedsConfirmation` or `NeedsClarification` with `timing`) or
+   is `Escalate("timing")` — so a timed request that is later declined, answered with "other"
+   or handed off clears the turn before it too — and whenever a timer command resolves or a
+   which-timer question is asked.
 6. Also ruled in, each keeping §3's safety rules:
    - a hand-off after a which-device question (reply NO_MATCH, hesitant or failed) carries the
      timing clause (" in 15 minutes") in its context, like the confirm hand-off;

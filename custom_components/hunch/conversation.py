@@ -58,6 +58,7 @@ from .responder import (
 )
 from .timers import (
     HunchTimer,
+    PriorState,
     StoredAction,
     already_in_state,
     inverse_actions,
@@ -362,11 +363,15 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 body=body,
             )
             return self._result(turn, "\n".join([*lines, text]), trace, outcome)
-        before: dict[str, str | None] = {}
+        before: dict[str, PriorState | None] = {}
         if timing is not None and timing.kind == "for_duration":
             # read, not judged: which targets are already where the command takes them
             before = {
-                e.entity_id: (s.state if (s := self.hass.states.get(e.entity_id)) else None)
+                e.entity_id: (
+                    (s.state, s.attributes.get("current_position"))
+                    if (s := self.hass.states.get(e.entity_id))
+                    else None
+                )
                 for a in commands
                 for e in a.targets
             }
@@ -563,6 +568,13 @@ class HunchConversationEntity(conversation.ConversationEntity):
             home, user_input.text, previous, rt.timers.as_active_timers()
         )
         areas = self._area_names(home)
+        # A timed request clears the turn before it, whatever becomes of it (run, declined,
+        # clarified, handed off): a later "und im Esszimmer" must not lean on a turn from
+        # before it (spec addendum, item 5).
+        if getattr(result, "timing", None) is not None or (
+            isinstance(result, Escalate) and result.reason == "timing"
+        ):
+            self._forget(turn)
 
         if isinstance(result, Resolved):  # step 3
             if result.timer is not None:

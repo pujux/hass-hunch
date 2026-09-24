@@ -97,6 +97,9 @@ def stored_actions(actions: Sequence[Action]) -> tuple[StoredAction, ...]:
 # The state a device is in after each invertible verb. A "für" target that was already in it
 # before the request is left alone afterwards: "Licht im Bad für 10 Minuten aus" on a light that
 # is already off must not switch it on 10 minutes later. A code table, read against hass.states.
+# `turn_on` also serves thermostats (`heat`, `cool`, `auto`) and media players (`playing`,
+# `idle`, …), so it is already done in any state but these; a cover that reports its position
+# is fully open only at 100 and fully closed only at 0 (a blind at 50% reports `open`).
 COMMANDED_STATE = {
     "turn_on": "on",
     "turn_off": "off",
@@ -106,17 +109,40 @@ COMMANDED_STATE = {
     "media_play": "playing",
     "media_pause": "paused",
 }
+NOT_ON_STATES = frozenset({"off", "unavailable", "unknown"})
+FULL_POSITION = {"open": 100, "close": 0}
+
+# A target's state before the request: (state, `current_position` or None); None if it has none.
+PriorState = tuple[str, Any]
 
 
-def already_in_state(actions: Sequence[Action], states: Mapping[str, str | None]) -> set[str]:
-    """The targets whose state before the request (`states`: entity id -> state) already was the
-    one their action commands. A verb missing from the table counts as a change."""
+def is_already_done(verb: str, prior: PriorState | None) -> bool:
+    """Whether `verb` would change nothing on a target in `prior`. A verb missing from the
+    table, or a target with no state, counts as a change."""
+    if prior is None or verb not in COMMANDED_STATE:
+        return False
+    state, position = prior
+    if (
+        verb in FULL_POSITION
+        and isinstance(position, int | float)
+        and not isinstance(position, bool)
+    ):
+        return position == FULL_POSITION[verb]
+    if verb == "turn_on":
+        return state not in NOT_ON_STATES
+    return state == COMMANDED_STATE[verb]
+
+
+def already_in_state(
+    actions: Sequence[Action], before: Mapping[str, PriorState | None]
+) -> set[str]:
+    """The targets whose state before the request (`before`: entity id -> prior state) already
+    was the one their action commands."""
     return {
         e.entity_id
         for a in actions
-        if (want := COMMANDED_STATE.get(a.verb.name)) is not None
         for e in a.targets
-        if states.get(e.entity_id) == want
+        if is_already_done(a.verb.name, before.get(e.entity_id))
     }
 
 
