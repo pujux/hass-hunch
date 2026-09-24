@@ -120,6 +120,69 @@ class Phrasebook:
         "Choose none of these only if the request does not refer to this room at all. The "
         "request asks to {phrasing}."
     )
+    timing_kind_question: str = (
+        "How is the request bound to time? Compare the options: a standalone timer that "
+        "controls no device (start one, cancel one, ask how long one has left), a device action "
+        "that lasts for a duration and is then undone, a device action after a delay, something "
+        "at a clock time or date, other timing (sequences, 'later', 'then'), or none at all."
+    )
+    timing_kind_descriptions: Mapping[str, str] = field(
+        default_factory=lambda: {
+            "none": "no timing at all — the request is about doing something now",
+            "start a timer": (
+                "set a countdown / kitchen timer / alarm that controls no device: 'Timer 8 "
+                "Minuten', 'stell einen Timer für die Nudeln', 'timer for ten minutes'"
+            ),
+            "cancel a timer": (
+                "stop or delete a running timer: 'Timer abbrechen', 'cancel the timer'"
+            ),
+            "ask how long a timer has left": (
+                "ask a running timer's remaining time: 'wie lange noch?', 'how long is left on "
+                "the pasta timer?'"
+            ),
+            "device action for a duration": (
+                "do something to a device now and undo it after a duration: 'Licht an für 15 "
+                "Minuten', 'open the blinds for ten minutes'"
+            ),
+            "device action after a delay": (
+                "do something to a device after a delay: 'in 15 Minuten aus', 'turn it off in "
+                "ten minutes', 'nachher'"
+            ),
+            "at a clock time or date": (
+                "at a clock time or on a date: 'um 18 Uhr', 'morgen früh', 'at 7'"
+            ),
+            "other timing": (
+                "any other time binding: sequences ('erst …, dann …'), 'später', 'danach'"
+            ),
+        }
+    )
+    duration_question: str = (
+        "In the request, `{literal}` may say how long something lasts or how long to wait. "
+        "Which unit is it meant in — or is it not a duration at all?"
+    )
+    duration_descriptions: Mapping[str, str] = field(
+        default_factory=lambda: {
+            "seconds": "seconds (Sekunden, sek, s)",
+            "minutes": (
+                "minutes (Minuten, min) — also the usual unit of a bare number said with a "
+                "kitchen timer ('Timer 8')"
+            ),
+            "hours": "hours (Stunden, std, h)",
+            "not a duration": (
+                "the number is not a duration: a percentage, a temperature, a count, a channel, "
+                "part of a name"
+            ),
+        }
+    )
+    timer_label_question: str = (
+        "Which single word says WHAT the timer is for — the dish, the task, the thing being "
+        "timed ('Nudeln', 'Tee', 'Wäsche', 'pasta')? Pick 'no label' when the request only says "
+        "timer and a duration."
+    )
+    timer_pick_question: str = (
+        "Which running timer does the request mean? `timers` lists them with their remaining "
+        "time. Pick 'all timers' when every one of them is meant."
+    )
 
     def phrasing_for(self, verb_name: str, default: str) -> str:
         return self.verb_phrasing.get(verb_name, default)
@@ -240,6 +303,9 @@ EN = Phrasebook(
         "condition_below": "the condition holds while the value is lower than the number",
         "condition_above": "the condition holds while the value is higher than the number",
         "no_condition_direction": "the request does not say which side of the number counts",
+        "no_label": "the request names nothing the timer is for",
+        "all_timers": "every running timer is meant",
+        "no_timer_match": "none of the listed timers is the one meant",
     },
     exclusion_question=(
         "The request in `request` names an exception — something that must NOT be affected. "
@@ -495,6 +561,9 @@ DE = Phrasebook(
         "condition_below": "die Bedingung gilt, solange der Wert kleiner als die Zahl ist",
         "condition_above": "die Bedingung gilt, solange der Wert größer als die Zahl ist",
         "no_condition_direction": "die Anfrage sagt nicht, welche Seite der Zahl zählt",
+        "no_label": "die Anfrage nennt nichts, wofür der Timer ist",
+        "all_timers": "alle laufenden Timer sind gemeint",
+        "no_timer_match": "keiner der aufgezählten Timer ist gemeint",
     },
     exclusion_question=(
         "Die Anfrage in `request` nennt eine Ausnahme — etwas, das NICHT betroffen sein darf. "
@@ -771,6 +840,66 @@ DE = Phrasebook(
         "humidifier": ("luftbefeuchter", "befeuchter"),
         "alarm_control_panel": ("alarmanlage", "alarm"),
     },
+    timing_kind_question=(
+        "Wie ist die Anfrage zeitlich gebunden? Vergleiche die Optionen: ein eigenständiger "
+        "Timer, der kein Gerät steuert (einen starten, einen abbrechen, nach der Restzeit "
+        "fragen), eine Geräteaktion, die eine Weile dauert und dann rückgängig gemacht wird, "
+        "eine Geräteaktion nach einer Verzögerung, etwas zu einer Uhrzeit oder an einem Datum, "
+        "sonstige zeitliche Bindung (Abfolgen, 'später', 'danach'), oder gar keine."
+    ),
+    timing_kind_descriptions={
+        "none": "keine zeitliche Bindung — die Anfrage betrifft ein sofortiges Tun",
+        "start a timer": (
+            "einen Countdown / Küchentimer / Wecker stellen, der kein Gerät steuert: 'Timer 8 "
+            "Minuten', 'stell einen Timer für die Nudeln', 'timer for ten minutes'"
+        ),
+        "cancel a timer": (
+            "einen laufenden Timer stoppen oder löschen: 'Timer abbrechen', 'cancel the timer'"
+        ),
+        "ask how long a timer has left": (
+            "nach der Restzeit eines laufenden Timers fragen: 'wie lange noch?', 'how long is "
+            "left on the pasta timer?'"
+        ),
+        "device action for a duration": (
+            "ein Gerät jetzt schalten und die Aktion nach einer Dauer rückgängig machen: 'Licht "
+            "an für 15 Minuten', 'open the blinds for ten minutes'"
+        ),
+        "device action after a delay": (
+            "ein Gerät nach einer Verzögerung schalten: 'in 15 Minuten aus', 'turn it off in "
+            "ten minutes', 'nachher'"
+        ),
+        "at a clock time or date": (
+            "zu einer Uhrzeit oder an einem Datum: 'um 18 Uhr', 'morgen früh', 'at 7'"
+        ),
+        "other timing": (
+            "jede andere zeitliche Bindung: Abfolgen ('erst …, dann …'), 'später', 'danach'"
+        ),
+    },
+    duration_question=(
+        "In der Anfrage sagt `{literal}` vielleicht, wie lange etwas dauert oder wie lange "
+        "gewartet wird. In welcher Einheit ist es gemeint — oder ist es gar keine Dauer?"
+    ),
+    duration_descriptions={
+        "seconds": "Sekunden (Sekunden, sek, s)",
+        "minutes": (
+            "Minuten (Minuten, min) — auch die übliche Einheit einer bloßen Zahl bei einem "
+            "Küchentimer ('Timer 8')"
+        ),
+        "hours": "Stunden (Stunden, std, h)",
+        "not a duration": (
+            "die Zahl ist keine Dauer: ein Prozentwert, eine Temperatur, eine Anzahl, ein "
+            "Kanal, Teil eines Namens"
+        ),
+    },
+    timer_label_question=(
+        "Welches einzelne Wort sagt, WOFÜR der Timer ist — das Gericht, die Aufgabe, das "
+        "Gemessene ('Nudeln', 'Tee', 'Wäsche', 'pasta')? Wähle 'no label', wenn die Anfrage nur "
+        "Timer und Dauer nennt."
+    ),
+    timer_pick_question=(
+        "Welchen laufenden Timer meint die Anfrage? `timers` listet sie mit ihrer Restzeit auf. "
+        "Wähle 'all timers', wenn jeder davon gemeint ist."
+    ),
 )
 
 PHRASEBOOKS: dict[str, Phrasebook] = {"en": EN, "de": DE}

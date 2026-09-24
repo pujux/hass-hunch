@@ -62,6 +62,21 @@ def verbs_for_domain(domain: str, vocabulary: Vocabulary) -> frozenset[str]:
     return frozenset(v.name for v in vocabulary.verbs if domain in v.domains or v.is_query)
 
 
+# Verbs a "für 15 Minuten" can undo: code table. Everything else (set_*, arm, disarm,
+# activate, queries) has no inverse, so a time-limited request on it is handed off. `lock` is
+# deliberately absent: "Tür für 10 Minuten absperren" would unlock a door unattended later.
+# `unlock -> lock` ("für 10 Minuten aufsperren", locks again) is kept.
+INVERSES: dict[str, str] = {
+    "turn_on": "turn_off",
+    "turn_off": "turn_on",
+    "open": "close",
+    "close": "open",
+    "unlock": "lock",
+    "media_play": "media_pause",
+    "media_pause": "media_play",
+}
+
+
 _ON_OFF = frozenset({"light", "switch", "fan", "media_player", "climate"})
 _BRIGHTNESS = ScoreSpec(
     "brightness_pct",

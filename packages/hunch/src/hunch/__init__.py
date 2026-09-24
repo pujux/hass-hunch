@@ -25,6 +25,7 @@ from hunch.questions import (
 )
 from hunch.resolution import (
     Action,
+    ActiveTimer,
     Condition,
     Escalate,
     NeedsClarification,
@@ -32,10 +33,13 @@ from hunch.resolution import (
     PreviousTurn,
     Resolution,
     Resolved,
+    TimerCommand,
+    Timing,
     Trace,
 )
 from hunch.vocabulary import (
     DEFAULT_VOCABULARY,
+    INVERSES,
     ChoiceSpec,
     Risk,
     ScoreSpec,
@@ -49,10 +53,12 @@ __version__ = "0.1.0"
 __all__ = [
     "DE",
     "EN",
+    "INVERSES",
     "JSON",
     "PHRASEBOOKS",
     "Phrasebook",
     "Action",
+    "ActiveTimer",
     "Answer",
     "Answers",
     "Area",
@@ -83,6 +89,8 @@ __all__ = [
     "ScoreQ",
     "ScoreSpec",
     "Thresholds",
+    "Timing",
+    "TimerCommand",
     "Trace",
     "TypeSafeDecisionClient",
     "Verb",

@@ -113,11 +113,42 @@ class Condition:
 
 
 @dataclass(frozen=True)
+class ActiveTimer:
+    """A timer the caller currently runs: input to `decide`, and what a cancel or a
+    remaining-time question names."""
+
+    timer_id: str
+    label: str | None  # what the timer is for ("Nudeln"); None when unnamed
+    remaining_seconds: float
+    kind: str  # "timer" | "revert" | "delayed"
+    description: str | None = None  # scheduled actions: what will happen ("Wandlampe aus")
+
+
+@dataclass(frozen=True)
+class Timing:
+    """A device action bound to a duration: do it now and undo it after ("für 15 Minuten"),
+    or do it after a delay ("in 15 Minuten")."""
+
+    kind: str  # "for_duration" | "delayed"
+    seconds: float
+
+
+@dataclass(frozen=True)
+class TimerCommand:
+    kind: str  # "start" | "cancel" | "remaining"
+    duration_seconds: float | None = None  # start
+    label: str | None = None  # start
+    timers: tuple[ActiveTimer, ...] = ()  # cancel / remaining: the timers meant
+
+
+@dataclass(frozen=True)
 class Resolved:
     actions: tuple[Action, ...]
     condition: Condition | None
     confidence: float
     trace: Trace
+    timing: Timing | None = None
+    timer: TimerCommand | None = None
 
 
 @dataclass(frozen=True)
@@ -126,17 +157,21 @@ class NeedsConfirmation:
     condition: Condition | None
     reason: str
     trace: Trace
+    timing: Timing | None = None
 
 
 @dataclass(frozen=True)
 class NeedsClarification:
-    question_key: str  # "which_area" | "which_device"
+    question_key: str  # "which_area" | "which_device" | "which_timer"
     candidates: tuple[Entity, ...]
     trace: Trace
     # the verb being clarified and the params already resolved for it ({} when the
     # clarification happened before Round 2). Lets a caller act on the user's pick.
     verb: Verb | None = None
     params: Mapping[str, float | str] = field(default_factory=dict)
+    timing: Timing | None = None
+    timers: tuple[ActiveTimer, ...] = ()
+    timer_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -145,6 +180,8 @@ class Escalate:
     #       | "round_budget" | "condition" | "exception" | "relative_change" | "query_collective"
     #       | "incomplete"
     #       | "decision_backend_unavailable" | "prompt_invalid"
+    # "timing" = timing Hunch cannot carry out itself (clock time, sequence, no duration,
+    # non-invertible 'für', timed query/condition, out of bounds)
     reason: str
     partial: tuple[Action, ...]
     trace: Trace
