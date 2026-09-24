@@ -655,3 +655,7 @@ attached to the chat log regardless of outcome.
 - [HA 2026.8 release notes](https://rc.home-assistant.io/blog/2026/08/05/release-20268/)
 - [HA LLM API developer docs](https://developers.home-assistant.io/docs/core/llm/)
 - [HA Conversation API](https://developers.home-assistant.io/docs/intent_conversation_api/)
+
+---
+
+2026-09-24: timers and timed actions — see `2026-09-24-hunch-timers-design.md`.

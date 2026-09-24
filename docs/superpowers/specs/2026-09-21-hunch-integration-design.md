@@ -351,3 +351,7 @@ secrets.
 6. Pending store, confirmation and clarification turns.
 7. Diagnostics, options reload, translations.
 8. HA-harness suite; manual run on Julian's HA.
+
+---
+
+2026-09-24: timers and timed actions — see `2026-09-24-hunch-timers-design.md`.

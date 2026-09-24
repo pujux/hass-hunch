@@ -60,10 +60,68 @@ Everything else lives in the options flow, all optional with sane defaults:
 ### What Hunch answers itself vs. hands off
 
 Hunch resolves requests it's confident about into exact service calls against your exposed
-entities, asks a yes/no/other confirmation before anything destructive, and asks a
-clarifying question when a request is ambiguous between a few candidates. Anything it isn't
-confident about — including relative changes and set-summary queries — is escalated with
-the original, unchanged text to the fallback agent you configured.
+entities — including starting, cancelling and reading kitchen timers, and "für 15 Minuten" /
+"in 15 Minuten" timed device actions — asks a yes/no/other confirmation before anything
+destructive, and asks a clarifying question when a request is ambiguous between a few
+candidates. Anything it isn't confident about — including relative changes, set-summary
+queries, clock times and dates ("um 18 Uhr", "morgen früh"), sequences ("erst …, dann …"), and
+conditions it can't express ("wenn es dunkel wird") — is escalated with the original,
+unchanged text to the fallback agent you configured.
+
+### Timers
+
+Hunch runs its own timers: no `timer.*` helper entity and no voice satellite with a timer
+handler required. "Timer 8 Minuten", "Stell einen Timer für die Nudeln auf 8 Minuten", "Wie
+lange läuft der Timer für die Nudeln noch?" and "Timer abbrechen" all work out of the box, as
+do timed device actions — "Wandlampe an für 15 Minuten" (turns it on now, undoes it after) and
+"Wandlampe in 15 Minuten aus" (turns it off later). Timers are persisted in a Home Assistant
+`Store` and survive a restart; one that expired while Home Assistant was down fires as soon as
+it starts back up.
+
+When a timer or a scheduled action is due, Hunch fires a `hunch_timer_finished` event so you
+can wire up your own automation (which speaker announces it, an LED, a notification — Hunch
+itself never picks a speaker):
+
+| field | meaning |
+|---|---|
+| `timer_id` | unique id of the timer |
+| `kind` | `timer` (kitchen timer) / `revert` (the undo half of a "für" action) / `delayed` (the "in" action itself) |
+| `label` | what the timer is for ("Nudeln"), or `None` when unnamed |
+| `description` | for `revert`/`delayed`: what happens, rendered at creation ("Wandlampe (Vorzimmer) ausschalten") |
+| `duration_seconds` | the timer's original duration |
+| `due_at` | when it was due, ISO 8601 |
+| `overdue` | `true` if it fired late, on Home Assistant startup after a restart |
+| `skipped` | `true` if a `revert`/`delayed` action was more than an hour overdue and was **not** carried out (a blind must not open hours late at night); the event still fires so you know it was skipped |
+| `language` | the language the request was made in |
+| `conversation_id`, `device_id`, `satellite_id`, `area_id`, `user_id` | who/what asked, and where |
+| `executed`, `failed` | entity ids a `revert`/`delayed` action succeeded or failed on |
+
+Optionally, set a **Timer script** in the options flow to have Hunch also call
+`script.turn_on` on it (with the same fields passed as `variables`) — handy for making it
+speak the result. For example, a script that announces a finished timer through a media
+player's TTS:
+
+```yaml
+alias: Timer finished
+sequence:
+  - service: tts.speak
+    target:
+      entity_id: tts.piper
+    data:
+      media_player_entity_id: media_player.kueche_lautsprecher
+      message: >-
+        {{ label or description or (duration_seconds // 60) ~ ' Minuten' }} ist fertig.
+```
+
+Without a timer script set, only the event fires — write a plain automation on
+`hunch_timer_finished` instead if you'd rather not use a script.
+
+Clock times and dates, sequences, and conditions Hunch can't express still hand off, as above;
+so do durations with no number Hunch can look up ("ein paar Minuten"), and a "für" on a verb
+with no sensible inverse. `lock` is one of those on purpose: "Tür für 10 Minuten absperren"
+would unlock the door itself, unattended, later — that hands off instead of ever being done
+automatically. (`unlock`, whose inverse is plain `lock`, is unaffected: "für 10 Minuten
+aufsperren" locks again afterwards.)
 
 ### Traces
 

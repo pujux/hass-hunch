@@ -60,6 +60,45 @@ Summary line:
 
 ## Tuning log
 
+### 2026-09-24 — timers and timed device actions
+
+New corpus rows for sub-project 2b (`docs/superpowers/specs/2026-09-24-hunch-timers-design.md`):
+the Round-1 `timing_kind` comparison (start / cancel / read-remaining a timer, a device action
+"für" a duration or "in" a delay, a clock time, or other timing), the timer path in `timing.py`
+(duration literals summed from digits, number words and compounds; a spoken unit word looked up
+in code rather than asked as a judgment), `timer_label` (what the timer is for), `timer_pick`
+(which running timer a "Timer abbrechen" / "wie lange noch?" means), and "für"/"in" timing
+attached to ordinary device actions. Ten new rows in `corpus_julian.yaml` cover timer
+start/remaining/cancel/all-timers and für/in on lights and covers, plus the two existing
+"Licht in zehn Minuten aus" rows, which move from `escalate timing` to resolved/confirm/clarify
+carrying `timing: {kind: delayed}` now that the engine recognises the delay instead of only
+flagging it.
+
+**Real German home (`corpus_julian.yaml`): timer rows 10/10; full corpus 75/76** — the one
+failure is the pre-existing follow-up-variance row "was genau steht drauf" (`timing_kind: none`,
+unrelated to this change; see the 2026-09-21 (evening) entry below).
+
+No thresholds changed. Two things the live run measured, kept as design decisions rather than
+tuned away:
+
+- **A spoken unit is a fact, not a judgment — looked up in code, not asked of Jev.** Asked for
+  the unit of "halbe Stunde" (already unambiguous: `viertel`/`halbe` + a glued or following unit
+  word), Jev split `minutes`/`hours` 0.51/0.49 — sure it's a duration, unsure how to name a
+  number code already has; asked the same for "Viertelstunde" it answered "minutes" outright,
+  for a token that means a quarter *hour*. Trusting either answer as the multiplier would have
+  been wrong under one or both splits, so `duration_literals` resolves the unit itself when a
+  unit word is present, and only reads Jev's answer for "is this a duration at all"
+  (`1 − P(not a duration)`) — the 0.51/0.49 split no longer drags the turn's confidence down.
+- **"all timers" is not offered against a single running timer.** With one timer running,
+  "that timer" and "all timers" name the same set; offering both as separate options split
+  Jev's mass 0.55/0.45 between two answers meaning the same thing. `timer_pick_question` omits
+  the `all timers` option whenever only one timer is active — cancelling still always asks
+  which timer is meant even then (per §3 of the spec: a bare "Timer abbrechen" must not
+  silently cancel a pending "für" revert meant for a different, already-rung timer).
+
+`uv run pytest -q` green throughout (packages/hunch + integration suites). Golden run against
+`golden/homes/julian.json` with `--phrasebook en` (the tuned book).
+
 ### 2026-09-21 (late night, 2) — "Alle Rollos außer das in der Küche runter"
 
 Escalated as `low_confidence`; the 8B fallback then tried to move exactly the Küche blind to 0
