@@ -11,6 +11,7 @@ from hunch.model import Entity, HomeModel
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import ChoiceQ, Question
 from hunch.resolution import (
+    ActiveTimer,
     Escalate,
     NeedsClarification,
     NeedsConfirmation,
@@ -44,6 +45,17 @@ from hunch.scope import (
     scope_candidates,
     verbatim_areas,
 )
+from hunch.timing import (
+    DEVICE_TIMING_KINDS,
+    TIMER_COMMANDS,
+    TIMER_KINDS,
+    TIMING_KIND_TO_TIMING,
+    duration_literals,
+    label_candidates,
+    resolve_timer,
+    timer_questions,
+    timer_state,
+)
 from hunch.vocabulary import Verb, Vocabulary
 
 
@@ -61,7 +73,11 @@ class Engine:
         self._pb = phrasebook
 
     async def decide(
-        self, home: HomeModel, prompt: str, previous: PreviousTurn | None = None
+        self,
+        home: HomeModel,
+        prompt: str,
+        previous: PreviousTurn | None = None,
+        timers: tuple[ActiveTimer, ...] = (),
     ) -> Resolution:
         """Decide what `prompt` asks of `home`. Never executes, never raises on backend trouble.
 
@@ -80,7 +96,7 @@ class Engine:
           | reason | meaning |
           |---|---|
           | `prompt_invalid` | empty prompt, or longer than `max_prompt_chars` |
-          | `timing` | the request schedules, delays or sequences something |
+          | `timing` | clock time/date, sequence, no duration, bad "für", timed query/condition |
           | `no_intent` | no verb fired |
           | `incomplete` | a fragment ("doch auf 15%") with no previous turn to lean on |
           | `destructive` | a `DESTRUCTIVE` verb fired, or `is_destructive` did |
@@ -94,13 +110,16 @@ class Engine:
         it as read-only (or snapshot it with `trace.to_dict()`). `trace.input_tokens` holds
         one entry per round in round order — the backend's reported input-token count, or
         `None` when that response carried no usage information.
+
+        `timers` are the caller's running timers; a `Resolved` may carry `timer` (a
+        `TimerCommand`, `actions == ()`) or `timing` (a `Timing` on the actions).
         """
         trace = Trace()
         prompt = prompt.strip()
         if not prompt or len(prompt) > self._config.max_prompt_chars:
             return Escalate("prompt_invalid", (), trace)
         try:
-            return await self._decide(home, prompt, trace, previous)
+            return await self._decide(home, prompt, trace, previous, timers)
         except (DecisionBackendError, KeyError, TypeError) as exc:
             # KeyError/TypeError mean the backend answered with a missing id or the wrong
             # primitive; like an explicit backend error, that degrades, it never raises.
@@ -109,19 +128,39 @@ class Engine:
             return Escalate("decision_backend_unavailable", (), trace)
 
     async def _decide(
-        self, home: HomeModel, prompt: str, trace: Trace, previous: PreviousTurn | None
+        self,
+        home: HomeModel,
+        prompt: str,
+        trace: Trace,
+        previous: PreviousTurn | None,
+        timers: tuple[ActiveTimer, ...] = (),
     ) -> Resolution:
         th = self._config.thresholds
         rounds = 0
 
         answers = await self._client.ask(
-            build_round1_state(home, prompt, previous),
+            build_round1_state(home, prompt, previous, timers),
             build_round1_questions(home, self._vocab, self._pb, previous),
         )
         rounds += 1
         shape = interpret_round1(home, self._vocab, answers, th, trace)
 
-        if trace.decide("flag:has_timing", shape.flag("has_timing"), th.flag):
+        if shape.timing_kind in TIMER_KINDS and trace.decide(
+            "timing_kind", shape.timing_conf, th.flag
+        ):
+            # "Timer 8 Minuten", "Timer abbrechen", "wie lange noch?": no device, no room, no
+            # verb — the timer path, before the fragment rule can call it incomplete.
+            return await self._decide_timer(prompt, shape, timers, trace, rounds)
+        timing_kind: str | None = None
+        if shape.timing_kind in DEVICE_TIMING_KINDS and trace.decide(
+            "timing_kind", shape.timing_conf, th.flag
+        ):
+            timing_kind = TIMING_KIND_TO_TIMING[shape.timing_kind]
+        elif shape.timing_kind is not None or trace.decide(
+            "flag:has_timing", shape.flag("has_timing"), th.flag
+        ):
+            # A clock time, a sequence, "other", or a timer/device kind Jev was not sure about:
+            # whatever bound the request to time, it must not run now.
             return Escalate("timing", (), trace)
         if shape.condition_numeric:
             # "wenn es wärmer als 23 Grad ist": Round 2 asks for the sensor, the number and the
@@ -193,6 +232,13 @@ class Engine:
                         forced_all.update(v.name for v in shape.fired_verbs)
         if not shape.fired_verbs:
             return Escalate("no_intent", (), trace)
+        if timing_kind is not None:
+            if any(v.is_query for v in shape.fired_verbs):
+                trace.note("timing:query")
+                return Escalate("timing", (), trace)
+            if not duration_literals(prompt):
+                trace.note("timing:no_duration")
+                return Escalate("timing", (), trace)
 
         # Scope. Jev already compared the places in Round 1 (one room, a floor, several, the
         # whole home, or none). Code adds one lookup: a room or floor whose name or alias is in
@@ -365,6 +411,27 @@ class Engine:
                 trace.note("follow_up:added_previous_targets")
                 result = dataclasses.replace(result, actions=tuple(merged))
         return result
+
+    async def _decide_timer(self, prompt, shape, timers, trace, rounds) -> Resolution:
+        kind = TIMER_COMMANDS[shape.timing_kind]
+        literals = duration_literals(prompt) if kind == "start" else ()
+        labels = label_candidates(prompt, literals) if kind == "start" else ()
+        if kind == "start" and not literals:
+            trace.note("timing:no_duration")
+            return Escalate("timing", (), trace)
+        questions = timer_questions(kind, literals, labels, timers, self._pb)
+        round2 = None
+        if questions:
+            if rounds >= self._config.max_rounds:
+                trace.note("max_rounds_reached_before_round2")
+                return Escalate("round_budget", (), trace)
+            round2 = await self._client.ask(
+                timer_state(prompt, timers, literals, labels), questions
+            )
+            trace.record(2, round2)
+        return resolve_timer(
+            kind, shape.timing_conf, literals, labels, timers, round2, self._config, trace
+        )
 
     async def _device_round(
         self, home: HomeModel, prompt: str, entities: tuple[Entity, ...], trace: Trace

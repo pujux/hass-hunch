@@ -2,8 +2,25 @@ from hunch.client import DecisionBackendError, FakeDecisionClient
 from hunch.config import EngineConfig
 from hunch.engine import Engine
 from hunch.questions import ChoiceA, ChoiceQ, NoulA, ScoreA, ScoreQ
-from hunch.resolution import Action, Escalate, NeedsClarification, NeedsConfirmation, Resolved
+from hunch.resolution import (
+    Action,
+    ActiveTimer,
+    Escalate,
+    NeedsClarification,
+    NeedsConfirmation,
+    Resolved,
+)
 from hunch.round2 import NO_MATCH
+from hunch.timing import (
+    ALL_TIMERS,
+    CLOCK_TIME,
+    HOURS,
+    MINUTES,
+    NOT_DURATION,
+    TIMER_CANCEL,
+    TIMER_REMAINING,
+    TIMER_START,
+)
 
 
 def _scripted(round1: dict, round2: dict | None = None, device: dict | None = None):
@@ -989,3 +1006,147 @@ async def test_an_exception_that_names_a_room_removes_the_room_not_the_scope(hom
     assert {"light.living_main", "light.reading_lamp", "light.hallway", "light.office_desk"} <= ids
     assert "exception_place:kitchen" in r.trace.notes and "exception_area:kitchen" in r.trace.notes
     assert calls["n"] == 1  # no per-device exclusion Nouls needed
+
+
+async def test_timer_start_with_label_and_minutes(home, vocab, config):
+    client, calls = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {}), "flag:is_fragment": NoulA(0.95)},
+        {"duration:0": ChoiceA(MINUTES, 0.9, {}), "timer_label": ChoiceA("Nudeln", 0.85, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer für die Nudeln 8 Minuten")
+    assert isinstance(r, Resolved) and r.actions == () and r.timing is None
+    assert r.timer.kind == "start" and r.timer.duration_seconds == 480 and r.timer.label == "Nudeln"
+    assert calls["n"] == 2
+    assert "timing:seconds:480" in r.trace.notes
+
+
+async def test_timer_start_sums_hours_and_minutes_and_drops_hesitant_label(home, vocab, config):
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {})},
+        {
+            "duration:0": ChoiceA(HOURS, 0.9, {}),
+            "duration:1": ChoiceA(MINUTES, 0.8, {}),
+            "timer_label": ChoiceA("Braten", 0.4, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer Braten 1 Stunde 20")
+    assert isinstance(r, Resolved) and r.timer.duration_seconds == 4800 and r.timer.label is None
+    assert "timer_label:hesitant" in r.trace.notes and r.confidence == 0.8
+
+
+async def test_timer_start_without_a_number_hands_off(home, vocab, config):
+    client, calls = _scripted({"timing_kind": ChoiceA(TIMER_START, 0.9, {})})
+    r = await Engine(client, vocab, config).decide(home, "Stell einen Timer für die Nudeln")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    assert "timing:no_duration" in r.trace.notes
+
+
+async def test_timer_start_where_every_number_is_rejected_hands_off(home, vocab, config):
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {})},
+        {"duration:0": ChoiceA(NOT_DURATION, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer 15")
+    assert isinstance(r, Escalate) and r.reason == "timing"
+
+
+async def test_remaining_with_no_timer_needs_no_second_round(home, vocab, config):
+    client, calls = _scripted({"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})})
+    r = await Engine(client, vocab, config).decide(home, "wie lange noch?")
+    assert isinstance(r, Resolved) and r.timer.kind == "remaining" and r.timer.timers == ()
+    assert calls["n"] == 1 and "timer:none_active" in r.trace.notes
+
+
+async def test_remaining_of_a_single_timer_needs_no_question(home, vocab, config):
+    t = ActiveTimer("a", "Nudeln", 200, "timer")
+    client, calls = _scripted({"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})})
+    r = await Engine(client, vocab, config).decide(home, "wie lange noch?", timers=(t,))
+    assert isinstance(r, Resolved) and r.timer.kind == "remaining" and r.timer.timers == (t,)
+    assert calls["n"] == 1 and "timer:single" in r.trace.notes
+
+
+async def test_cancel_of_a_single_timer_still_asks_jev(home, vocab, config):
+    # "Timer abbrechen" while only a pending "Wandlampe aus" runs must not cancel it blindly
+    t = ActiveTimer("a", None, 200, "revert", "Wandlampe (Vorzimmer) ausschalten")
+    client, calls = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA("Wandlampe (Vorzimmer) ausschalten (3:20 left)", 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Lampe doch anlassen", timers=(t,))
+    assert isinstance(r, Resolved) and r.timer.kind == "cancel" and r.timer.timers == (t,)
+    assert calls["n"] == 2
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})}, {"timer_pick": ChoiceA(NO_MATCH, 0.9, {})}
+    )
+    r = await Engine(client, vocab, config).decide(home, "Nudeltimer abbrechen", timers=(t,))
+    assert isinstance(r, NeedsClarification) and r.question_key == "which_timer"
+
+
+async def test_two_timers_ask_jev_and_a_hesitant_cancel_clarifies(home, vocab, config):
+    a, b = ActiveTimer("a", "Nudeln", 200, "timer"), ActiveTimer("b", "Reis", 600, "timer")
+    client, calls = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA("Nudeln (3:20 left)", 0.5, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer abbrechen", timers=(a, b))
+    assert isinstance(r, NeedsClarification) and r.question_key == "which_timer"
+    assert r.timers == (a, b) and r.timer_kind == "cancel" and r.candidates == ()
+    assert calls["n"] == 2
+
+
+async def test_two_timers_sure_pick_and_all_timers(home, vocab, config):
+    a, b = (
+        ActiveTimer("a", "Nudeln", 200, "timer"),
+        ActiveTimer("b", None, 600, "delayed", "Wandlampe aus"),
+    )
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})},
+        {"timer_pick": ChoiceA("Wandlampe aus (10:00 left)", 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "wie lange noch bis die Lampe aus geht", timers=(a, b)
+    )
+    assert isinstance(r, Resolved) and r.timer.timers == (b,)
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA(ALL_TIMERS, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "alle Timer abbrechen", timers=(a, b))
+    assert isinstance(r, Resolved) and r.timer.timers == (a, b)
+
+
+async def test_hesitant_remaining_reads_all(home, vocab, config):
+    a, b = ActiveTimer("a", "Nudeln", 200, "timer"), ActiveTimer("b", "Reis", 600, "timer")
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})},
+        {"timer_pick": ChoiceA(NO_MATCH, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "wie lange noch?", timers=(a, b))
+    assert (
+        isinstance(r, Resolved) and r.timer.timers == (a, b) and "timer_pick:all" in r.trace.notes
+    )
+
+
+async def test_any_timing_hunch_cannot_do_hands_off_even_when_has_timing_is_low(
+    home, vocab, config
+):
+    client, calls = _scripted(
+        {
+            "timing_kind": ChoiceA(TIMER_START, 0.5, {}),
+            "flag:has_timing": NoulA(0.8),
+            "verb:turn_off": NoulA(0.9),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "Licht aus, Timer 8 Minuten")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    # a sure "at a clock time" with a low has_timing flag: still never executed now
+    client, calls = _scripted(
+        {
+            "timing_kind": ChoiceA(CLOCK_TIME, 0.9, {}),
+            "flag:has_timing": NoulA(0.2),
+            "verb:turn_off": NoulA(0.9),
+            "area:kitchen": NoulA(0.9),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "Licht in der Küche um 18 Uhr aus")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1

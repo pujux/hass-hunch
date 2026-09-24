@@ -8,9 +8,11 @@ from hunch.resolution import (
     Timing,
     Trace,
 )
+from hunch.round2 import NO_MATCH as ROUND2_NO_MATCH
 from hunch.timing import (
     ALL_TIMERS,
     NO_LABEL,
+    NO_MATCH,
     TIMING_KIND_OPTIONS,
     UNIT_OPTIONS,
     duration_literals,
@@ -19,6 +21,10 @@ from hunch.timing import (
     timer_options,
 )
 from hunch.vocabulary import DEFAULT_VOCABULARY, INVERSES
+
+
+def test_no_match_sentinel_matches_round2():
+    assert NO_MATCH == ROUND2_NO_MATCH
 
 
 def _texts(prompt):

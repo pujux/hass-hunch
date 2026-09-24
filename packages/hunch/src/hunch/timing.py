@@ -7,7 +7,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from hunch.resolution import ActiveTimer
+from hunch.config import EngineConfig
+from hunch.phrasing import EN, Phrasebook
+from hunch.questions import JSON, Answers, ChoiceQ, Question
+from hunch.resolution import (
+    ActiveTimer,
+    Escalate,
+    NeedsClarification,
+    Resolution,
+    Resolved,
+    TimerCommand,
+    Trace,
+)
 
 __all__ = [
     "NO_MATCH",
@@ -41,6 +52,11 @@ __all__ = [
     "label_candidates",
     "timer_option",
     "timer_options",
+    "duration_questions",
+    "timer_questions",
+    "timer_state",
+    "sum_duration",
+    "resolve_timer",
 ]
 
 # Round 1 `timing_kind` options (language-neutral ids; wording in the phrasebooks)
@@ -211,3 +227,131 @@ def timer_options(timers: tuple[ActiveTimer, ...]) -> tuple[str, ...]:
             n += 1
         out.append(label)
     return tuple(out)
+
+
+def duration_questions(literals, pb: Phrasebook = EN) -> dict[str, Question]:
+    return {
+        f"duration:{i}": ChoiceQ(
+            pb.duration_question.format(literal=lit.text),
+            UNIT_OPTIONS,
+            dict(pb.duration_descriptions),
+        )
+        for i, lit in enumerate(literals)
+    }
+
+
+def timer_questions(kind, literals, labels, timers, pb: Phrasebook = EN) -> dict[str, Question]:
+    qs: dict[str, Question] = {}
+    if kind == "start":
+        qs.update(duration_questions(literals, pb))
+        if labels:
+            qs["timer_label"] = ChoiceQ(
+                pb.timer_label_question,
+                (*labels, NO_LABEL),
+                {NO_LABEL: pb.special_descriptions["no_label"]},
+            )
+    elif timers and (kind == "cancel" or len(timers) > 1):
+        # cancelling always asks, even with one timer: a bare "Timer abbrechen" while only a
+        # pending "Wandlampe aus" runs must not cancel it blindly
+        qs["timer_pick"] = ChoiceQ(
+            pb.timer_pick_question,
+            (*timer_options(timers), ALL_TIMERS, NO_MATCH),
+            {
+                ALL_TIMERS: pb.special_descriptions["all_timers"],
+                NO_MATCH: pb.special_descriptions["no_timer_match"],
+            },
+        )
+    return qs
+
+
+def timer_state(prompt, timers, literals, labels) -> JSON:
+    state: dict[str, JSON] = {"request": prompt}
+    if timers:
+        state["timers"] = list(timer_options(timers))
+    if literals:
+        state["duration_literals"] = [lit.text for lit in literals]
+    if labels:
+        state["label_candidates"] = list(labels)
+    return state
+
+
+def sum_duration(
+    answers: Answers | None, literals, trace: Trace
+) -> tuple[float | None, list[float]]:
+    """Code multiplies: every literal Jev called a duration, times its unit. None when nothing
+    was a duration or the total is implausible (< 5 s, > 24 h)."""
+    total = 0.0
+    confs: list[float] = []
+    if answers is None:
+        return None, confs
+    for i, lit in enumerate(literals):
+        qid = f"duration:{i}"
+        if qid not in answers.answers:
+            continue
+        c = answers.choice(qid)
+        confs.append(c.confidence)
+        if c.choice in UNIT_FACTORS:
+            total += lit.value * UNIT_FACTORS[c.choice]
+    if total <= 0:
+        trace.note("timing:no_duration")
+        return None, confs
+    if not MIN_SECONDS <= total <= MAX_SECONDS:
+        trace.note("timing:out_of_bounds")
+        return None, confs
+    trace.note(f"timing:seconds:{total:g}")
+    return total, confs
+
+
+def resolve_timer(
+    kind, kind_conf, literals, labels, timers, round2, config: EngineConfig, trace
+) -> Resolution:
+    th = config.thresholds
+    contributions = [kind_conf]
+    if kind == "start":
+        seconds, confs = sum_duration(round2, literals, trace)
+        contributions.extend(confs)
+        if seconds is None:
+            return Escalate("timing", (), trace)
+        label = None
+        if round2 is not None and "timer_label" in round2.answers:
+            c = round2.choice("timer_label")
+            if c.choice != NO_LABEL and c.choice in labels:
+                if trace.decide("timer_label", c.confidence, th.target_choice_conf):
+                    label = c.choice
+                    contributions.append(c.confidence)
+                else:
+                    trace.note("timer_label:hesitant")
+        command = TimerCommand("start", seconds, label)
+    else:
+        if not timers:
+            trace.note("timer:none_active")
+            chosen: tuple = ()
+        elif kind == "remaining" and len(timers) == 1:
+            trace.note("timer:single")
+            chosen = tuple(timers)
+        else:
+            pick = round2.choice("timer_pick") if round2 is not None else None
+            by_label = dict(zip(timer_options(timers), timers, strict=True))
+            sure = pick is not None and trace.decide(
+                "timer_pick", pick.confidence, th.target_choice_conf
+            )
+            if pick is not None and pick.choice == ALL_TIMERS and sure:
+                chosen = tuple(timers)
+                contributions.append(pick.confidence)
+            elif pick is not None and pick.choice in by_label and sure:
+                chosen = (by_label[pick.choice],)
+                contributions.append(pick.confidence)
+            elif kind == "remaining":
+                trace.note("timer_pick:all")
+                chosen = tuple(timers)
+            else:
+                return NeedsClarification(
+                    "which_timer", (), trace, timers=tuple(timers), timer_kind="cancel"
+                )
+        command = TimerCommand(kind, timers=chosen)
+    confidence = min(contributions)
+    trace.decide("confidence", confidence, th.auto_execute)
+    if confidence >= th.confirm_band:
+        return Resolved((), None, confidence, trace, timer=command)
+    trace.note("timer:low_confidence")
+    return Escalate("low_confidence", (), trace)
