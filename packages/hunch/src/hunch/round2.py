@@ -13,6 +13,7 @@ from hunch.questions import JSON, ChoiceQ, NoulQ, Question, ScoreQ
 from hunch.resolution import PreviousTurn
 from hunch.round1 import Shape, previous_turn_state
 from hunch.scope import device_label, verbatim_areas
+from hunch.timing import DurationLiteral, duration_literals, duration_questions
 from hunch.vocabulary import ChoiceSpec, ScoreSpec
 
 # Sentinel option appended to every Round 2 Choice so the model can say nothing fits,
@@ -143,6 +144,10 @@ class Round2Plan:
     carried_verbs: tuple[str, ...] = ()
     # numeric condition: the literal numbers in the prompt Jev chooses the threshold from
     condition_literals: tuple[str, ...] = ()
+    # "für"/"in" timing on a device action: "for_duration" | "delayed" | None
+    timing_kind: str | None = None
+    # the duration literals in the prompt; Jev is asked which (if any) is a duration and its unit
+    duration_literals: tuple[DurationLiteral, ...] = ()
 
     def all_candidates(self) -> tuple[Entity, ...]:
         seen: dict[str, Entity] = {}
@@ -209,6 +214,7 @@ def plan_round2(
     carried_params: Mapping[str, Mapping[str, float | str]] | None = None,
     carried_verbs: frozenset[str] = frozenset(),
     prefer_pick: frozenset[str] = frozenset(),
+    timing_kind: str | None = None,
 ) -> Round2Plan:
     has_exception = shape.flag("has_exception") >= thresholds.flag and not shape.exception_areas
     # An exception ("außer der Stehlampe") only makes sense over a set: it implies collective
@@ -283,6 +289,7 @@ def plan_round2(
         # "wenn es unter 20 Grad hat": any entity of the judged kind whose value can be read;
         # Jev picks the sensor, the number and the direction, the executor compares.
         cond_literals = literals
+    dur = duration_literals(prompt) if timing_kind else ()
     numeric_ok = bool(cond_literals)
     if (
         (shape.condition_domain in DOMAIN_STATES or numeric_ok)
@@ -329,6 +336,8 @@ def plan_round2(
         dict(carried_params or {}),
         tuple(v.name for v in shape.fired_verbs if v.name in carried_verbs),
         cond_literals if cond else (),
+        timing_kind,
+        dur,
     )
 
 
@@ -369,6 +378,8 @@ def build_round2_state(
         state["scope"] = scope_description(home, shape)
     if previous is not None:
         state["previous"] = previous_turn_state(home, previous)
+    if plan.duration_literals:
+        state["duration_literals"] = [lit.text for lit in plan.duration_literals]
     state["candidates"] = [
         {
             "name": e.name,
@@ -484,4 +495,5 @@ def build_round2_questions(
                 states + (NO_MATCH,),
                 state_desc,
             )
+    qs.update(duration_questions(plan.duration_literals, pb))
     return qs

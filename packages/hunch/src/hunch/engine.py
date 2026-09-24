@@ -183,6 +183,10 @@ class Engine:
         if previous is not None and shape.follow_up:
             prev_targets = tuple(dict.fromkeys(e for a in previous.actions for e in a.targets))
             if shape.follow_up == MORE_SAME:
+                if timing_kind is not None:
+                    # A "für"/"in" this turn would replay the previous actions right now.
+                    trace.note("timing:replay")
+                    return Escalate("timing", (), trace)
                 trace.note("follow_up:replay")
                 return Resolved(previous.actions, None, shape.follow_up_conf, trace)
             if shape.follow_up == SAME_DEVICES:
@@ -315,6 +319,9 @@ class Engine:
                 trace.note(f"dropped:{verb.name}:scope")
             elif isinstance(result, DeviceRound):
                 if rounds >= self._config.max_rounds:
+                    if timing_kind is not None:
+                        trace.note("timing:clarify_before_duration")
+                        return Escalate("timing", (), trace)
                     return (
                         NeedsClarification("which_device", result.entities, trace, verb)
                         if self._config.supports_clarification
@@ -328,6 +335,9 @@ class Engine:
                     trace.note(f"dropped:{verb.name}:scope")
         if not per_verb:
             if pending_clarify is not None:
+                if timing_kind is not None:
+                    trace.note("timing:clarify_before_duration")
+                    return Escalate("timing", (), trace)
                 return NeedsClarification(
                     pending_clarify.question_key,
                     pending_clarify.candidates,
@@ -361,6 +371,7 @@ class Engine:
             carried,
             frozenset(carried_verbs),
             frozenset(prefer_pick),
+            timing_kind,
         )
         collective_queries = [
             v.name

@@ -8,12 +8,16 @@ from hunch.resolution import (
     Escalate,
     NeedsClarification,
     NeedsConfirmation,
+    PreviousTurn,
     Resolved,
+    Timing,
 )
 from hunch.round2 import NO_MATCH
 from hunch.timing import (
     ALL_TIMERS,
     CLOCK_TIME,
+    DELAYED,
+    FOR_DURATION,
     HOURS,
     MINUTES,
     NOT_DURATION,
@@ -1150,3 +1154,132 @@ async def test_any_timing_hunch_cannot_do_hands_off_even_when_has_timing_is_low(
     )
     r = await Engine(client, vocab, config).decide(home, "Licht in der Küche um 18 Uhr aus")
     assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+
+
+# ---- timed device actions: "für" (do now, undo after) / "in" (do later) -------------------
+
+R1_KITCHEN_ON = {
+    "verb:turn_on": NoulA(0.95),
+    "area:kitchen": NoulA(0.95),
+    "domain:light": NoulA(0.9),
+    "verb_primary": ChoiceA("turn_on", 0.95, {}),
+    "area_primary": ChoiceA("Kitchen", 0.95, {}),
+}
+
+
+async def test_for_duration_attaches_timing_to_the_plan(home, vocab, config):
+    client, calls = _scripted(
+        {
+            **R1_KITCHEN_ON,
+            "timing_kind": ChoiceA(FOR_DURATION, 0.9, {}),
+            "flag:has_timing": NoulA(0.9),
+        },
+        {
+            "target:turn_on": ChoiceA("Kitchen ceiling", 0.9, {}),
+            "duration:0": ChoiceA(MINUTES, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "Kitchen ceiling on for 15 minutes")
+    assert isinstance(r, Resolved | NeedsConfirmation)
+    assert r.timing == Timing("for_duration", 900) and r.actions[0].verb.name == "turn_on"
+    assert calls["n"] == 2
+
+
+async def test_delayed_turn_off_of_a_set(home, vocab, config):
+    client, _ = _scripted(
+        {
+            "verb:turn_off": NoulA(0.95),
+            "area:kitchen": NoulA(0.95),
+            "domain:light": NoulA(0.9),
+            "flag:collective": NoulA(0.9),
+            "verb_primary": ChoiceA("turn_off", 0.95, {}),
+            "area_primary": ChoiceA("Kitchen", 0.95, {}),
+            "timing_kind": ChoiceA(DELAYED, 0.9, {}),
+        },
+        {"duration:0": ChoiceA(MINUTES, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "turn the kitchen lights off in ten minutes"
+    )
+    assert isinstance(r, Resolved) and r.timing == Timing("delayed", 600)
+    assert {e.entity_id for e in r.actions[0].targets} == {
+        "light.kitchen_ceiling",
+        "light.kitchen_counter",
+    }
+
+
+async def test_for_duration_on_a_verb_without_inverse_hands_off(home, vocab, config):
+    client, _ = _scripted(
+        {
+            "verb:set_brightness": NoulA(0.95),
+            "area:kitchen": NoulA(0.95),
+            "domain:light": NoulA(0.9),
+            "verb_primary": ChoiceA("set_brightness", 0.95, {}),
+            "area_primary": ChoiceA("Kitchen", 0.95, {}),
+            "timing_kind": ChoiceA(FOR_DURATION, 0.9, {}),
+        },
+        {
+            "target:set_brightness": ChoiceA("Kitchen ceiling", 0.9, {}),
+            "param_value:set_brightness": ChoiceA("50%", 0.9, {}),
+            "duration:0": ChoiceA(NOT_DURATION, 0.9, {}),
+            "duration:1": ChoiceA(MINUTES, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "Kitchen ceiling to 50% for 10 minutes")
+    assert isinstance(r, Escalate) and r.reason == "timing"
+    assert "timing:not_invertible:set_brightness" in r.trace.notes
+
+
+async def test_timed_query_and_missing_number_hand_off_before_round_two(home, vocab, config):
+    client, calls = _scripted(
+        {
+            "verb:query_state": NoulA(0.95),
+            "area:kitchen": NoulA(0.95),
+            "timing_kind": ChoiceA(DELAYED, 0.9, {}),
+        }
+    )
+    r = await Engine(client, vocab, config).decide(home, "how warm is the kitchen in ten minutes")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    client, calls = _scripted({**R1_KITCHEN_ON, "timing_kind": ChoiceA(DELAYED, 0.9, {})})
+    r = await Engine(client, vocab, config).decide(home, "Kitchen ceiling on later")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    assert "timing:no_duration" in r.trace.notes
+
+
+async def test_timing_with_a_condition_hands_off(home, vocab, config):
+    client, _ = _scripted(
+        {
+            **R1_KITCHEN_ON,
+            "timing_kind": ChoiceA(DELAYED, 0.9, {}),
+            "flag:has_condition": NoulA(0.9),
+            "condition_domain": ChoiceA("switch", 0.9, {}),
+        },
+        {
+            "target:turn_on": ChoiceA("Kitchen ceiling", 0.9, {}),
+            "duration:0": ChoiceA(MINUTES, 0.9, {}),
+            "cond_subject": ChoiceA("Fridge", 0.9, {}),
+            "cond_state": ChoiceA("off", 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(
+        home, "Kitchen ceiling on in 5 minutes if the fridge is off"
+    )
+    assert (
+        isinstance(r, Escalate)
+        and r.reason == "timing"
+        and "timing:with_condition" in r.trace.notes
+    )
+
+
+async def test_more_same_replay_with_a_delay_hands_off(home, vocab, config):
+    from hunch.round1 import MORE_SAME
+
+    prev = PreviousTurn(
+        "Kitchen ceiling on",
+        (Action(vocab.by_name("turn_on"), (home.entity_by_id("light.kitchen_ceiling"),), {}),),
+    )
+    client, calls = _scripted(
+        {"follow_up": ChoiceA(MORE_SAME, 0.9, {}), "timing_kind": ChoiceA(DELAYED, 0.9, {})}
+    )
+    r = await Engine(client, vocab, config).decide(home, "and again in ten minutes", prev)
+    assert isinstance(r, Escalate) and r.reason == "timing" and "timing:replay" in r.trace.notes

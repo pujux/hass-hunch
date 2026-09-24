@@ -16,11 +16,13 @@ from hunch.resolution import (
     NeedsConfirmation,
     Resolution,
     Resolved,
+    Timing,
     Trace,
 )
 from hunch.round1 import Shape
 from hunch.round2 import ABOVE, ALL_IN_ROOM, BELOW, NO_MATCH, Round2Plan, parse_number
-from hunch.vocabulary import ChoiceSpec, Risk, ScoreSpec, Verb
+from hunch.timing import sum_duration
+from hunch.vocabulary import INVERSES, ChoiceSpec, Risk, ScoreSpec, Verb
 
 
 def score_to_value(spec: ScoreSpec, score: float) -> float:
@@ -372,6 +374,26 @@ def resolve(
             else:
                 condition = Condition(opt.entities[0], state.choice)
 
+    timing: Timing | None = None
+    if plan.timing_kind is not None:
+        seconds, confs = sum_duration(round2, plan.duration_literals, trace)
+        contributions.extend(confs)
+        contributions.append(shape.timing_conf)  # the kind judgment carries like a verb's
+        if seconds is None:
+            return Escalate("timing", tuple(actions), trace)
+        if condition is not None:
+            trace.note("timing:with_condition")
+            return Escalate("timing", tuple(actions), trace)
+        if plan.timing_kind == "for_duration":
+            verbs = [a.verb for a in actions]
+            if pending_clarify_verb is not None:
+                verbs.append(pending_clarify_verb)  # a clarified pick would execute with it
+            for v in verbs:
+                if v.name not in INVERSES:
+                    trace.note(f"timing:not_invertible:{v.name}")
+                    return Escalate("timing", tuple(actions), trace)
+        timing = Timing(plan.timing_kind, seconds)
+
     if exception_unresolved:
         return Escalate("exception", tuple(actions), trace)
     if relative_change:
@@ -389,7 +411,12 @@ def resolve(
         if pending_clarify:
             # Nothing resolved and one target Choice spread its mass over real options: ask.
             return NeedsClarification(
-                "which_device", pending_clarify, trace, pending_clarify_verb, pending_clarify_params
+                "which_device",
+                pending_clarify,
+                trace,
+                pending_clarify_verb,
+                pending_clarify_params,
+                timing,
             )
         return Escalate("low_confidence", (), trace)
     if pending_clarify:
@@ -399,9 +426,9 @@ def resolve(
     trace.decide("confidence", confidence, th.auto_execute)
 
     if reasons:
-        return NeedsConfirmation(tuple(actions), condition, reasons[0], trace)
+        return NeedsConfirmation(tuple(actions), condition, reasons[0], trace, timing)
     if confidence >= th.auto_execute:
-        return Resolved(tuple(actions), condition, confidence, trace)
+        return Resolved(tuple(actions), condition, confidence, trace, timing)
     if confidence >= th.confirm_band:
-        return NeedsConfirmation(tuple(actions), condition, "confidence", trace)
+        return NeedsConfirmation(tuple(actions), condition, "confidence", trace, timing)
     return Escalate("low_confidence", tuple(actions), trace)
