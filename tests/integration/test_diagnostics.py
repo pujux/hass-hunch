@@ -20,7 +20,7 @@ async def test_diagnostics_have_counts_and_traces_but_no_key(hass: HomeAssistant
     assert diag["traces"][0]["prompt"] == "x"
 
 
-async def test_diagnostics_list_active_timers(hass: HomeAssistant, setup_hunch):
+async def test_diagnostics_list_active_timers(hass: HomeAssistant, setup_hunch, freezer):
     client, calls = scripted({})
     entry, _ = await setup_hunch(client, calls)
     await entry.runtime_data.timers.async_add(
@@ -41,8 +41,7 @@ async def test_diagnostics_list_active_timers(hass: HomeAssistant, setup_hunch):
         )
     )
     diag = await async_get_config_entry_diagnostics(hass, entry)
-    assert (
-        diag["timers"][0]["label"] == "Nudeln"
-        and 479 <= diag["timers"][0]["remaining_seconds"] <= 480
-    )
+    assert diag["timers"] == [
+        {"kind": "timer", "label": "Nudeln", "description": None, "remaining_seconds": 480}
+    ]
     await entry.runtime_data.timers.async_stop()

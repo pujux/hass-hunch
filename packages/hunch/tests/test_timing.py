@@ -1,4 +1,5 @@
 from hunch.phrasing import DE, EN
+from hunch.questions import Answers, ChoiceA
 from hunch.resolution import (
     ActiveTimer,
     NeedsClarification,
@@ -11,12 +12,17 @@ from hunch.resolution import (
 from hunch.round2 import NO_MATCH as ROUND2_NO_MATCH
 from hunch.timing import (
     ALL_TIMERS,
+    HOURS,
+    MINUTES,
     NO_LABEL,
     NO_MATCH,
+    NOT_DURATION,
+    SECONDS,
     TIMING_KIND_OPTIONS,
     UNIT_OPTIONS,
     duration_literals,
     label_candidates,
+    sum_duration,
     timer_option,
     timer_options,
 )
@@ -84,8 +90,6 @@ def test_articles_count_only_with_a_unit():
 
 
 def test_spoken_units_are_looked_up_bare_numbers_are_not():
-    from hunch.timing import HOURS, MINUTES, SECONDS
-
     lits = duration_literals("Timer 1 Stunde 20")
     assert [lit.unit for lit in lits] == [HOURS, None]
     assert duration_literals("Eine Viertelstunde Timer")[0].unit == HOURS
@@ -114,6 +118,62 @@ def test_label_candidates_drop_timer_words_numbers_units_articles_and_literal_pa
     lits = duration_literals("Timer eine halbe Stunde")
     assert label_candidates("Timer eine halbe Stunde", lits) == ()
     assert label_candidates("Timer Nudeln 8", duration_literals("Timer Nudeln 8")) == ("Nudeln",)
+    # case-folded dedupe, first spelling wins
+    prompt = "Timer Nudeln nudeln 8"
+    assert label_candidates(prompt, duration_literals(prompt)) == ("Nudeln",)
+
+
+def _units(*choices):
+    """Round 2 answers for duration:0, duration:1, … (a choice or (choice, conf, probs))."""
+    out = {}
+    for i, c in enumerate(choices):
+        choice, conf, probs = c if isinstance(c, tuple) else (c, 0.9, {})
+        out[f"duration:{i}"] = ChoiceA(choice, conf, probs)
+    return Answers(model="fake", answers=out, input_tokens=None)
+
+
+def test_sum_duration_multiplies_spoken_or_chosen_units_and_adds():
+    trace = Trace()
+    lits = duration_literals("Timer 1 Stunde 20")  # spoken hours, bare 20
+    seconds, confs = sum_duration(_units(MINUTES, (MINUTES, 0.8, {})), lits, trace)
+    # the spoken "Stunde" wins over Jev's "minutes"; the bare 20 takes Jev's unit
+    assert seconds == 4800 and "timing:seconds:4800" in trace.notes
+    # no probabilities reported: each literal counts with Jev's confidence
+    assert confs == [0.9, 0.8]
+    trace = Trace()
+    lits = duration_literals("Rollo auf 20% für 10 Minuten")
+    seconds, _ = sum_duration(_units(NOT_DURATION, MINUTES), lits, trace)
+    assert seconds == 600  # the 20 (a percentage) is not a duration and adds nothing
+    lits = duration_literals("Timer 90")
+    assert sum_duration(_units(SECONDS), lits, Trace())[0] == 90
+    assert sum_duration(_units(HOURS), duration_literals("Timer 2"), Trace())[0] == 7200
+
+
+def test_sum_duration_spoken_unit_confidence_is_mass_on_the_units():
+    lits = duration_literals("Timer eine halbe Stunde")
+    probs = {MINUTES: 0.5, HOURS: 0.3, NOT_DURATION: 0.2}
+    seconds, confs = sum_duration(_units((MINUTES, 0.3, probs)), lits, Trace())
+    assert seconds == 1800 and confs == [0.8]
+
+
+def test_sum_duration_hands_off_nothing_and_out_of_bounds():
+    trace = Trace()
+    assert sum_duration(None, duration_literals("Timer 8"), trace) == (None, [])
+    trace = Trace()
+    seconds, confs = sum_duration(_units(NOT_DURATION), duration_literals("Timer 15"), trace)
+    assert seconds is None and confs == [0.9] and "timing:no_duration" in trace.notes
+    trace = Trace()
+    lits = duration_literals("Timer 3 Sekunden")
+    assert sum_duration(_units(SECONDS), lits, trace)[0] is None
+    assert "timing:out_of_bounds" in trace.notes
+    trace = Trace()
+    lits = duration_literals("Timer 25 Stunden")
+    assert sum_duration(_units(HOURS), lits, trace)[0] is None
+    assert "timing:out_of_bounds" in trace.notes
+    # the bounds themselves are allowed: 5 s and 24 h
+    assert sum_duration(_units(SECONDS), duration_literals("Timer 5 Sekunden"), Trace())[0] == 5
+    lits = duration_literals("Timer 24 Stunden")
+    assert sum_duration(_units(HOURS), lits, Trace())[0] == 24 * 3600
 
 
 def test_timer_option_shows_name_and_remaining_and_dedupes():
@@ -137,13 +197,6 @@ def test_inverses_only_for_reversible_verbs_and_never_unlock_a_door_later():
     assert "set_brightness" not in INVERSES and "activate" not in INVERSES
     assert INVERSES["turn_on"] == "turn_off" and INVERSES["close"] == "open"
     assert INVERSES["unlock"] == "lock" and "lock" not in INVERSES
-
-
-def test_timing_no_match_is_round2_no_match():
-    from hunch.round2 import NO_MATCH as R2
-    from hunch.timing import NO_MATCH
-
-    assert NO_MATCH == R2
 
 
 def test_phrasebooks_describe_every_option():

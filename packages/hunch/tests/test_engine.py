@@ -21,6 +21,7 @@ from hunch.timing import (
     HOURS,
     MINUTES,
     NOT_DURATION,
+    SECONDS,
     TIMER_CANCEL,
     TIMER_REMAINING,
     TIMER_START,
@@ -1013,7 +1014,11 @@ async def test_an_exception_that_names_a_room_removes_the_room_not_the_scope(hom
     assert calls["n"] == 1  # no per-device exclusion Nouls needed
 
 
-async def test_timer_start_with_label_and_minutes(home, vocab, config):
+async def test_timer_start_with_label_and_minutes_and_fragment_flag_still_reaches_the_timer_path(
+    home, vocab, config
+):
+    # "Timer für die Nudeln 8 Minuten" names no device: is_fragment fires high, and the timer
+    # path must still come before the fragment rule's "incomplete"
     client, calls = _scripted(
         {"timing_kind": ChoiceA(TIMER_START, 0.9, {}), "flag:is_fragment": NoulA(0.95)},
         {"duration:0": ChoiceA(MINUTES, 0.9, {}), "timer_label": ChoiceA("Nudeln", 0.85, {})},
@@ -1023,6 +1028,22 @@ async def test_timer_start_with_label_and_minutes(home, vocab, config):
     assert r.timer.kind == "start" and r.timer.duration_seconds == 480 and r.timer.label == "Nudeln"
     assert calls["n"] == 2
     assert "timing:seconds:480" in r.trace.notes
+    # Round 2 sees the literals and the label candidates code offered
+    state, qs = client.calls[1]
+    assert state["duration_literals"] == ["8 Minuten"]
+    assert state["label_candidates"] == ["für", "die", "Nudeln"]
+    assert "timers" not in state
+    assert set(qs) == {"duration:0", "timer_label"}
+
+
+async def test_timer_start_without_round_budget_hands_off(home, vocab):
+    cfg = EngineConfig(model="jev-1.13.0", max_rounds=1)
+    client, calls = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {})}, {"duration:0": ChoiceA(MINUTES, 0.9, {})}
+    )
+    r = await Engine(client, vocab, cfg).decide(home, "Timer 8 Minuten")
+    assert isinstance(r, Escalate) and r.reason == "round_budget" and calls["n"] == 1
+    assert "max_rounds_reached_before_round2" in r.trace.notes
 
 
 async def test_spoken_unit_wins_over_jevs_unit_answer(home, vocab, config):
@@ -1056,6 +1077,7 @@ async def test_a_split_unit_answer_on_a_spoken_unit_does_not_sink_the_timer(home
     )
     r = await Engine(client, vocab, config).decide(home, "Timer 30")
     assert isinstance(r, Escalate) and r.reason == "low_confidence"
+    assert "timer:low_confidence" in r.trace.notes
 
 
 async def test_cancel_with_one_timer_offers_no_all_timers_option(home, vocab, config):
@@ -1104,6 +1126,16 @@ async def test_timer_start_where_every_number_is_rejected_hands_off(home, vocab,
     assert isinstance(r, Escalate) and r.reason == "timing"
 
 
+async def test_out_of_bounds_duration_hands_off(home, vocab, config):
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {})},
+        {"duration:0": ChoiceA(SECONDS, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer 3 Sekunden")
+    assert isinstance(r, Escalate) and r.reason == "timing"
+    assert "timing:out_of_bounds" in r.trace.notes
+
+
 async def test_remaining_with_no_timer_needs_no_second_round(home, vocab, config):
     client, calls = _scripted({"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})})
     r = await Engine(client, vocab, config).decide(home, "wie lange noch?")
@@ -1146,6 +1178,13 @@ async def test_two_timers_ask_jev_and_a_hesitant_cancel_clarifies(home, vocab, c
     assert isinstance(r, NeedsClarification) and r.question_key == "which_timer"
     assert r.timers == (a, b) and r.timer_kind == "cancel" and r.candidates == ()
     assert calls["n"] == 2
+    # Round 2 sees the running timers as options, and no literals or labels for a cancel
+    state, qs = client.calls[1]
+    assert state == {
+        "request": "Timer abbrechen",
+        "timers": ["Nudeln (3:20 left)", "Reis (10:00 left)"],
+    }
+    assert set(qs) == {"timer_pick"}
 
 
 async def test_hesitant_cancel_hands_off_when_the_caller_cannot_ask_back(home, vocab):
@@ -1218,6 +1257,25 @@ async def test_any_timing_hunch_cannot_do_hands_off_even_when_has_timing_is_low(
     assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
 
 
+async def test_a_hesitant_device_timing_kind_never_executes_now(home, vocab, config):
+    # "für" judged at 0.5 and has_timing low: the hesitant kind alone must stop the turn
+    client, calls = _scripted(
+        {
+            **R1_KITCHEN_ON,
+            "timing_kind": ChoiceA(FOR_DURATION, 0.5, {}),
+            "flag:has_timing": NoulA(0.2),
+        },
+        {
+            "target:turn_on": ChoiceA("Kitchen ceiling", 0.9, {}),
+            "duration:0": ChoiceA(MINUTES, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "Kitchen ceiling on for 15 minutes")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    assert r.partial == ()
+    assert "timing_kind:" + FOR_DURATION in r.trace.notes
+
+
 # ---- timed device actions: "für" (do now, undo after) / "in" (do later) -------------------
 
 R1_KITCHEN_ON = {
@@ -1242,9 +1300,94 @@ async def test_for_duration_attaches_timing_to_the_plan(home, vocab, config):
         },
     )
     r = await Engine(client, vocab, config).decide(home, "Kitchen ceiling on for 15 minutes")
-    assert isinstance(r, Resolved | NeedsConfirmation)
+    assert isinstance(r, Resolved)
     assert r.timing == Timing("for_duration", 900) and r.actions[0].verb.name == "turn_on"
     assert calls["n"] == 2
+    # Round 2 sees the duration literal and is asked for its unit
+    state, qs = client.calls[1]
+    assert "duration:0" in qs and state["duration_literals"] == ["15 minutes"]
+
+
+async def test_timed_request_that_would_clarify_before_round_two_hands_off(home, vocab):
+    # over the cap with no device round: without timing this asks "which area?" (see
+    # test_clarify_when_scope_too_wide); a pick made then would run without its "für"
+    cfg = EngineConfig(model="jev-1.13.0", scope_cap=2, device_round=False)
+    client, calls = _scripted(
+        {
+            "verb:turn_on": NoulA(0.9),
+            "flag:collective": NoulA(0.1),
+            "domain:light": NoulA(0.3),
+            "timing_kind": ChoiceA(FOR_DURATION, 0.9, {}),
+        }
+    )
+    r = await Engine(client, vocab, cfg).decide(home, "turn on the light for 15 minutes")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    assert "timing:clarify_before_duration" in r.trace.notes
+
+
+async def test_timed_request_out_of_rounds_before_a_device_round_hands_off(home, vocab):
+    # three verbs over the cap, each needing a device round: the third finds the budget spent;
+    # without timing it would ask "which device?" and lose the "in 15 minutes"
+    cfg = EngineConfig(model="jev-1.13.0", scope_cap=2, device_round=True, max_rounds=3)
+    client, calls = _scripted(
+        {
+            "verb:turn_on": NoulA(0.9),
+            "verb:turn_off": NoulA(0.9),
+            "verb:set_brightness": NoulA(0.9),
+            "flag:collective": NoulA(0.1),
+            "domain:light": NoulA(0.3),
+            "timing_kind": ChoiceA(DELAYED, 0.9, {}),
+        }
+    )
+    r = await Engine(client, vocab, cfg).decide(home, "do the lights in 15 minutes")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 3
+    assert "timing:clarify_before_duration" in r.trace.notes
+
+
+R2_WEAK_KITCHEN_PICK = {
+    "Kitchen ceiling": 0.5,
+    "Counter strip": 0.45,
+    NO_MATCH: 0.05,
+}
+
+
+async def test_post_round_two_clarification_carries_timing(home, vocab, config):
+    client, calls = _scripted(
+        {**R1_KITCHEN_ON, "timing_kind": ChoiceA(DELAYED, 0.9, {})},
+        {
+            "target:turn_on": ChoiceA("Kitchen ceiling", 0.45, R2_WEAK_KITCHEN_PICK),
+            "duration:0": ChoiceA(MINUTES, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "Kitchen light on in 10 minutes")
+    assert isinstance(r, NeedsClarification) and r.question_key == "which_device"
+    assert r.timing == Timing("delayed", 600) and r.verb.name == "turn_on"
+    assert [e.entity_id for e in r.candidates] == ["light.kitchen_ceiling", "light.kitchen_counter"]
+    assert calls["n"] == 2
+
+
+async def test_for_duration_clarified_verb_without_inverse_hands_off(home, vocab, config):
+    # the pick would execute set_brightness "for 10 minutes" with nothing to undo it
+    client, _ = _scripted(
+        {
+            "verb:set_brightness": NoulA(0.95),
+            "area:kitchen": NoulA(0.95),
+            "domain:light": NoulA(0.9),
+            "verb_primary": ChoiceA("set_brightness", 0.95, {}),
+            "area_primary": ChoiceA("Kitchen", 0.95, {}),
+            "timing_kind": ChoiceA(FOR_DURATION, 0.9, {}),
+        },
+        {
+            "target:set_brightness": ChoiceA("Kitchen ceiling", 0.45, R2_WEAK_KITCHEN_PICK),
+            "param_value:set_brightness": ChoiceA("50%", 0.9, {}),
+            "duration:0": ChoiceA(NOT_DURATION, 0.9, {}),
+            "duration:1": ChoiceA(MINUTES, 0.9, {}),
+        },
+    )
+    r = await Engine(client, vocab, config).decide(home, "Kitchen light to 50% for 10 minutes")
+    assert isinstance(r, Escalate) and r.reason == "timing"
+    assert "clarify:weak_pick:set_brightness" in r.trace.notes
+    assert "timing:not_invertible:set_brightness" in r.trace.notes
 
 
 async def test_delayed_turn_off_of_a_set(home, vocab, config):
@@ -1302,6 +1445,7 @@ async def test_timed_query_and_missing_number_hand_off_before_round_two(home, vo
     )
     r = await Engine(client, vocab, config).decide(home, "how warm is the kitchen in ten minutes")
     assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    assert "timing:query" in r.trace.notes
     client, calls = _scripted({**R1_KITCHEN_ON, "timing_kind": ChoiceA(DELAYED, 0.9, {})})
     r = await Engine(client, vocab, config).decide(home, "Kitchen ceiling on later")
     assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
