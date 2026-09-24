@@ -26,6 +26,8 @@ from custom_components.hunch.timers import COMMANDED_STATE, already_in_state, is
         ("turn_on", ("unknown", None), False),
         ("turn_off", ("off", None), True),
         ("turn_off", ("heat", None), False),
+        ("turn_on", ("standby", None), False),  # a media player in standby is not on
+        ("turn_off", ("standby", None), True),  # ... and "aus" must not switch it on later
         ("media_pause", ("paused", None), True),
         ("media_play", ("paused", None), False),
         ("set_brightness", ("on", None), False),  # not in the table: counts as a change

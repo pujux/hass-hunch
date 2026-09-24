@@ -98,8 +98,9 @@ def stored_actions(actions: Sequence[Action]) -> tuple[StoredAction, ...]:
 # before the request is left alone afterwards: "Licht im Bad für 10 Minuten aus" on a light that
 # is already off must not switch it on 10 minutes later. A code table, read against hass.states.
 # `turn_on` also serves thermostats (`heat`, `cool`, `auto`) and media players (`playing`,
-# `idle`, …), so it is already done in any state but these; a cover that reports its position
-# is fully open only at 100 and fully closed only at 0 (a blind at 50% reports `open`).
+# `idle`, …), so it is already done in any state but these; `turn_off` is already done on `off`
+# and on a media player's `standby`; a cover that reports its position is fully open only at
+# 100 and fully closed only at 0 (a blind at 50% reports `open`).
 COMMANDED_STATE = {
     "turn_on": "on",
     "turn_off": "off",
@@ -109,7 +110,8 @@ COMMANDED_STATE = {
     "media_play": "playing",
     "media_pause": "paused",
 }
-NOT_ON_STATES = frozenset({"off", "unavailable", "unknown"})
+NOT_ON_STATES = frozenset({"off", "standby", "unavailable", "unknown"})
+OFF_STATES = frozenset({"off", "standby"})
 FULL_POSITION = {"open": 100, "close": 0}
 
 # A target's state before the request: (state, `current_position` or None); None if it has none.
@@ -130,6 +132,8 @@ def is_already_done(verb: str, prior: PriorState | None) -> bool:
         return position == FULL_POSITION[verb]
     if verb == "turn_on":
         return state not in NOT_ON_STATES
+    if verb == "turn_off":
+        return state in OFF_STATES
     return state == COMMANDED_STATE[verb]
 
 

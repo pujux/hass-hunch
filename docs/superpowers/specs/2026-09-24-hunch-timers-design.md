@@ -494,8 +494,9 @@ Golden: the rows of §6 pass against `julian.json` with `--phrasebook en` (the t
    a fraction with an article before its unit is one literal ("half an hour" 0.5 h, "a quarter
    of an hour" 0.25 h); a bare fraction after an article is none ("an hour and a half" reads as
    1 h — a known gap, never a wrong 1.5 h; "one and a half hours" is a known gap too: it reads
-   as a bare "one" plus "half hours", 30 min plus whatever unit Jev gives the "one"); number words run to ninety (siebzig … neunzig,
-   seventy … ninety, compounds) and "zweieinhalb" … "neuneinhalb".
+   as a bare "one" plus "half hours", 30 min plus whatever unit Jev gives the "one"); number
+   words run to ninety (siebzig … neunzig, seventy … ninety, compounds) and "zweieinhalb" …
+   "neuneinhalb".
 2. **`all timers` only for two or more timers.** Supersedes §4.3 "plus `all timers`": with one
    timer, "that timer" and "all timers" name the same set and split Jev's mass, so neither the
    `timer_pick` options nor its question text (`{all_hint}`) mention it. The integration's

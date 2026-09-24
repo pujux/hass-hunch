@@ -1501,6 +1501,34 @@ async def test_for_duration_on_a_thermostat_that_already_heats_stores_no_revert(
     assert entry.runtime_data.timers.active() == ()
 
 
+async def test_for_duration_on_a_half_open_blind_opens_it_and_closes_it_later(
+    hass: HomeAssistant, setup_hunch
+):
+    await _home(hass)
+    rollo = await _cover(hass)
+    # a blind at 50% reports "open"; its position says it is not fully open yet
+    hass.states.async_set(rollo, "open", {"device_class": "blind", "current_position": 50})
+    client, calls = scripted(
+        {
+            "verb:open": NoulA(0.95),
+            "domain:cover": NoulA(0.95),
+            "area:kuche": NoulA(0.99),
+            "verb_primary": ChoiceA("open", 0.95, {}),
+            "area_primary": ChoiceA("Küche", 0.99, {}),
+            "timing_kind": ChoiceA(FOR_DURATION, 0.95, {}),
+        },
+        {"duration:0": ChoiceA(MINUTES, 0.95, {})},
+    )
+    entry, _ = await setup_hunch(client, calls)
+    opened = async_mock_service(hass, "cover", "open_cover")
+    await _say(hass, "Rollo für 10 Minuten auf")
+    assert len(opened) == 1 and opened[0].data["entity_id"] == [rollo]
+    (timer,) = entry.runtime_data.timers.active()
+    assert timer.kind == "revert" and timer.duration_seconds == 600
+    assert timer.actions == (StoredAction("close", (rollo,), {}),)
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_a_timed_request_handed_off_still_clears_the_turn_before_it(
     hass: HomeAssistant, setup_hunch
 ):

@@ -312,11 +312,10 @@ class HunchConversationEntity(conversation.ConversationEntity):
     ) -> conversation.ConversationResult:
         """Step 3: check the condition, then execute or read — or, with `timing`, schedule
         ("in 10 Minuten") or execute and schedule the undo ("für 15 Minuten"). A timed turn is
-        never remembered for follow-ups, and it clears the turn before it: "und im Esszimmer"
-        after "in 10 Minuten aus" must not run at once (spec §3)."""
+        never remembered for follow-ups. The turn before it was already cleared when the timed
+        request was decided (`_async_handle_message`); a confirmed or clarified timed reply only
+        runs the pending turn that decision left, so nothing was remembered in between."""
         lang = turn.lang
-        if timing is not None:
-            self._forget(turn)
         areas = self._area_names(home)
         executor = Executor(self.hass)
         if condition is not None:
