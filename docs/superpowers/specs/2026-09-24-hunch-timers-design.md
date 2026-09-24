@@ -47,7 +47,11 @@ Non-goals (v1)
 - Timed queries ("wie warm ist es in 10 Minuten") and timed conditional actions ("in 10 Minuten
   aus, wenn …") → `Escalate("timing")`.
 - Restoring arbitrary previous state after "für": only invertible verbs; "Rollo auf 20% für
-  10 Minuten" → `Escalate("timing")`.
+  10 Minuten" → `Escalate("timing")`. The revert ignores the device's state before the request
+  ("Licht für 15 Minuten an" on a lamp that is already on still turns it off afterwards).
+- A clock time hidden inside a duration request ("um 18 Uhr für 10 Minuten") is not detected
+  separately; Jev's `timing_kind` decides which reading wins.
+- A second "für" on the same device stacks a second revert timer; nothing merges them.
 
 ## 3. Decisions taken in brainstorming (do not re-ask)
 
@@ -56,8 +60,17 @@ Non-goals (v1)
   options flow when one is set. Without a script only the event fires.
 - Timers that expired while HA was down fire immediately on startup (`overdue: true`).
 - Unnamed timers are named after their duration in responses ("8-Minuten-Timer").
-- "für" only for verbs with an inverse; the inverse table is code.
+- "für" only for verbs with an inverse; the inverse table is code. `lock` has no inverse:
+  "Tür für 10 Minuten absperren" would unlock a door unattended later, so it hands off;
+  `unlock → lock` ("für 10 Minuten aufsperren", locks again) is kept.
 - Engine result types grow fields; no new `Resolution` variant.
+- Timing turns (timer commands, "für", "in") are not remembered for follow-ups: "und im
+  Esszimmer" after "Licht in der Küche in 10 Minuten aus" must not run immediately.
+- Scheduled actions run with the requesting user's context (`user_id` stored on the timer), so
+  HA's permission checks apply as they did to the immediate half.
+- Cancel always asks Jev which timer is meant when any timer runs (a single pending revert must
+  not be cancelled by a bare "Timer abbrechen" meant for a kitchen timer that already rang);
+  reading the remaining time never asks when only one timer runs.
 
 ## 4. Engine changes (`packages/hunch`, version 0.6.0)
 
@@ -130,8 +143,12 @@ Engine gating, in this order, right after `interpret_round1`:
    names no device and no room and is not a fragment.
 2. `timing_kind ∈ {for_duration, delayed}` and conf ≥ `th.flag` → remember the kind; the
    request continues down the normal path with timing attached (§4.4).
-3. Otherwise, if `flag:has_timing` fires (≥ `th.flag`) → `Escalate("timing")` as today
-   (clock time, sequences, "other", or a hesitant kind).
+3. Otherwise, if `flag:has_timing` fires (≥ `th.flag`) **or** `timing_kind` is any non-`none`
+   pick (a clock time, a sequence, "other", or a hesitant timer/device kind) →
+   `Escalate("timing")`. A request Jev bound to time in any way it cannot carry out never
+   executes now ("Licht um 18 Uhr aus" must not turn the light off immediately).
+4. A `MORE_SAME` follow-up replay with a device timing kind pending → `Escalate("timing")`
+   (the replay path returns before Round 2 and would run the previous actions now).
 
 ### 4.3 The timer path (`timing.py`, new module)
 
@@ -157,10 +174,14 @@ Code never decides the unit: for every literal Jev is asked
 5 s ≤ seconds ≤ 24 h, else `Escalate("timing")` with note `timing:out_of_bounds`. No literal, or
 every literal `not a duration` → `Escalate("timing")`, note `timing:no_duration`.
 
+Articles (`ein, eine, einen, einer, a, an`) are number words only when a unit word follows
+("eine Stunde", "an hour"); alone they are not literals ("einen Timer" is not "1").
+
 **Label.** `label_candidates(prompt, literals) -> tuple[str, ...]`: every word of the prompt with
-≥ 3 letters, minus words that are part of a duration literal, minus the timer words
-(`timer, timers, wecker, alarm, countdown, eieruhr, minuten, minute, sekunden, stunden,
-minutes, seconds, hours`), deduplicated, original casing. Jev is asked
+≥ 3 letters, minus words that are part of a duration literal, minus number words, unit words,
+articles and the timer words (`TIMER_WORDS` in `timing.py`: timer, timers, wecker, alarm,
+countdown, eieruhr, stell, stelle, stellen, set, start, starte, starten), deduplicated,
+original casing. Function words stay — Jev filters, code does not. Jev is asked
 
 - `timer_label` (Choice over candidates + `no label`, described): "Which word names WHAT the
   timer is for — the dish, the task, the thing being timed? `no label` when the sentence only
@@ -173,10 +194,11 @@ The label is the chosen word when conf ≥ `th.target_choice_conf`, else `None` 
 
 - no active timers → `Resolved(timer=TimerCommand(kind, timers=()))`, no Round 2 (the responder
   says none is running);
-- exactly one → that one, no Round 2;
-- several → Round 2 `timer_pick` (Choice): options are one label per timer built by code
-  (`timer_option(t)`: `label` or `description` or `timer`, plus `remaining` as "m:ss"), plus
-  `all timers` and `NO_MATCH`, described. Rules: `remaining` with NO_MATCH or conf <
+- `remaining` with exactly one → that one, no Round 2 (note `timer:single`);
+- otherwise (`remaining` with several, `cancel` with one or more) → Round 2 `timer_pick`
+  (Choice): options are one label per timer built by code (`timer_option(t)`: `label` or
+  `description` or `timer`, plus `remaining` as "m:ss"; a duplicate label gets ` #2`, ` #3`),
+  plus `all timers` and `NO_MATCH`, described. Rules: `remaining` with NO_MATCH or conf <
   `th.target_choice_conf` → all timers (reading is harmless; note `timer_pick:all`). `cancel`:
   a pick or `all timers` with conf ≥ `th.target_choice_conf` → those; otherwise
   `NeedsClarification("which_timer", (), trace, timers=<all active>, timer_kind="cancel")`.
@@ -205,11 +227,12 @@ When step 2 of §4.2 remembered `for_duration` or `delayed`:
   therefore always needs a Round 2, even when the targets were already settled in Round 1
   (the `round_budget` rule applies unchanged);
 - `resolve(...)` computes `seconds` as in §4.3 (bounds, no-duration → `Escalate("timing")`),
-  adds every duration conf to `contributions`, and:
+  adds every duration conf **and `shape.timing_conf`** to `contributions`, and:
   - `condition is not None` → `Escalate("timing")`, note `timing:with_condition`;
-  - `for_duration` and an action's verb is not in `INVERSES` → `Escalate("timing")`, note
-    `timing:not_invertible:<verb>`;
-  - attaches `Timing(kind, seconds)` to the `Resolved` / `NeedsConfirmation` it returns.
+  - `for_duration` and an action's verb — or the verb of a pending post-Round-2 clarification —
+    is not in `INVERSES` → `Escalate("timing")`, note `timing:not_invertible:<verb>`;
+  - attaches `Timing(kind, seconds)` to the `Resolved` / `NeedsConfirmation` /
+    `NeedsClarification` it returns.
 - A `NeedsClarification` produced *after* Round 2 (the target Choice spread its mass) carries
   `timing` too, so the reply turn can execute with it. A clarification produced *before* Round 2
   (scope-time `which_device`) has no duration yet; the integration's reply turn then executes
@@ -220,8 +243,8 @@ When step 2 of §4.2 remembered `for_duration` or `delayed`:
   Timing is never carried from a previous turn.
 
 **`INVERSES`** (`vocabulary.py`, code table):
-`turn_on↔turn_off`, `open↔close`, `lock↔unlock`, `media_play↔media_pause`. Everything else
-(`set_*`, `arm`, `disarm`, `activate`, queries) has no inverse.
+`turn_on↔turn_off`, `open↔close`, `unlock→lock`, `media_play↔media_pause`. Everything else
+(`set_*`, `lock`, `arm`, `disarm`, `activate`, queries) has no inverse (see §3 for `lock`).
 
 ### 4.5 Phrasebook additions (EN + DE)
 
@@ -236,7 +259,7 @@ Sentinels: `SECONDS = "seconds"`, `MINUTES = "minutes"`, `HOURS = "hours"`,
 
 `timing_kind:<id>`, `timing:no_duration`, `timing:out_of_bounds`, `timing:query`,
 `timing:with_condition`, `timing:not_invertible:<verb>`, `timing:clarify_before_duration`,
-`timing:seconds:<n>`, `timer:none_active`, `timer:single`, `timer_pick:all`,
+`timing:replay`, `timing:seconds:<n>`, `timer:none_active`, `timer:single`, `timer_pick:all`,
 `timer_label:hesitant`, `timer:low_confidence`.
 
 ## 5. Integration changes (`custom_components/hunch`, version 0.4.0)
@@ -264,35 +287,39 @@ class HunchTimer:
     device_id: str | None
     satellite_id: str | None
     area_id: str | None           # the requesting device's area, looked up at creation
+    user_id: str | None           # the requesting user; stored actions run as them
 ```
 
 `TimerStore(hass, on_fire: Callable[[HunchTimer, bool], Awaitable[None]])`:
 
 - `async_load()` — reads `Store(hass, 1, "hunch.timers")`; re-arms every timer with
-  `async_track_point_in_utc_time`; an overdue one (due ≤ now) fires right away with
-  `overdue=True`.
+  `async_track_point_in_utc_time` (the due callback is a HA `@callback`); an overdue one (due ≤
+  now) fires with `overdue=True` once HA has started (`async_at_started`), so the services its
+  actions need exist.
 - `active() -> tuple[HunchTimer, ...]` sorted by `due_at`; `remaining(timer) -> float` (≥ 0).
 - `async_add(timer)` arms and saves; `async_cancel(timer_id) -> HunchTimer | None` disarms,
   removes, saves.
 - `as_active_timers() -> tuple[ActiveTimer, ...]` for the engine (`label`, `description`,
   `remaining_seconds`, `kind`).
 - `async_stop()` — cancels the listeners (unload), keeps the file.
-- Firing: the listener removes the timer from the store first, then awaits `on_fire`. The
-  callback never raises out of the listener (logged).
+- Firing: the listener removes the timer from memory, awaits `on_fire`, then saves. Neither a
+  failing save nor a failing callback raises out of the listener (logged). Fire tasks are
+  created with `entry.async_create_background_task`.
 
 Serialization is a plain dict per timer (`due_at` as ISO string); the store file is not user
 data beyond labels and entity ids.
 
-### 5.2 Firing (`__init__.py` → `timers.py` `TimerRunner`)
-
-`on_fire(timer, overdue)`:
+### 5.2 Firing (`timers.py` `async_fire_timer(hass, entry, timer, overdue)`)
 
 1. kinds `revert` / `delayed`: rebuild `Action`s from the current home model
    (`builder.build().entity_by_id`, `DEFAULT_VOCABULARY.by_name`), drop entity ids that no
-   longer exist (logged), run `Executor.execute(actions, Context())`.
+   longer exist (logged), run `Executor.execute(actions, Context(user_id=timer.user_id))`.
+   An action more than `MAX_OVERDUE_SECONDS` (3600) overdue is **skipped** (a blind must not
+   open hours late at night); the event then carries `skipped: true` and `executed: []`.
 2. fire `hunch_timer_finished` with
-   `{timer_id, kind, label, description, duration_seconds, overdue, language, conversation_id,
-   device_id, satellite_id, area_id, executed: [entity_id…], failed: [entity_id…]}`.
+   `{timer_id, kind, label, description, duration_seconds, due_at, overdue, skipped, language,
+   conversation_id, device_id, satellite_id, area_id, user_id, executed: [entity_id…],
+   failed: [entity_id…]}`.
 3. if option `timer_script` is set: `script.turn_on` on that entity with `variables` = the same
    dict, `blocking=False`. A missing script is logged, never raised.
 
@@ -327,11 +354,16 @@ Options flow: `OPT_TIMER_SCRIPT = "timer_script"`, `EntitySelector(domain="scrip
     changes here).
 - `NeedsConfirmation.timing` travels into `PendingConfirm.timing`; `NeedsClarification.timing`
   into `PendingClarify.timing`; both reply handlers pass it to `_run`.
-- `NeedsClarification("which_timer")` → `PendingTimerPick(timers, labels, question, created)`;
-  the reply is judged with the existing `CLARIFY_QID` Choice over the labels (+ `all timers`);
-  the pick cancels those timers. `other` → the usual fallback with `pending_context`.
-- `_remember`: timing turns remember their actions (without timing); timer commands are not
-  remembered (a follow-up "und im Esszimmer" after "Timer 8 Minuten" means nothing).
+- `NeedsClarification("which_timer")` → `PendingTimerPick(timers, labels, question, created)`.
+  `labels` are the spoken labels (`timer_name` + remaining, e.g. "Timer für Nudeln (3 Minuten
+  20 Sekunden)") plus `all timers`; the reply is judged with the existing `CLARIFY_QID` Choice
+  over exactly these labels; the pick cancels those timers. A reply that picks nothing answers
+  `cancelled` ("Okay, ich habe nichts geändert.") — the fallback agent cannot cancel Hunch
+  timers, so it is never handed this turn. Timers that vanished meanwhile are skipped; if none
+  is left, `timer_none`.
+- Confirm questions with timing carry a `timing_clause` (", in 15 Minuten" / ", für 15
+  Minuten"); a `risk:confirm` re-ask after a clarification keeps the timing.
+- `_remember`: timing turns and timer commands are **not** remembered (§3).
 - `extra_data.hunch` / `agent_detail`: unchanged; the outcome string is `Resolved`.
 
 ### 5.5 Responder
@@ -341,8 +373,10 @@ forms ("1 Minute", "1 Stunde", "1 Sekunde" / "1 minute" …), e.g. "8 Minuten", 
 Minuten", "3 Minuten 20 Sekunden". `compact_duration` for names: "8-Minuten" / "8-minute",
 "1-Stunde-20-Minuten" is allowed to be ugly.
 
-`timer_name(timer, lang)`: `label` → "Timer für {label}" / "timer for {label}"; `description`
-(scheduled actions) → the description; else "{compact}-Timer" / "{compact} timer".
+`timer_name(label, description, duration_seconds, lang)`: `label` → "Timer für {label}" /
+"timer for {label}"; `description` (scheduled actions: the action clauses rendered at creation,
+"Wandlampe (Vorzimmer) ausschalten") → the description; else "{compact}-Timer" /
+"{compact} timer". English sentences are capitalised at the first letter by `render`.
 
 Templates (en / de):
 
@@ -350,7 +384,8 @@ Templates (en / de):
 |---|---|---|
 | `timer_started` | "{name} set, {duration}." | "{name} gestellt, {duration}." |
 | `timer_none` | "No timer is running." | "Es läuft kein Timer." |
-| `timer_remaining` (line) | "{name}: {remaining} left." | "{name}: noch {remaining}." |
+| `timer_remaining_line` | "{name}: {remaining} left." | "{name}: noch {remaining}." |
+| `timer_remaining` | lines joined with newlines | lines joined with newlines |
 | `timer_cancelled` | "Cancelled: {names}." | "Abgebrochen: {names}." |
 | `which_timer` | "Which timer do you mean: {options}?" | "Welchen Timer meinst du: {options}?" |
 | `delayed_scheduled` | "In {duration}: {body}." | "In {duration}: {body}." |
@@ -363,7 +398,7 @@ unnamed timer capitalises in German ("8-Minuten-Timer").
 
 ### 5.6 Diagnostics
 
-`"timers": [{"kind", "label", "description", "remaining_seconds", "overdue": false}]`.
+`"timers": [{"kind", "label", "description", "remaining_seconds"}]`.
 
 ## 6. Golden corpus and runner
 
@@ -385,7 +420,7 @@ New rows in `corpus_julian.yaml` (entity ids from `golden/homes/julian.json`):
 | Timer 1 Stunde 20 | resolved, timer start, 4800 (or clarify-free 3600: kinds resolved, seconds [3600, 4800]) |
 | Wie lange läuft der Timer für die Nudeln noch? (timers: Nudeln 200 s, Reis 600 s) | resolved, timer remaining, count 1 |
 | Wie lange noch? (timers: Nudeln 200 s) | resolved, timer remaining, count 1 |
-| Timer abbrechen (timers: Nudeln 200 s) | resolved, timer cancel, count 1 |
+| Timer abbrechen (timers: Nudeln 200 s) | resolved, timer cancel, count 1 (Jev confirms the single timer) |
 | Timer abbrechen (timers: Nudeln, Reis) | clarify which_timer, or resolved cancel with count 2 |
 | Alle Timer abbrechen (timers: Nudeln, Reis) | resolved, timer cancel, count 2 |
 | Wandlampe im Vorzimmer für 15 Minuten an | resolved, turn_on, light.vorzimmer_wandlampe, timing for_duration 900 |
@@ -393,7 +428,7 @@ New rows in `corpus_julian.yaml` (entity ids from `golden/homes/julian.json`):
 | Rollo in der Küche für 10 Minuten runter | resolved, close, cover.kuche_fenster_rollo, timing for_duration 600 |
 | Rollo in der Küche auf 20% für 10 Minuten | escalate timing |
 | Mach das Licht um 18 Uhr aus | escalate timing |
-| Wie warm ist es in 10 Minuten? | escalate timing |
+| Wie warm ist es in 10 Minuten? | escalate, reason timing |
 
 The existing rows "Mach das Licht in zehn Minuten aus" (both corpora) change from `escalate
 timing` to `kinds: [resolved, confirm, clarify]` with `timing: {kind: delayed, seconds: [600,
@@ -405,8 +440,9 @@ the timing must be recognised.
 Engine (`packages/hunch/tests`, default suite, no HA):
 
 - `test_timing.py`: literals (digits, words, compounds, glued units, "1 Stunde 20" → two
-  literals, "15%" is a literal Jev may reject), `label_candidates` (timer words and literal
-  parts removed, casing kept), `INVERSES` symmetry, seconds arithmetic and bounds.
+  literals, "15%" is a literal Jev may reject, bare articles are not literals),
+  `label_candidates` (timer words, numbers, units, articles and literal parts removed, casing
+  kept), `INVERSES` (every inverse is a verb, `lock` absent), seconds arithmetic and bounds.
 - `test_round1.py`: `timing_kind` question present with 8 described options; `timers` in state
   only when passed; Shape carries kind + conf.
 - `test_engine.py` (scripted `FakeDecisionClient`): timer start with label; start without

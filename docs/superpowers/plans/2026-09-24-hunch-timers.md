@@ -20,6 +20,7 @@
 - Persisted timer data: labels, descriptions, entity ids, times, device/satellite/conversation ids. Never the API key, never prompts.
 - Every user-facing sentence lives in `responder.py` tables (en + de); every Jev-facing sentence in `phrasing.py` (EN + DE).
 - Default suite: `uv run pytest -q` (no HA). HA suite: `uv run --group ha --no-group dev pytest tests/integration -q`. Lint: `uv run ruff format . && uv run ruff check .` (docs excluded by config).
+- New imports go into the top-of-file import block (ruff selects E402/F811/I001); never append imports mid-file, never re-import a name a test file already imports.
 - Commit after every green step. Commit messages end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - Versions: engine `0.6.0` (`packages/hunch/pyproject.toml`, `hunch.__version__` stays as is — it is not maintained), integration `0.4.0`, manifest `"requirements": ["hunch-engine==0.6.0"]`. Publishing to PyPI is Julian's action, not part of any task.
 
@@ -94,6 +95,7 @@ from hunch.timing import (
     duration_literals,
     label_candidates,
     timer_option,
+    timer_options,
 )
 from hunch.vocabulary import DEFAULT_VOCABULARY, INVERSES
 
@@ -119,11 +121,18 @@ def test_number_words_and_compounds():
     assert _texts("Mach das Licht in zehn Minuten aus") == ["zehn Minuten"]
     assert _values("Timer fünfundzwanzig Minuten") == [25.0]
     assert _values("timer for twenty-five minutes") == [25.0]
-    assert _values("Timer eine halbe Stunde") == [1.0, 0.5]
-    assert _texts("Timer eine halbe Stunde") == ["eine", "halbe Stunde"]
-    assert _values("Eine Viertelstunde Timer") == [1.0, 0.25]
-    assert _texts("Eine Viertelstunde Timer") == ["Eine", "Viertelstunde"]
+    assert _values("Timer eine halbe Stunde") == [0.5]
+    assert _texts("Timer eine halbe Stunde") == ["halbe Stunde"]
+    assert _values("Eine Viertelstunde Timer") == [0.25]
+    assert _texts("Eine Viertelstunde Timer") == ["Viertelstunde"]
     assert _values("anderthalb Stunden") == [1.5]
+
+
+def test_articles_count_only_with_a_unit():
+    assert _texts("Stell einen Timer für die Nudeln") == []
+    assert _texts("Timer eine Stunde") == ["eine Stunde"] and _values("Timer eine Stunde") == [1.0]
+    assert _texts("turn it off in an hour") == ["an hour"]
+    assert _texts("set a timer for the pasta") == []
 
 
 def test_two_literals_for_hour_and_minutes():
@@ -135,35 +144,38 @@ def test_words_inside_other_words_are_not_literals():
     assert _texts("Spots an") == []
 
 
-def test_label_candidates_drop_timer_words_and_literal_parts():
-    lits = duration_literals("Stell einen Timer für die Nudeln auf 8 Minuten")
-    assert label_candidates("Stell einen Timer für die Nudeln auf 8 Minuten", lits) == (
-        "Stell",
-        "einen",
-        "für",
-        "die",
-        "Nudeln",
-        "auf",
-    )
+def test_label_candidates_drop_timer_words_numbers_units_articles_and_literal_parts():
+    prompt = "Stell einen Timer für die Nudeln auf 8 Minuten"
+    assert label_candidates(prompt, duration_literals(prompt)) == ("für", "die", "Nudeln", "auf")
     lits = duration_literals("Timer eine halbe Stunde")
     assert label_candidates("Timer eine halbe Stunde", lits) == ()
+    assert label_candidates("Timer Nudeln 8", duration_literals("Timer Nudeln 8")) == ("Nudeln",)
 
 
-def test_timer_option_shows_name_and_remaining():
+def test_timer_option_shows_name_and_remaining_and_dedupes():
     t = ActiveTimer("a", "Nudeln", 200.0, "timer")
     assert timer_option(t) == "Nudeln (3:20 left)"
     t2 = ActiveTimer("b", None, 59.4, "delayed", "Wandlampe aus")
     assert timer_option(t2) == "Wandlampe aus (0:59 left)"
     t3 = ActiveTimer("c", None, 480.0, "timer")
     assert timer_option(t3) == "timer (8:00 left)"
+    twin = ActiveTimer("d", "Nudeln", 200.0, "timer")
+    assert timer_options((t, twin, t3)) == ("Nudeln (3:20 left)", "Nudeln (3:20 left) #2", "timer (8:00 left)")
 
 
-def test_inverses_are_symmetric_and_only_for_reversible_verbs():
+def test_inverses_only_for_reversible_verbs_and_never_unlock_a_door_later():
     for a, b in INVERSES.items():
-        assert INVERSES[b] == a
         assert DEFAULT_VOCABULARY.by_name(a) and DEFAULT_VOCABULARY.by_name(b)
     assert "set_brightness" not in INVERSES and "activate" not in INVERSES
     assert INVERSES["turn_on"] == "turn_off" and INVERSES["close"] == "open"
+    assert INVERSES["unlock"] == "lock" and "lock" not in INVERSES
+
+
+def test_timing_no_match_is_round2_no_match():
+    from hunch.round2 import NO_MATCH as R2
+    from hunch.timing import NO_MATCH
+
+    assert NO_MATCH == R2
 
 
 def test_phrasebooks_describe_every_option():
@@ -230,14 +242,15 @@ Append to `Resolved`: `timing: Timing | None = None` and `timer: TimerCommand | 
 - [ ] **Step 4: `INVERSES`** (`vocabulary.py`, after `verbs_for_domain`)
 
 ```python
-# Verbs a "für 15 Minuten" can undo: code table, symmetric. Everything else (set_*, arm,
-# disarm, activate, queries) has no inverse, so a time-limited request on it is handed off.
+# Verbs a "für 15 Minuten" can undo: code table. Everything else (set_*, arm, disarm,
+# activate, queries) has no inverse, so a time-limited request on it is handed off. `lock` is
+# deliberately absent: "Tür für 10 Minuten absperren" would unlock a door unattended later.
+# `unlock -> lock` ("für 10 Minuten aufsperren", locks again) is kept.
 INVERSES: dict[str, str] = {
     "turn_on": "turn_off",
     "turn_off": "turn_on",
     "open": "close",
     "close": "open",
-    "lock": "unlock",
     "unlock": "lock",
     "media_play": "media_pause",
     "media_pause": "media_play",
@@ -301,23 +314,30 @@ class DurationLiteral:
     value: float  # the number it stands for; the unit is Jev's call
 
 
-_ONES = {
-    "ein": 1, "eine": 1, "einen": 1, "einer": 1, "eins": 1, "one": 1,
-    "zwei": 2, "zwo": 2, "two": 2, "drei": 3, "three": 3, "vier": 4, "four": 4,
-    "fünf": 5, "fuenf": 5, "five": 5, "sechs": 6, "six": 6, "sieben": 7, "seven": 7,
-    "acht": 8, "eight": 8, "neun": 9, "nine": 9,
+_DE_ONES = {
+    "ein": 1, "zwei": 2, "zwo": 2, "drei": 3, "vier": 4, "fünf": 5, "fuenf": 5, "sechs": 6,
+    "sieben": 7, "acht": 8, "neun": 9,
 }  # fmt: skip
+_EN_ONES = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9,
+}  # fmt: skip
+# Articles are numbers only with a unit behind them ("eine Stunde", "an hour"); alone they are
+# just articles ("einen Timer" is not "1").
+ARTICLES = {"ein": 1, "eine": 1, "einen": 1, "einer": 1, "a": 1, "an": 1}
+_ONES = {**_DE_ONES, **_EN_ONES, **ARTICLES, "eins": 1}
 _TEENS = {
     "zehn": 10, "ten": 10, "elf": 11, "eleven": 11, "zwölf": 12, "zwoelf": 12, "twelve": 12,
     "dreizehn": 13, "thirteen": 13, "vierzehn": 14, "fourteen": 14, "fünfzehn": 15,
     "fuenfzehn": 15, "fifteen": 15, "sechzehn": 16, "sixteen": 16, "siebzehn": 17,
     "seventeen": 17, "achtzehn": 18, "eighteen": 18, "neunzehn": 19, "nineteen": 19,
 }  # fmt: skip
-_TENS = {
-    "zwanzig": 20, "twenty": 20, "dreißig": 30, "dreissig": 30, "thirty": 30,
-    "vierzig": 40, "forty": 40, "fünfzig": 50, "fuenfzig": 50, "fifty": 50,
-    "sechzig": 60, "sixty": 60,
+_DE_TENS = {
+    "zwanzig": 20, "dreißig": 30, "dreissig": 30, "vierzig": 40, "fünfzig": 50,
+    "fuenfzig": 50, "sechzig": 60,
 }  # fmt: skip
+_EN_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60}
+_TENS = {**_DE_TENS, **_EN_TENS}
 _FRACTIONS = {
     "halbe": 0.5, "halben": 0.5, "halb": 0.5, "half": 0.5, "viertel": 0.25, "quarter": 0.25,
     "dreiviertel": 0.75, "anderthalb": 1.5, "eineinhalb": 1.5,
@@ -329,10 +349,6 @@ def _alt(words) -> str:
     return "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
 
 
-_DE_TENS = {k: v for k, v in _TENS.items() if not k.endswith("ty")}
-_DE_ONES = {k: v for k, v in _ONES.items() if k not in ("eine", "einen", "einer", "eins", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")}
-_EN_TENS = {k: v for k, v in _TENS.items() if k.endswith("ty")}
-_EN_ONES = {k: v for k, v in _ONES.items() if k in ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")}
 _COMPOUND_DE = rf"(?:{_alt(_DE_ONES)})und(?:{_alt(_DE_TENS)})"  # fünfundzwanzig
 _COMPOUND_EN = rf"(?:{_alt(_EN_TENS)})[- ](?:{_alt(_EN_ONES)})"  # twenty-five
 _UNIT = (
@@ -367,6 +383,8 @@ def duration_literals(prompt: str) -> tuple[DurationLiteral, ...]:
     that follows it, verbatim. Which of them is a duration and in which unit is Jev's call."""
     out: list[DurationLiteral] = []
     for m in _LITERAL.finditer(prompt):
+        if m.group(1).lower() in ARTICLES and m.group(2) is None:
+            continue  # "einen Timer", "a timer": an article, not a number
         value = _number_value(m.group(1))
         if value is None:
             continue
@@ -404,9 +422,22 @@ def timer_option(t: ActiveTimer) -> str:
     name = t.label or t.description or "timer"
     m, s = divmod(int(max(t.remaining_seconds, 0.0)), 60)
     return f"{name} ({m}:{s:02d} left)"
+
+
+def timer_options(timers: tuple[ActiveTimer, ...]) -> tuple[str, ...]:
+    """One distinct label per timer, in order; a repeated label gets ' #2', ' #3'."""
+    out: list[str] = []
+    for t in timers:
+        label = timer_option(t)
+        n = 2
+        while label in out:
+            label = f"{timer_option(t)} #{n}"
+            n += 1
+        out.append(label)
+    return tuple(out)
 ```
 
-Note for the implementer: `label_candidates` must also skip words that are part of a duration literal *including* the number word itself ("Eine", "halbe", "Viertelstunde" are literal parts). The test `("Stell", "einen", "für", "die", "Nudeln", "auf")` deliberately keeps function words — Jev filters, code does not; only timer words and numbers/units are removed. `stell/set/start…` are in `TIMER_WORDS` so "Stell" IS removed — adjust the expected tuple in the test to `("einen", "für", "die", "Nudeln", "auf")`. (Keep the test truthful to the table you ship; the point is: no `Nudeln` lost, no `Minuten` kept.)
+Note for the implementer: `label_candidates` keeps function words ("für", "die", "auf") on purpose — Jev filters, code does not. It removes only: words of a duration literal, number words (`NUMBER_WORDS`, which includes the articles), unit words, and `TIMER_WORDS`. Run the regex against every string in the tests before moving on; the tests are the contract.
 
 - [ ] **Step 6: Phrasebook** (`phrasing.py`)
 
@@ -540,12 +571,12 @@ def test_shape_carries_the_timing_kind(home, vocab, thresholds):
             answers[qid] = ChoiceA("none" if "none" in q.options else q.options[0], 0.9, {})
     answers["timing_kind"] = ChoiceA(TIMER_START, 0.88, {})
     trace = Trace()
-    shape = interpret_round1(home, vocab, Answers(answers, "m", None), thresholds, trace)
+    shape = interpret_round1(home, vocab, Answers("m", answers, None), thresholds, trace)
     assert shape.timing_kind == TIMER_START and shape.timing_conf == 0.88
     assert "timing_kind:start a timer" in trace.notes
 ```
 
-Adapt the `Answers(...)` constructor and fixture names to what `test_round1.py` already uses (check `hunch/questions.py` for `Answers` fields and `conftest.py` for `thresholds`/`config` fixtures; if there is no `thresholds` fixture use `Thresholds()`).
+`Answers(model, answers, input_tokens)` is the constructor order. If `conftest.py` has no `thresholds` fixture, use `Thresholds()` from `hunch.config`. Put the imports at the top of the file.
 
 - [ ] **Step 2: Run to verify failure**: `uv run pytest packages/hunch/tests/test_round1.py -q` → KeyError `timing_kind`.
 
@@ -607,8 +638,11 @@ and pass `timing_kind=timing_kind, timing_conf=timing_conf` to `Shape(...)`. Imp
 - [ ] **Step 1: Failing tests** (append to `test_engine.py`; `_scripted` is there)
 
 ```python
-from hunch.resolution import ActiveTimer, NeedsClarification, Resolved, Escalate
-from hunch.timing import ALL_TIMERS, MINUTES, NOT_DURATION, TIMER_CANCEL, TIMER_REMAINING, TIMER_START, HOURS
+# merge into the existing top-of-file imports of test_engine.py:
+#   from hunch.resolution import ActiveTimer, Timing  (Action, Escalate, NeedsClarification,
+#   NeedsConfirmation, Resolved are already imported)
+#   from hunch.timing import ALL_TIMERS, DELAYED, FOR_DURATION, HOURS, MINUTES, NOT_DURATION,
+#   TIMER_CANCEL, TIMER_REMAINING, TIMER_START
 
 
 async def test_timer_start_with_label_and_minutes(home, vocab, config):
@@ -660,12 +694,29 @@ async def test_remaining_with_no_timer_needs_no_second_round(home, vocab, config
     assert calls["n"] == 1 and "timer:none_active" in r.trace.notes
 
 
-async def test_single_timer_is_the_one(home, vocab, config):
+async def test_remaining_of_a_single_timer_needs_no_question(home, vocab, config):
     t = ActiveTimer("a", "Nudeln", 200, "timer")
-    client, calls = _scripted({"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})})
-    r = await Engine(client, vocab, config).decide(home, "Timer abbrechen", timers=(t,))
+    client, calls = _scripted({"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})})
+    r = await Engine(client, vocab, config).decide(home, "wie lange noch?", timers=(t,))
+    assert isinstance(r, Resolved) and r.timer.kind == "remaining" and r.timer.timers == (t,)
+    assert calls["n"] == 1 and "timer:single" in r.trace.notes
+
+
+async def test_cancel_of_a_single_timer_still_asks_jev(home, vocab, config):
+    # "Timer abbrechen" while only a pending "Wandlampe aus" runs must not cancel it blindly
+    t = ActiveTimer("a", None, 200, "revert", "Wandlampe (Vorzimmer) ausschalten")
+    client, calls = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA("Wandlampe (Vorzimmer) ausschalten (3:20 left)", 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Lampe doch anlassen", timers=(t,))
     assert isinstance(r, Resolved) and r.timer.kind == "cancel" and r.timer.timers == (t,)
-    assert calls["n"] == 1
+    assert calls["n"] == 2
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})}, {"timer_pick": ChoiceA(NO_MATCH, 0.9, {})}
+    )
+    r = await Engine(client, vocab, config).decide(home, "Nudeltimer abbrechen", timers=(t,))
+    assert isinstance(r, NeedsClarification) and r.question_key == "which_timer"
 
 
 async def test_two_timers_ask_jev_and_a_hesitant_cancel_clarifies(home, vocab, config):
@@ -706,11 +757,17 @@ async def test_hesitant_remaining_reads_all(home, vocab, config):
     assert isinstance(r, Resolved) and r.timer.timers == (a, b) and "timer_pick:all" in r.trace.notes
 
 
-async def test_hesitant_timer_kind_with_has_timing_still_hands_off(home, vocab, config):
+async def test_any_timing_hunch_cannot_do_hands_off_even_when_has_timing_is_low(home, vocab, config):
     client, calls = _scripted(
         {"timing_kind": ChoiceA(TIMER_START, 0.5, {}), "flag:has_timing": NoulA(0.8), "verb:turn_off": NoulA(0.9)}
     )
     r = await Engine(client, vocab, config).decide(home, "Licht aus, Timer 8 Minuten")
+    assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
+    # a sure "at a clock time" with a low has_timing flag: still never executed now
+    client, calls = _scripted(
+        {"timing_kind": ChoiceA(CLOCK_TIME, 0.9, {}), "flag:has_timing": NoulA(0.2), "verb:turn_off": NoulA(0.9), "area:kitchen": NoulA(0.9)}
+    )
+    r = await Engine(client, vocab, config).decide(home, "Licht in der Küche um 18 Uhr aus")
     assert isinstance(r, Escalate) and r.reason == "timing" and calls["n"] == 1
 ```
 
@@ -719,6 +776,7 @@ async def test_hesitant_timer_kind_with_has_timing_still_hands_off(home, vocab, 
 - [ ] **Step 3: `timing.py` Round 2 half** (append)
 
 ```python
+# (merge into the top-of-file imports of timing.py)
 from hunch.config import EngineConfig
 from hunch.phrasing import EN, Phrasebook
 from hunch.questions import JSON, Answers, ChoiceQ, Question
@@ -731,10 +789,9 @@ from hunch.resolution import (
     Trace,
 )
 
-NO_MATCH = "none of these"  # keep identical to hunch.round2.NO_MATCH (import it there instead
-                            # if round2 does not import timing — avoid a cycle: round2 will
-                            # import timing, so timing must NOT import round2; define the same
-                            # string here and add an assertion test that they are equal)
+# The same sentinel as hunch.round2.NO_MATCH. round2 imports timing, so timing cannot import
+# round2; test_timing asserts the two strings are equal.
+NO_MATCH = "none of these"
 
 
 def duration_questions(literals, pb: Phrasebook = EN) -> dict[str, Question]:
@@ -758,10 +815,12 @@ def timer_questions(kind, literals, labels, timers, pb: Phrasebook = EN) -> dict
                 (*labels, NO_LABEL),
                 {NO_LABEL: pb.special_descriptions["no_label"]},
             )
-    elif len(timers) > 1:
+    elif timers and (kind == "cancel" or len(timers) > 1):
+        # cancelling always asks, even with one timer: a bare "Timer abbrechen" while only a
+        # pending "Wandlampe aus" runs must not cancel it blindly
         qs["timer_pick"] = ChoiceQ(
             pb.timer_pick_question,
-            (*(timer_option(t) for t in timers), ALL_TIMERS, NO_MATCH),
+            (*timer_options(timers), ALL_TIMERS, NO_MATCH),
             {
                 ALL_TIMERS: pb.special_descriptions["all_timers"],
                 NO_MATCH: pb.special_descriptions["no_timer_match"],
@@ -773,7 +832,7 @@ def timer_questions(kind, literals, labels, timers, pb: Phrasebook = EN) -> dict
 def timer_state(prompt, timers, literals, labels) -> JSON:
     state: dict[str, JSON] = {"request": prompt}
     if timers:
-        state["timers"] = [timer_option(t) for t in timers]
+        state["timers"] = list(timer_options(timers))
     if literals:
         state["duration_literals"] = [lit.text for lit in literals]
     if labels:
@@ -828,12 +887,12 @@ def resolve_timer(kind, kind_conf, literals, labels, timers, round2, config: Eng
         if not timers:
             trace.note("timer:none_active")
             chosen: tuple = ()
-        elif len(timers) == 1:
+        elif kind == "remaining" and len(timers) == 1:
             trace.note("timer:single")
             chosen = tuple(timers)
         else:
             pick = round2.choice("timer_pick") if round2 is not None else None
-            by_label = {timer_option(t): t for t in timers}
+            by_label = dict(zip(timer_options(timers), timers, strict=True))
             sure = pick is not None and trace.decide("timer_pick", pick.confidence, th.target_choice_conf)
             if pick is not None and pick.choice == ALL_TIMERS and sure:
                 chosen = tuple(timers)
@@ -874,12 +933,27 @@ Add a test asserting `hunch.timing.NO_MATCH == hunch.round2.NO_MATCH` (in `test_
             "timing_kind", shape.timing_conf, th.flag
         ):
             timing_kind = TIMING_KIND_TO_TIMING[shape.timing_kind]
-        elif trace.decide("flag:has_timing", shape.flag("has_timing"), th.flag):
-            # a clock time, a sequence, "other", or a kind Jev was not sure about
+        elif shape.timing_kind is not None or trace.decide(
+            "flag:has_timing", shape.flag("has_timing"), th.flag
+        ):
+            # A clock time, a sequence, "other", or a timer/device kind Jev was not sure about:
+            # whatever bound the request to time, it must not run now.
             return Escalate("timing", (), trace)
 ```
 
-`timing_kind` is used by Task 4; for this task leave it assigned (ruff may flag unused — add a `del timing_kind` placeholder? No: Task 4 lands right after; to keep this commit lint-clean, add `trace.note(f"timing:device:{timing_kind}")` when set, which Task 4 keeps).
+and, right after `if not shape.fired_verbs: return Escalate("no_intent", (), trace)`:
+
+```python
+        if timing_kind is not None:
+            if any(v.is_query for v in shape.fired_verbs):
+                trace.note("timing:query")
+                return Escalate("timing", (), trace)
+            if not duration_literals(prompt):
+                trace.note("timing:no_duration")
+                return Escalate("timing", (), trace)
+```
+
+(`timing_kind` is read here, so the variable is used in this commit; Task 4 threads it further.)
 
 - Add:
 
@@ -923,7 +997,7 @@ Add a test asserting `hunch.timing.NO_MATCH == hunch.round2.NO_MATCH` (in `test_
 - [ ] **Step 1: Failing tests** (append to `test_engine.py`)
 
 ```python
-from hunch.timing import DELAYED, FOR_DURATION
+# (DELAYED, FOR_DURATION, Timing are already imported at the top of test_engine.py after Task 3)
 
 R1_KITCHEN_ON = {
     "verb:turn_on": NoulA(0.95),
@@ -937,7 +1011,7 @@ R1_KITCHEN_ON = {
 async def test_for_duration_attaches_timing_to_the_plan(home, vocab, config):
     client, calls = _scripted(
         {**R1_KITCHEN_ON, "timing_kind": ChoiceA(FOR_DURATION, 0.9, {}), "flag:has_timing": NoulA(0.9)},
-        {"target:turn_on": ChoiceA("Kitchen ceiling (Kitchen)", 0.9, {}), "duration:0": ChoiceA(MINUTES, 0.9, {})},
+        {"target:turn_on": ChoiceA("Kitchen ceiling", 0.9, {}), "duration:0": ChoiceA(MINUTES, 0.9, {})},
     )
     r = await Engine(client, vocab, config).decide(home, "Kitchen ceiling on for 15 minutes")
     assert isinstance(r, Resolved | NeedsConfirmation)
@@ -967,7 +1041,7 @@ async def test_for_duration_on_a_verb_without_inverse_hands_off(home, vocab, con
             "timing_kind": ChoiceA(FOR_DURATION, 0.9, {}),
         },
         {
-            "target:set_brightness": ChoiceA("Kitchen ceiling (Kitchen)", 0.9, {}),
+            "target:set_brightness": ChoiceA("Kitchen ceiling", 0.9, {}),
             "param_value:set_brightness": ChoiceA("50%", 0.9, {}),
             "duration:0": ChoiceA(NOT_DURATION, 0.9, {}),
             "duration:1": ChoiceA(MINUTES, 0.9, {}),
@@ -997,9 +1071,9 @@ async def test_timing_with_a_condition_hands_off(home, vocab, config):
             "flag:has_condition": NoulA(0.9), "condition_domain": ChoiceA("switch", 0.9, {}),
         },
         {
-            "target:turn_on": ChoiceA("Kitchen ceiling (Kitchen)", 0.9, {}),
+            "target:turn_on": ChoiceA("Kitchen ceiling", 0.9, {}),
             "duration:0": ChoiceA(MINUTES, 0.9, {}),
-            "cond_subject": ChoiceA("Fridge (Kitchen)", 0.9, {}),
+            "cond_subject": ChoiceA("Fridge", 0.9, {}),
             "cond_state": ChoiceA("off", 0.9, {}),
         },
     )
@@ -1007,7 +1081,21 @@ async def test_timing_with_a_condition_hands_off(home, vocab, config):
     assert isinstance(r, Escalate) and r.reason == "timing" and "timing:with_condition" in r.trace.notes
 ```
 
-Check the fixture's option labels (`target_options` produce labels like `"Kitchen ceiling (Kitchen)"` — verify against an existing test in `test_engine.py` and adjust). Check `DOMAIN_STATES["switch"]` includes `"off"` for the condition test; if the fixture has no switch condition path, use `binary_sensor`/an existing condition test's ids.
+Option labels in the fixture are the device name alone ("Kitchen ceiling", "Fridge"); `_dedupe` appends "(Area)" only when two labels collide (see `scope.device_label`). `DOMAIN_STATES["switch"]` is `("on", "off")`, so the condition test's `cond_state: "off"` is a valid option.
+
+Add one more test:
+
+```python
+async def test_more_same_replay_with_a_delay_hands_off(home, vocab, config):
+    from hunch.round1 import MORE_SAME
+
+    prev = PreviousTurn("Kitchen ceiling on", (Action(vocab.by_name("turn_on"), (home.entity_by_id("light.kitchen_ceiling"),), {}),))
+    client, calls = _scripted({"follow_up": ChoiceA(MORE_SAME, 0.9, {}), "timing_kind": ChoiceA(DELAYED, 0.9, {})})
+    r = await Engine(client, vocab, config).decide(home, "and again in ten minutes", prev)
+    assert isinstance(r, Escalate) and r.reason == "timing" and "timing:replay" in r.trace.notes
+```
+
+(`PreviousTurn` from `hunch.resolution`; check `HomeModel.entity_by_id` exists — it does, `loaders`/`model.py`.)
 
 - [ ] **Step 2: Run to verify failure.**
 
@@ -1028,15 +1116,19 @@ After the condition block and before `if exception_unresolved:`:
     if plan.timing_kind is not None:
         seconds, confs = sum_duration(round2, plan.duration_literals, trace)
         contributions.extend(confs)
+        contributions.append(shape.timing_conf)  # the kind judgment carries like a verb's
         if seconds is None:
             return Escalate("timing", tuple(actions), trace)
         if condition is not None:
             trace.note("timing:with_condition")
             return Escalate("timing", tuple(actions), trace)
         if plan.timing_kind == "for_duration":
-            for a in actions:
-                if a.verb.name not in INVERSES:
-                    trace.note(f"timing:not_invertible:{a.verb.name}")
+            verbs = [a.verb for a in actions]
+            if pending_clarify_verb is not None:
+                verbs.append(pending_clarify_verb)  # a clarified pick would execute with it
+            for v in verbs:
+                if v.name not in INVERSES:
+                    trace.note(f"timing:not_invertible:{v.name}")
                     return Escalate("timing", tuple(actions), trace)
         timing = Timing(plan.timing_kind, seconds)
 ```
@@ -1045,21 +1137,9 @@ Pass `timing=timing` into every `Resolved(...)`, `NeedsConfirmation(...)` and th
 
 - [ ] **Step 5: `engine.py`**
 
-- After `if not shape.fired_verbs: return Escalate("no_intent", ...)`:
-
-```python
-        if timing_kind is not None:
-            if any(v.is_query for v in shape.fired_verbs):
-                trace.note("timing:query")
-                return Escalate("timing", (), trace)
-            if not duration_literals(prompt):
-                trace.note("timing:no_duration")
-                return Escalate("timing", (), trace)
-```
-
+- In the follow-up block, the `MORE_SAME` replay: when `timing_kind is not None`, `trace.note("timing:replay")` and return `Escalate("timing", (), trace)` instead of replaying (the replay would run the previous actions now).
 - Both places that return `NeedsClarification` before Round 2 (the `DeviceRound` budget branch and the `if not per_verb: if pending_clarify is not None:` branch): when `timing_kind is not None`, `trace.note("timing:clarify_before_duration")` and return `Escalate("timing", (), trace)` instead.
 - `plan_round2(..., frozenset(prefer_pick), timing_kind)` (add the argument).
-- Remove the placeholder note from Task 3 if it was added.
 
 - [ ] **Step 6: Run** `uv run pytest -q` + lint. Update `test_round2.py` if a test constructs `Round2Plan` positionally past the old last field (it should not).
 
@@ -1140,6 +1220,7 @@ Append to `golden/corpus_julian.yaml`:
   expect: {kind: resolved, timer: {kind: remaining, count: 1}}
 - prompt: Timer abbrechen
   timers: [{label: Nudeln, remaining_seconds: 200}]
+  # one timer: Jev is still asked which (a pending "Wandlampe aus" must not be cancelled blindly)
   expect: {kind: resolved, timer: {kind: cancel, count: 1}}
 - prompt: Timer abbrechen
   timers: [{label: Nudeln, remaining_seconds: 200}, {label: Reis, remaining_seconds: 600}]
@@ -1159,7 +1240,7 @@ Append to `golden/corpus_julian.yaml`:
 - prompt: Mach das Licht um 18 Uhr aus
   expect: {kind: escalate, reason: timing}
 - prompt: Wie warm ist es in 10 Minuten?
-  expect: {kind: escalate}
+  expect: {kind: escalate, reason: timing}
 ```
 
 - [ ] **Step 3: Version** `packages/hunch/pyproject.toml` → `version = "0.6.0"`.
@@ -1185,7 +1266,7 @@ Expected: the new rows pass; if a row fails, report the Jev answers verbatim in 
 - Test: `tests/integration/test_timers.py`
 
 **Interfaces:**
-- Produces: `StoredAction`, `HunchTimer`, `TimerStore(hass, on_fire)`, `inverse_actions(actions, ok_ids) -> tuple[Action, ...]`, `stored_actions(actions) -> tuple[StoredAction, ...]`, `async_fire_timer(hass, entry, timer, overdue)`; constants `OPT_TIMER_SCRIPT = "timer_script"`, `EVENT_TIMER_FINISHED = "hunch_timer_finished"`, `TIMER_STORE_KEY = "hunch.timers"`, `TIMER_STORE_VERSION = 1`.
+- Produces: `StoredAction`, `HunchTimer` (fields incl. `user_id`), `TimerStore(hass, on_fire, entry=None)`, `inverse_actions(actions, ok_ids) -> tuple[Action, ...]`, `stored_actions(actions) -> tuple[StoredAction, ...]`, `new_timer_id()`, `async_fire_timer(hass, entry, timer, overdue)`; constants `OPT_TIMER_SCRIPT = "timer_script"`, `EVENT_TIMER_FINISHED = "hunch_timer_finished"`, `TIMER_STORE_KEY = "hunch.timers"`, `TIMER_STORE_VERSION = 1`, `MAX_OVERDUE_SECONDS = 3600`.
 
 - [ ] **Step 1: Failing tests** (`tests/integration/test_timers.py`)
 
@@ -1215,6 +1296,7 @@ def _timer(tid="t1", seconds=480.0, kind="timer", label="Nudeln", actions=()):
         device_id=None,
         satellite_id=None,
         area_id=None,
+        user_id="u",
     )
 
 
@@ -1260,14 +1342,14 @@ async def test_load_rearms_and_fires_overdue_timers(hass: HomeAssistant, hass_st
                     "timer_id": "old", "kind": "timer", "label": "Tee", "description": None,
                     "duration_seconds": 60, "due_at": due.isoformat(), "actions": [],
                     "language": "de", "conversation_id": None, "device_id": None,
-                    "satellite_id": None, "area_id": None,
+                    "satellite_id": None, "area_id": None, "user_id": None,
                 },
                 {
                     "timer_id": "new", "kind": "delayed", "label": None, "description": "Wandlampe aus",
                     "duration_seconds": 300, "due_at": later.isoformat(),
                     "actions": [{"verb": "turn_off", "entity_ids": ["light.a"], "params": {}}],
                     "language": "de", "conversation_id": None, "device_id": None,
-                    "satellite_id": None, "area_id": None,
+                    "satellite_id": None, "area_id": None, "user_id": None,
                 },
             ]
         },
@@ -1295,6 +1377,7 @@ OPT_TIMER_SCRIPT = "timer_script"
 EVENT_TIMER_FINISHED = "hunch_timer_finished"
 TIMER_STORE_KEY = f"{DOMAIN}.timers"
 TIMER_STORE_VERSION = 1
+MAX_OVERDUE_SECONDS = 3600  # a stored device action later than this is not carried out
 ```
 
 - [ ] **Step 4: `timers.py`**
@@ -1306,21 +1389,22 @@ Minuten". Persisted in a HA Store, armed with the HA clock, announced with one e
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, Context, HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, Context, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_point_in_utc_time
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from hunch import DEFAULT_VOCABULARY, Action, ActiveTimer, INVERSES
 
-from .const import EVENT_TIMER_FINISHED, TIMER_STORE_KEY, TIMER_STORE_VERSION
+from .const import EVENT_TIMER_FINISHED, MAX_OVERDUE_SECONDS, TIMER_STORE_KEY, TIMER_STORE_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1348,6 +1432,7 @@ class HunchTimer:
     device_id: str | None
     satellite_id: str | None
     area_id: str | None
+    user_id: str | None  # stored actions run as this user, like the immediate half did
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -1379,6 +1464,7 @@ class HunchTimer:
             device_id=d.get("device_id"),
             satellite_id=d.get("satellite_id"),
             area_id=d.get("area_id"),
+            user_id=d.get("user_id"),
         )
 
 
@@ -1406,9 +1492,10 @@ def inverse_actions(actions: Sequence[Action], ok_ids: set[str]) -> tuple[Action
 
 
 class TimerStore:
-    def __init__(self, hass: HomeAssistant, on_fire: OnFire) -> None:
+    def __init__(self, hass: HomeAssistant, on_fire: OnFire, entry: ConfigEntry | None = None) -> None:
         self._hass = hass
         self._on_fire = on_fire
+        self._entry = entry  # fire tasks are tracked by the entry when there is one
         self._store: Store[dict[str, Any]] = Store(hass, TIMER_STORE_VERSION, TIMER_STORE_KEY)
         self._timers: dict[str, HunchTimer] = {}
         self._unsub: dict[str, CALLBACK_TYPE] = {}
@@ -1427,8 +1514,20 @@ class TimerStore:
                 overdue.append(timer)
             else:
                 self._arm(timer)
-        for timer in overdue:
-            self._hass.async_create_task(self._fire(timer.timer_id, True))
+        if overdue:
+            # Fire once HA has started: the services a revert needs may not exist yet.
+            @callback
+            def _started(_hass: HomeAssistant) -> None:
+                for timer in overdue:
+                    self._schedule(self._fire(timer.timer_id, True))
+
+            async_at_started(self._hass, _started)
+
+    def _schedule(self, coro: Coroutine[Any, Any, None]) -> None:
+        if self._entry is not None:
+            self._entry.async_create_background_task(self._hass, coro, "hunch_timer")
+        else:
+            self._hass.async_create_task(coro)
 
     def active(self) -> tuple[HunchTimer, ...]:
         return tuple(sorted(self._timers.values(), key=lambda t: t.due_at))
@@ -1462,9 +1561,12 @@ class TimerStore:
         self._unsub.clear()
 
     def _arm(self, timer: HunchTimer) -> None:
+        # `@callback`: a plain function would be run in the executor thread by HA, where
+        # creating tasks is not allowed — the timer would never fire.
+        @callback
         def _due(_now: datetime) -> None:
             self._unsub.pop(timer.timer_id, None)
-            self._hass.async_create_task(self._fire(timer.timer_id, False))
+            self._schedule(self._fire(timer.timer_id, False))
 
         self._unsub[timer.timer_id] = async_track_point_in_utc_time(self._hass, _due, timer.due_at)
 
@@ -1472,11 +1574,14 @@ class TimerStore:
         timer = self._timers.pop(timer_id, None)
         if timer is None:
             return
-        await self._save()
         try:
             await self._on_fire(timer, overdue)
         except Exception:  # noqa: BLE001 - a broken announcement must not kill the store
             _LOGGER.exception("Timer %s failed to fire", timer_id)
+        try:
+            await self._save()
+        except Exception:  # noqa: BLE001 - a failed save must not stop the next timer
+            _LOGGER.exception("Timer store could not be saved")
 
     async def _save(self) -> None:
         await self._store.async_save({"timers": [t.to_dict() for t in self.active()]})
@@ -1490,7 +1595,11 @@ async def async_fire_timer(hass: HomeAssistant, entry: ConfigEntry, timer: Hunch
     rt = entry.runtime_data
     executed: list[str] = []
     failed: list[str] = []
-    if timer.actions:
+    late = (dt_util.utcnow() - timer.due_at).total_seconds()
+    skipped = bool(timer.actions) and late > MAX_OVERDUE_SECONDS
+    if skipped:
+        _LOGGER.warning("Timer %s is %.0f s overdue; not carrying out its actions", timer.timer_id, late)
+    if timer.actions and not skipped:
         home = rt.builder.build()
         actions = []
         for sa in timer.actions:
@@ -1500,12 +1609,13 @@ async def async_fire_timer(hass: HomeAssistant, entry: ConfigEntry, timer: Hunch
                 _LOGGER.warning("Timer %s: entities gone: %s", timer.timer_id, sorted(missing))
             if targets:
                 actions.append(Action(DEFAULT_VOCABULARY.by_name(sa.verb), targets, dict(sa.params)))
-        results = await Executor(hass).execute(actions, Context())
+        results = await Executor(hass).execute(actions, Context(user_id=timer.user_id))
         executed = [r.entity_id for r in results if r.ok]
         failed = [r.entity_id for r in results if not r.ok]
     data = {
         **{k: v for k, v in timer.to_dict().items() if k != "actions"},
         "overdue": overdue,
+        "skipped": skipped,
         "executed": executed,
         "failed": failed,
     }
@@ -1519,9 +1629,11 @@ async def async_fire_timer(hass: HomeAssistant, entry: ConfigEntry, timer: Hunch
             _LOGGER.warning("Timer script %s failed: %s", rt.timer_script, err)
 ```
 
-Check `HomeModel` has `entity_by_id` (it is used in `test_home_model_snapshot.py`); check `Store` generic typing works on 2026.9 (else drop the subscript). `replace` import unused → remove.
+`HomeModel.entity_by_id` exists; `Store` is generic in HA 2026.9; `ConfigEntry.async_create_background_task(hass, coro, name)` exists. The `hass` test fixture is already in `CoreState.running`, so `async_at_started` runs its callback immediately and the overdue test needs only `await hass.async_block_till_done()`.
 
-- [ ] **Step 5: Run** the three tests + lint. Fix `freezer` interplay: `async_track_point_in_utc_time` fires when `async_fire_time_changed(hass)` runs with the frozen clock past `due_at`.
+Add a fourth test: a `delayed` timer loaded 2 h overdue is announced but its actions are not run — construct the store with `on_fire=AsyncMock()`, then call `async_fire_timer` directly with a stub `entry` (`SimpleNamespace(runtime_data=SimpleNamespace(builder=..., timer_script=None))`) is awkward; instead test this in Task 9's conversation tests where a real entry exists (`test_overdue_by_hours_skips_the_action`). Note it here so Task 9 covers it.
+
+- [ ] **Step 5: Run** the three tests + lint. `async_track_point_in_utc_time` fires when `async_fire_time_changed(hass)` runs with the frozen clock past `due_at`.
 
 - [ ] **Step 6: Commit** `"TimerStore: persisted, clock-armed timers with an on-fire callback; firing runs stored actions, fires hunch_timer_finished, calls the timer script"` (+ trailer).
 
@@ -1552,7 +1664,11 @@ async def test_diagnostics_list_active_timers(hass: HomeAssistant, setup_hunch):
     client, calls = scripted({})
     entry, _ = await setup_hunch(client, calls)
     await entry.runtime_data.timers.async_add(
-        HunchTimer("t", "timer", "Nudeln", None, 480, dt_util.utcnow() + timedelta(seconds=480), (), "de", None, None, None, None)
+        HunchTimer(
+            timer_id="t", kind="timer", label="Nudeln", description=None, duration_seconds=480,
+            due_at=dt_util.utcnow() + timedelta(seconds=480), actions=(), language="de",
+            conversation_id=None, device_id=None, satellite_id=None, area_id=None, user_id=None,
+        )
     )
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["timers"][0]["label"] == "Nudeln" and 479 <= diag["timers"][0]["remaining_seconds"] <= 480
@@ -1568,10 +1684,10 @@ async def test_diagnostics_list_active_timers(hass: HomeAssistant, setup_hunch):
     async def _on_fire(timer, overdue):
         await async_fire_timer(hass, entry, timer, overdue)
 
-    timers = TimerStore(hass, _on_fire)
+    timers = TimerStore(hass, _on_fire, entry)
 ```
 
-then include `timers=timers, timer_script=entry.options.get(OPT_TIMER_SCRIPT) or None` in the runtime; after assigning `runtime_data`: `await timers.async_load()`; `entry.async_on_unload(timers.async_stop)` — note `async_stop` is a coroutine function; `async_on_unload` accepts callables returning a coroutine in 2026.9 (verify; if not, wrap in a callback that schedules it).
+then include `timers=timers, timer_script=entry.options.get(OPT_TIMER_SCRIPT) or None` in the runtime; after assigning `runtime_data`: `await timers.async_load()`; `entry.async_on_unload(timers.async_stop)` (`async_on_unload` accepts coroutine functions in HA 2026.9).
 
 `config_flow.py`: `vol.Optional(OPT_TIMER_SCRIPT): EntitySelector(EntitySelectorConfig(domain="script"))` after the fallback agent field; import from `homeassistant.helpers.selector`.
 
@@ -1602,12 +1718,20 @@ then include `timers=timers, timer_script=entry.options.get(OPT_TIMER_SCRIPT) or
 - Test: `tests/unit/test_responder.py`, `tests/unit/test_pending.py`
 
 **Interfaces:**
-- Produces: `format_duration(seconds, lang) -> str`, `compact_duration(seconds, lang) -> str`, `timer_name(label, description, duration_seconds, lang) -> str`, `revert_words(verb_names, lang) -> str`, `REVERT_WORDS`, new `OUTCOMES`/`TEMPLATES` keys `timer_started, timer_none, timer_remaining, timer_cancelled, which_timer, delayed_scheduled, for_duration_done`; `render` handles them; `PendingConfirm.timing`, `PendingClarify.timing` (defaulted, END), `PendingTimerPick(timers, labels, question, created)`; `PendingStore` accepts it.
+- Produces: `format_duration(seconds, lang) -> str`, `compact_duration(seconds, lang) -> str`, `timer_name(label, description, duration_seconds, lang) -> str`, `revert_words(verb_names, lang) -> str`, `REVERT_WORDS`, `timing_clause(timing, lang) -> str` (`", in 15 Minuten"` / `" in 15 minutes"`; `", für 15 Minuten"` / `" for 15 minutes"`; `""` for `None`), new `OUTCOMES`/`TEMPLATES` keys `timer_started, timer_none, timer_remaining_line, timer_remaining, timer_cancelled, which_timer, delayed_scheduled, for_duration_done`; `render` handles them and capitalises the first letter of every sentence; `PendingConfirm.timing`, `PendingClarify.timing` (defaulted, END), `PendingTimerPick(timers, labels, question, created)`; `PendingStore` accepts it.
 
 - [ ] **Step 1: Failing tests** (`test_responder.py` append)
 
 ```python
-from custom_components.hunch.responder import compact_duration, format_duration, revert_words, timer_name
+from hunch import Timing
+
+from custom_components.hunch.responder import (  # merge into the existing import
+    compact_duration,
+    format_duration,
+    revert_words,
+    timer_name,
+    timing_clause,
+)
 
 
 def test_format_duration_in_both_languages():
@@ -1630,15 +1754,24 @@ def test_timer_name():
 
 def test_timer_templates_render():
     assert render("timer_started", "de", name="Timer für Nudeln", duration="8 Minuten") == "Timer für Nudeln gestellt, 8 Minuten."
+    assert render("timer_started", "en", name="timer for pasta", duration="8 minutes") == "Timer for pasta set, 8 minutes."
     assert render("timer_none", "de") == "Es läuft kein Timer."
-    assert render("timer_remaining", "de", lines=["Timer für Nudeln: noch 3 Minuten 20 Sekunden."]) == "Timer für Nudeln: noch 3 Minuten 20 Sekunden."
+    line = render("timer_remaining_line", "de", name="Timer für Nudeln", remaining="3 Minuten 20 Sekunden")
+    assert line == "Timer für Nudeln: noch 3 Minuten 20 Sekunden."
+    assert render("timer_remaining", "de", lines=[line, line]) == line + "\n" + line
     assert render("timer_cancelled", "de", names=["Timer für Nudeln", "Timer für Reis"]) == "Abgebrochen: Timer für Nudeln, Timer für Reis."
     assert render("which_timer", "de", options=["Nudeln (3:20 left)", "Reis (10:00 left)"]).startswith("Welchen Timer meinst du: ")
     assert render("delayed_scheduled", "de", duration="15 Minuten", body="Wandlampe (Vorzimmer) ausschalten") == "In 15 Minuten: Wandlampe (Vorzimmer) ausschalten."
     assert render("for_duration_done", "de", body="Wandlampe (Vorzimmer) eingeschaltet", duration="15 Minuten", revert="aus") == "Erledigt: Wandlampe (Vorzimmer) eingeschaltet, in 15 Minuten wieder aus."
     assert render("for_duration_done", "en", body="turned on Wall lamp", duration="15 minutes", revert="off") == "Done: turned on Wall lamp, off again in 15 minutes."
     assert revert_words(["turn_on", "close"], "de") == "aus, auf" and revert_words(["turn_on"], "en") == "off"
+    assert timing_clause(Timing("delayed", 900), "de") == ", in 15 Minuten"
+    assert timing_clause(Timing("for_duration", 900), "en") == " for 15 minutes"
+    assert timing_clause(None, "de") == ""
+    assert render("confirm", "de", phrase="", targets="Wandlampe (Vorzimmer) einschalten", reason="confidence", condition=", für 15 Minuten").startswith("Soll ich Wandlampe (Vorzimmer) einschalten, für 15 Minuten?")
 ```
+
+Also extend the existing `test_every_outcome_renders...` parametrised test (`tests/unit/test_responder.py`, the `slots` dict around line 55) with slots for every new outcome: `timer_started=dict(name="x", duration="y")`, `timer_none={}`, `timer_remaining_line=dict(name="x", remaining="y")`, `timer_remaining=dict(lines=["x"])`, `timer_cancelled=dict(names=["x"])`, `which_timer=dict(options=["x"])`, `delayed_scheduled=dict(duration="y", body="x")`, `for_duration_done=dict(body="x", duration="y", revert="z")` — otherwise it KeyErrors.
 
 `test_pending.py`: `PendingConfirm((), None, "q", 0.0).timing is None`; `PendingTimerPick` stored and taken back from `PendingStore`.
 
@@ -1702,7 +1835,36 @@ def revert_words(verb_names, language) -> str:
     return ", ".join(seen)
 ```
 
-In `render`: `timer_remaining` joins `lines` with "\n" (like `query_answer`); `timer_cancelled` joins `names` with ", "; `which_timer` joins `options` with ", "; the others format slots directly.
+Add:
+
+```python
+TIMING_CLAUSE = {
+    "en": {"delayed": " in {d}", "for_duration": " for {d}"},
+    "de": {"delayed": ", in {d}", "for_duration": ", für {d}"},
+}
+
+
+def timing_clause(timing: Any, language: str) -> str:
+    """A trailing ", in 15 Minuten" / ", für 15 Minuten" for confirm questions. Reads `.kind`
+    and `.seconds`; empty for None."""
+    if timing is None:
+        return ""
+    words = TIMING_CLAUSE.get(language, TIMING_CLAUSE["en"])
+    return words[timing.kind].format(d=format_duration(timing.seconds, language))
+```
+
+In `render`: `timer_remaining` joins `lines` with "\n" (like `query_answer`); `timer_cancelled` joins `names` with ", "; `which_timer` joins `options` with ", "; the others format slots directly. At the very end of `render`, capitalise the first character of the result (`text[:1].upper() + text[1:]`) — English timer names start lowercase ("timer for pasta") and must not start a sentence that way; German is unaffected. Templates for the new keys, en / de (from the spec §5.5 table plus `timer_remaining_line`):
+
+```python
+        "timer_started": "{name} set, {duration}.",                 # de: "{name} gestellt, {duration}."
+        "timer_none": "No timer is running.",                        # de: "Es läuft kein Timer."
+        "timer_remaining_line": "{name}: {remaining} left.",        # de: "{name}: noch {remaining}."
+        "timer_remaining": "{lines}",                                # both
+        "timer_cancelled": "Cancelled: {names}.",                    # de: "Abgebrochen: {names}."
+        "which_timer": "Which timer do you mean: {options}?",        # de: "Welchen Timer meinst du: {options}?"
+        "delayed_scheduled": "In {duration}: {body}.",               # both
+        "for_duration_done": "Done: {body}, {revert} again in {duration}.",  # de: "Erledigt: {body}, in {duration} wieder {revert}."
+```
 
 `pending.py`: append `timing: Timing | None = None` to `PendingConfirm` and `PendingClarify`; add
 
@@ -1775,28 +1937,38 @@ async def test_timer_fires_event_and_script(hass, setup_hunch, freezer):
     assert entry.runtime_data.timers.active() == ()
 
 
-async def test_remaining_and_cancel_and_none(hass, setup_hunch):
+async def test_remaining_and_cancel_and_none(hass, setup_hunch, freezer):
     await _home(hass)
-    client, calls = scripted({"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})})
+    answers = {"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})}
+    round2 = {}
+    client, calls = scripted(answers, round2)  # both dicts are read by reference per call
     entry, _ = await setup_hunch(client, calls)
     assert _speech(await _say(hass, "wie lange noch?")) == "Es läuft kein Timer."
-    await entry.runtime_data.timers.async_add(HunchTimer("a", "timer", "Nudeln", None, 480, dt_util.utcnow() + timedelta(seconds=200), (), "de", None, None, None, None))
-    speech = _speech(await _say(hass, "wie lange noch?"))
-    assert speech.startswith("Timer für Nudeln: noch 3 Minuten")
-    client2, calls2 = scripted({"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})})
-    entry.runtime_data.client = client2  # same engine object holds the client: patch via runtime
-    ...
+    await entry.runtime_data.timers.async_add(
+        HunchTimer(
+            timer_id="a", kind="timer", label="Nudeln", description=None, duration_seconds=480,
+            due_at=dt_util.utcnow() + timedelta(seconds=200), actions=(), language="de",
+            conversation_id=None, device_id=None, satellite_id=None, area_id=None, user_id=None,
+        )
+    )
+    assert _speech(await _say(hass, "wie lange noch?")) == "Timer für Nudeln: noch 3 Minuten 20 Sekunden."
+    answers["timing_kind"] = ChoiceA(TIMER_CANCEL, 0.9, {})
+    round2["timer_pick"] = ChoiceA("Nudeln (3:20 left)", 0.9, {})
+    assert _speech(await _say(hass, "Timer abbrechen")) == "Abgebrochen: Timer für Nudeln."
+    assert entry.runtime_data.timers.active() == ()
+    assert _speech(await _say(hass, "Timer abbrechen")) == "Es läuft kein Timer."
 ```
 
-Write the cancel half as its own test with a fresh `setup_hunch(client_cancel, ...)` (a second entry is not possible — single instance — so instead script the ONE fake client to answer `timing_kind` from a mutable dict the test flips between turns: build `answers = {"timing_kind": ChoiceA(TIMER_REMAINING, 0.9, {})}`, pass `answers` to `scripted(answers)` and mutate `answers["timing_kind"]` between `_say` calls — `scripted` reads the dict by reference).
+(`freezer` keeps the clock still, so "3:20" and "3 Minuten 20 Sekunden" are stable. Imports to merge at the top of the file: `from datetime import timedelta`, `from homeassistant.util import dt as dt_util`, `from pytest_homeassistant_custom_component.common import async_capture_events, async_fire_time_changed` (`async_mock_service` is already imported), `from hunch.timing import ALL_TIMERS, DELAYED, FOR_DURATION, MINUTES, TIMER_CANCEL, TIMER_REMAINING, TIMER_START`, `from custom_components.hunch.const import EVENT_TIMER_FINISHED`, `from custom_components.hunch.timers import HunchTimer, StoredAction`.)
 
 Further tests to write, same style:
 
-- `test_two_timers_which_timer_clarification_cancels_the_pick`: two stored timers, Round 2 `timer_pick` hesitant (0.5) → speech starts with "Welchen Timer meinst du: "; `continue_conversation is True`; reply "den für die Nudeln" judged with `reply={"reply_pick": ChoiceA("Nudeln (3:20 left)", 0.9, {})}` → speech "Abgebrochen: Timer für Nudeln." and one timer left.
+- `test_two_timers_which_timer_clarification_cancels_the_pick` (uses `freezer`): two stored timers (Nudeln 200 s, Reis 600 s), Round 2 `timer_pick` hesitant (0.5) → speech == "Welchen Timer meinst du: Timer für Nudeln (3 Minuten 20 Sekunden), Timer für Reis (10 Minuten)?"; `continue_conversation is True`; reply "den für die Nudeln" judged with `reply={"reply_pick": ChoiceA("Timer für Nudeln (3 Minuten 20 Sekunden)", 0.9, {})}` → speech "Abgebrochen: Timer für Nudeln." and one timer left. A second variant: reply judged `NO_MATCH` → speech "Okay, ich habe nichts geändert.", both timers still there, no fallback call.
+- `test_overdue_by_hours_skips_the_action`: seed `hass_storage[TIMER_STORE_KEY]` before `setup_hunch` with a `delayed` timer whose `due_at` is 2 h ago and actions `turn_off` on `light.kuche_spots`; capture the event; after setup + `async_block_till_done` the event has `skipped is True`, `executed == []`, and no `homeassistant.turn_off` service call happened.
 - `test_for_duration_turns_on_now_and_off_later`: Round 1 `{"verb:turn_on", "area:kuche", "domain:light", "verb_primary": turn_on, "area_primary": Küche, "timing_kind": FOR_DURATION}`, Round 2 `{"target:turn_on": <Kücheninsel label>, "duration:0": MINUTES}`; `async_mock_service(hass, "homeassistant", "turn_on")` and `"turn_off"`; say "Kücheninsel für 15 Minuten an" → one `turn_on` call now, speech "Erledigt: Kücheninsel (Küche) eingeschaltet, in 15 Minuten wieder aus."; stored timer kind `revert` with `StoredAction("turn_off", ("light.kuche_kucheninsel",), {})`; `freezer.tick(901)` + fire → one `turn_off` call on the same id, event with `executed == ["light.kuche_kucheninsel"]`.
 - `test_delayed_turn_off_runs_nothing_now`: Round 1 `R1_TURN_OFF_KITCHEN` + `timing_kind: DELAYED`, Round 2 `{"duration:0": MINUTES}`; say "Licht in der Küche in 10 Minuten aus" → no `turn_off` call now, speech "In 10 Minuten: Spots (Küche), Kücheninsel (Küche) ausschalten."; after `freezer.tick(601)` one `turn_off` call with both ids.
 - `test_confirmed_plan_keeps_its_timing`: force a confirmation (e.g. `flag:collective` with `max_silent_targets` option 1) with `timing_kind: DELAYED`; speech asks "Soll ich …?"; reply "ja" (`reply_confirm: affirmative`) → no service call now, a `delayed` timer stored.
-- `test_timer_turn_is_not_remembered_for_follow_ups`: after "Timer 8 Minuten", `entry.runtime_data.last_turns.get(cid) is None`.
+- `test_timed_turns_are_not_remembered_for_follow_ups`: after "Timer 8 Minuten" and after the delayed turn, `entry.runtime_data.last_turns.get(cid) is None`.
 
 Use `async_mock_service` from `pytest_homeassistant_custom_component.common`; check how existing tests capture service calls in this file (`svc` list) and follow that.
 
@@ -1804,19 +1976,20 @@ Use `async_mock_service` from `pytest_homeassistant_custom_component.common`; ch
 
 - [ ] **Step 3: Implement** (`conversation.py`)
 
-- Imports: `ActiveTimer`, `Timing`, `TimerCommand` from `hunch`; `ALL_TIMERS`, `timer_option` from `hunch.timing`; `HunchTimer`, `inverse_actions`, `new_timer_id`, `stored_actions` from `.timers`; `PendingTimerPick` from `.pending`; `format_duration`, `revert_words`, `timer_name` from `.responder`; `dt_util`, `timedelta`, `device_registry as dr`.
+- Imports: `ActiveTimer`, `Timing`, `TimerCommand` from `hunch`; `ALL_TIMERS` from `hunch.timing`; `HunchTimer`, `inverse_actions`, `new_timer_id`, `stored_actions` from `.timers`; `PendingTimerPick` from `.pending`; `format_duration`, `revert_words`, `timer_name`, `timing_clause` from `.responder`; `dt_util`, `timedelta`, `device_registry as dr`.
 - `_async_handle_message`: `result = await rt.engine.decide(home, user_input.text, previous, rt.timers.as_active_timers())`. `Resolved` branch: `if result.timer is not None: return await self._run_timer(turn, result.timer, result.trace)` else `_run(..., timing=result.timing)`. `NeedsConfirmation`: `PendingConfirm(result.actions, result.condition, question, now, result.timing)`; the confirm question gets a timing clause: append `" " + render_timing_hint` — keep simple: when `timing` is set, prefix the body with `format_duration` via two new `REASONS`-like phrases? Simplest honest form: build the confirm question from the normal clauses and append `condition`-slot text `", in {duration}"` (de) / `" in {duration}"` (en) for `delayed`, and `", für {duration}"` / `" for {duration}"` for `for_duration` — add `TIMING_CLAUSE = {"en": {"delayed": " in {d}", "for_duration": " for {d}"}, "de": {"delayed": " in {d}", "for_duration": " für {d}"}}` to `responder.py` and a helper `timing_clause(timing, lang)`; pass it through the `condition` slot (concatenated after the condition clause).
-- `NeedsClarification`: `question_key == "which_timer"` → labels `tuple(timer_option(t) for t in result.timers) + (ALL_TIMERS,)`; question `render("which_timer", lang, options=labels[:-1])`; `rt.pending.put(cid, PendingTimerPick(result.timers, labels, question, now))`; `_result(..., "NeedsClarification", cont=True)`. Otherwise as before, with `PendingClarify(..., timing=result.timing)`.
-- `_handle_reply`: `PendingTimerPick` → `ChoiceQ(CLARIFY_INSTRUCTIONS, (*pending.labels, NO_MATCH))`; on a sure pick: `ALL_TIMERS` → all timers, a label → that timer; cancel them via `_cancel_timers`; else escalate with `pending_context(question, "cancel one of the timers: …")`.
-- `_handle_confirm_reply` → `_run(..., timing=pending.timing)`; `_handle_clarify_reply` → `_run(..., timing=pending.timing)` (also when it re-asks a `risk:confirm`, carry the timing into the new `PendingConfirm`).
+- `NeedsClarification`: `question_key == "which_timer"` → spoken labels `self._timer_labels(result.timers, lang)` = one `f"{timer_name(t.label, t.description, <duration>, lang)} ({format_duration(<remaining>, lang)})"` per timer (duration and remaining re-read from `rt.timers.active()` by `timer_id`; a duplicate label gets ` #2`), then `labels = spoken + (ALL_TIMERS,)`; question `render("which_timer", lang, options=spoken)`; `rt.pending.put(cid, PendingTimerPick(result.timers, labels, question, now))`; `_result(..., "NeedsClarification", cont=True)`. Otherwise as before, with `PendingClarify(..., timing=result.timing)`.
+- `_handle_reply`: `PendingTimerPick` → `ChoiceQ(CLARIFY_INSTRUCTIONS, (*pending.labels, NO_MATCH))` (the same spoken labels the user heard); on a sure pick (`confidence >= REPLY_CONF`): `ALL_TIMERS` → all `pending.timers`, a label → the timer at that index; cancel them via `_cancel_timers(turn, timers, trace, outcome)` (see `_run_timer` cancel); anything else → `self._result(turn, render("cancelled", lang), trace, "TimerPickOther")` — the fallback agent cannot cancel Hunch timers, so this turn is never handed off. `_pending_description` gets a `PendingTimerPick` branch (`"cancel one of the timers: " + ", ".join(pending.labels)`) so the `ReplyJudgmentFailed` path cannot raise.
+- `_confirm_question(self, actions, condition, reason, areas, lang, timing=None)` appends `timing_clause(timing, lang)` to the `condition` slot.
+- `_handle_confirm_reply` → `_run(..., timing=pending.timing)`; `_handle_clarify_reply` → `_run(..., timing=pending.timing)` and, when it re-asks a `risk:confirm`, `_confirm_question(..., timing=pending.timing)` and `PendingConfirm(..., timing=pending.timing)`.
 - `_run(self, turn, home, actions, condition, trace, outcome, timing: Timing | None = None)`:
-  - after the condition check and the queries/commands split, `if timing is not None and timing.kind == "delayed" and commands:` → `await rt.timers.async_add(self._make_timer(turn, "delayed", stored_actions(commands), description=self._action_clauses(commands, areas, lang, done=False), duration=timing.seconds))`; `self._remember(turn, actions)`; return `_result(turn, render("delayed_scheduled", lang, duration=format_duration(timing.seconds, lang), body=<same clauses>), trace, outcome)`.
-  - after executing commands, when `timing is not None and timing.kind == "for_duration"`: `ok_ids = {r.entity_id for r in results if r.ok}`; `revert = inverse_actions(commands, ok_ids)`; if `revert`: add a `revert` timer with `stored_actions(revert)` and description `self._action_clauses(revert, areas, lang, done=False)`; text = `render("for_duration_done", lang, body=self._action_clauses(commands, areas, lang, done=True), duration=format_duration(timing.seconds, lang), revert=revert_words([a.verb.name for a in commands], lang))` (if some failed, keep the `execution_failed` text and append the for-duration sentence on a new line).
-- `_make_timer(self, turn, kind, actions, *, label=None, description=None, duration) -> HunchTimer`: `device_id = turn.user_input.device_id`; `area_id = (dr.async_get(self.hass).async_get(device_id).area_id if device_id and dr.async_get(self.hass).async_get(device_id) else None)`; `due_at = dt_util.utcnow() + timedelta(seconds=duration)`; `satellite_id = getattr(turn.user_input, "satellite_id", None)`.
+  - after the condition check and the queries/commands split, `if timing is not None and timing.kind == "delayed" and commands:` → `await rt.timers.async_add(self._make_timer(turn, "delayed", stored_actions(commands), description=self._action_clauses(commands, areas, lang, done=False), duration=timing.seconds))`; **no** `_remember`; return `_result(turn, render("delayed_scheduled", lang, duration=format_duration(timing.seconds, lang), body=<same clauses>), trace, outcome)`.
+  - after executing commands, when `timing is not None and timing.kind == "for_duration"`: `ok_ids = {r.entity_id for r in results if r.ok}`; `revert = inverse_actions(commands, ok_ids)`; if `revert`: add a `revert` timer with `stored_actions(revert)` and description `self._action_clauses(revert, areas, lang, done=False)`; text = `render("for_duration_done", lang, body=self._action_clauses(commands, areas, lang, done=True), duration=format_duration(timing.seconds, lang), revert=revert_words([a.verb.name for a in commands], lang))` (if some failed, keep the `execution_failed` text and append the for-duration sentence on a new line). **No** `_remember` for a timed turn (spec §3).
+- `_make_timer(self, turn, kind, actions, *, label=None, description=None, duration) -> HunchTimer`: `timer_id=new_timer_id()`; `device_id = turn.user_input.device_id`; `device = dr.async_get(self.hass).async_get(device_id) if device_id else None`; `area_id = device.area_id if device else None`; `due_at = dt_util.utcnow() + timedelta(seconds=duration)`; `satellite_id = turn.user_input.satellite_id`; `user_id = turn.user_input.context.user_id`; `conversation_id = turn.chat_log.conversation_id`; `language = turn.lang`.
 - `_run_timer(self, turn, command, trace)`:
   - `start`: `_make_timer(turn, "timer", (), label=command.label, duration=command.duration_seconds)` → add → `render("timer_started", lang, name=timer_name(label, None, dur, lang), duration=format_duration(dur, lang))`.
-  - `remaining`: none → `timer_none`; else lines `f"{timer_name(...)}: noch {format_duration(remaining)}."` — build via a new template `timer_remaining_line` in `responder.py` (`"{name}: noch {remaining}."` / `"{name}: {remaining} left."`) and `render("timer_remaining", lang, lines=...)`. `remaining` per timer from `rt.timers.active()` matched by `timer_id` (the engine's `ActiveTimer.remaining_seconds` is a snapshot; re-read the store).
-  - `cancel`: none → `timer_none`; else `await self._cancel_timers(turn, command.timers, trace)` → `render("timer_cancelled", lang, names=[...])`. A timer that vanished meanwhile (`async_cancel` returned None) is simply skipped.
+  - `remaining`: none → `timer_none`; else one `render("timer_remaining_line", lang, name=timer_name(t.label, t.description, t.duration_seconds, lang), remaining=format_duration(rt.timers.remaining(t), lang))` per timer, joined by `render("timer_remaining", lang, lines=...)`. Look every timer up in `rt.timers.active()` by `timer_id` (the engine's `ActiveTimer` is a snapshot); one that vanished is skipped; none left → `timer_none`.
+  - `cancel`: none → `timer_none`; else `_cancel_timers(turn, command.timers, trace, outcome)`: `async_cancel` each; names of the ones actually cancelled → `render("timer_cancelled", lang, names=[...])`; if none was left to cancel → `timer_none`.
   - Timer turns do not call `_remember`.
 - `manifest.json`: `"version": "0.4.0"`, `"requirements": ["hunch-engine==0.6.0"]`.
 
@@ -1839,5 +2012,6 @@ Use `async_mock_service` from `pytest_homeassistant_custom_component.common`; ch
 ## Self-review notes
 
 - Spec coverage: §4.1 → T1; §4.2 → T2 + T3 gating; §4.3 → T3; §4.4 → T4; §4.5 → T1; §4.6 notes spread over T3/T4; §5.1–5.2 → T6; §5.3 → T7; §5.4 → T9; §5.5 → T8 (+ `timing_clause`, `timer_remaining_line` added in T9's step 3 — implementers add them to `responder.py` with tests); §5.6 → T7; §6 → T5; §7 → each task's tests.
+- Review 2026-09-24 (independent reviewer) applied: articles are not numbers; `lock` has no inverse; cancel always asks Jev; any non-none `timing_kind` Hunch cannot serve hands off; `MORE_SAME` guard; `@callback` due handler; `async_at_started` for overdue; `user_id` on timers; `MAX_OVERDUE_SECONDS`; spoken which-timer labels; timed turns not remembered; `timing_clause`; responder `slots` test extended; imports merged at top of files.
 - Type consistency: `TimerCommand.kind` values `"start" | "cancel" | "remaining"` everywhere; `Timing.kind` `"for_duration" | "delayed"`; `HunchTimer.kind` `"timer" | "revert" | "delayed"`; `ActiveTimer.kind` mirrors `HunchTimer.kind`.
 - Known judgment calls for the executor: `label_candidates` keeps function words (Jev filters); `timing.NO_MATCH` duplicates `round2.NO_MATCH` to avoid an import cycle (tested equal).
