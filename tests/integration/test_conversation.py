@@ -9,10 +9,21 @@ from homeassistant.components.homeassistant.exposed_entities import async_expose
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import intent
 from homeassistant.util import dt as dt_util
-from hunch import DEFAULT_VOCABULARY, Action, NeedsClarification, Resolved, Timing, Trace
+from hunch import (
+    DEFAULT_VOCABULARY,
+    Action,
+    ActiveTimer,
+    DecisionBackendError,
+    NeedsClarification,
+    Resolved,
+    TimerCommand,
+    Timing,
+    Trace,
+)
 from hunch.questions import ChoiceA, NoulA
 from hunch.round2 import NO_MATCH
 from hunch.timing import (
@@ -33,6 +44,7 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.hunch.const import EVENT_TIMER_FINISHED, TIMER_STORE_KEY
 from custom_components.hunch.executor import TargetResult
 from custom_components.hunch.pending import PendingConfirm
+from custom_components.hunch.responder import pending_context
 from custom_components.hunch.timers import HunchTimer, StoredAction
 from tests.integration.conftest import scripted
 
@@ -81,9 +93,15 @@ async def _home(hass: HomeAssistant):
     return made
 
 
-async def _say(hass, text, conversation_id=None, language="de"):
+async def _say(hass, text, conversation_id=None, language="de", device_id=None):
     return await _converse(
-        hass, text, conversation_id, Context(user_id="u"), language=language, agent_id=AGENT
+        hass,
+        text,
+        conversation_id,
+        Context(user_id="u"),
+        language=language,
+        agent_id=AGENT,
+        device_id=device_id,
     )
 
 
@@ -871,6 +889,28 @@ async def test_timer_fires_event_and_script(hass: HomeAssistant, setup_hunch, fr
     assert events[0].data["label"] is None and events[0].data["kind"] == "timer"
     assert len(script_calls) == 1 and script_calls[0].data["entity_id"] == "script.ansage"
     assert script_calls[0].data["variables"]["duration_seconds"] == 120
+    assert set(events[0].data) == {
+        "timer_id",
+        "kind",
+        "label",
+        "description",
+        "duration_seconds",
+        "due_at",
+        "overdue",
+        "skipped",
+        "language",
+        "conversation_id",
+        "device_id",
+        "satellite_id",
+        "area_id",
+        "user_id",
+        "executed",
+        "failed",
+    }
+    assert events[0].data["language"] == "de" and events[0].data["user_id"] == "u"
+    assert events[0].data["skipped"] is False
+    assert events[0].data["executed"] == [] and events[0].data["failed"] == []
+    assert script_calls[0].data["variables"] == events[0].data
     assert entry.runtime_data.timers.active() == ()
 
 
@@ -1060,9 +1100,10 @@ async def test_for_duration_reverts_only_what_succeeded(hass: HomeAssistant, set
 
     with patch("custom_components.hunch.conversation.Executor.execute", execute):
         result = await _say(hass, "Licht in der Küche für 10 Minuten aus")
-    speech = _speech(result)
-    assert "Kücheninsel (Küche)" in speech.splitlines()[0]
-    assert speech.splitlines()[-1].endswith("in 10 Minuten wieder an.")
+    assert _speech(result) == (
+        "Erledigt, außer: Kücheninsel (Küche).\n"
+        "Spots (Küche) ausgeschaltet, in 10 Minuten wieder an."
+    )
     (timer,) = entry.runtime_data.timers.active()
     assert timer.actions == (StoredAction("turn_on", ("light.kuche_spots",), {}),)
     await hass.config_entries.async_unload(entry.entry_id)
@@ -1097,8 +1138,10 @@ async def test_confirmed_plan_keeps_its_timing(hass: HomeAssistant, setup_hunch)
     entry, _ = await setup_hunch(client, calls, options={"max_silent_targets": 1})
     off = async_mock_service(hass, "homeassistant", "turn_off")
     first = await _say(hass, "Licht in der Küche in 10 Minuten aus", conversation_id="d3")
-    question = _speech(first)
-    assert question.startswith("Soll ich ") and ", in 10 Minuten?" in question
+    assert _speech(first) == (
+        "Soll ich Spots (Küche), Kücheninsel (Küche) ausschalten, in 10 Minuten? "
+        "Das ist viel auf einmal."
+    )
     assert first.continue_conversation is True
     second = await _say(hass, "ja", conversation_id="d3")
     assert off == []
@@ -1164,6 +1207,301 @@ async def test_a_clarified_timed_pick_keeps_its_timing_through_a_confirm_re_ask(
         await _say(hass, "in 10 Minuten scharf schalten", conversation_id="c30")
     second = await _say(hass, "die Spots", conversation_id="c30")
     assert len(svc) == 0
-    assert ", in 10 Minuten?" in _speech(second)
+    assert _speech(second) == (
+        "Soll ich Spots (Küche) scharfschalten (Modus abwesend), in 10 Minuten? "
+        "Das braucht eine Bestätigung."
+    )
     pending = rt.pending.take("c30")
     assert isinstance(pending, PendingConfirm) and pending.timing == Timing("delayed", 600)
+
+
+async def test_timer_remembers_the_asking_device_and_area(hass: HomeAssistant, setup_hunch):
+    await _home(hass)
+    client, calls = scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {})}, {"duration:0": ChoiceA(MINUTES, 0.9, {})}
+    )
+    entry, _ = await setup_hunch(client, calls)
+    kuche = ar.async_get(hass).async_get_area_by_name("Küche")
+    devices = dr.async_get(hass)
+    satellite = devices.async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={("test", "satellite-kuche")}
+    )
+    devices.async_update_device(satellite.id, area_id=kuche.id)
+    await _say(hass, "Timer 8 Minuten", device_id=satellite.id)
+    (timer,) = entry.runtime_data.timers.active()
+    assert timer.device_id == satellite.id and timer.area_id == kuche.id
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_for_duration_where_everything_fails_stores_no_revert(
+    hass: HomeAssistant, setup_hunch
+):
+    await _home(hass)
+    client, calls = scripted(
+        R1_TURN_ON_FOR_DURATION,
+        {
+            "target:turn_on": ChoiceA("Kücheninsel", 0.95, {}),
+            "duration:0": ChoiceA(MINUTES, 0.95, {}),
+        },
+    )
+    entry, _ = await setup_hunch(client, calls)
+
+    async def execute(self, actions, context):
+        return [TargetResult("light.kuche_kucheninsel", False, "boom")]
+
+    with patch("custom_components.hunch.conversation.Executor.execute", execute):
+        result = await _say(hass, "Kücheninsel für 15 Minuten an")
+    assert _speech(result) == "Erledigt, außer: Kücheninsel (Küche)."
+    assert entry.runtime_data.timers.active() == ()
+
+
+async def test_for_duration_leaves_targets_already_in_the_commanded_state_alone(
+    hass: HomeAssistant, setup_hunch
+):
+    await _home(hass)  # Spots is on, Kücheninsel off
+    client, calls = scripted(
+        R1_TURN_ON_FOR_DURATION,
+        {
+            "target:turn_on": ChoiceA("Spots", 0.95, {}),
+            "duration:0": ChoiceA(MINUTES, 0.95, {}),
+        },
+    )
+    entry, _ = await setup_hunch(client, calls)
+    on = async_mock_service(hass, "homeassistant", "turn_on")
+    result = await _say(hass, "Spots für 15 Minuten an")
+    # the command still runs; nothing changed, so nothing is changed back
+    assert len(on) == 1 and on[0].data["entity_id"] == ["light.kuche_spots"]
+    assert _speech(result) == "Erledigt: Spots (Küche) eingeschaltet."
+    assert entry.runtime_data.timers.active() == ()
+
+
+async def test_for_duration_on_a_set_reverts_only_what_changed(
+    hass: HomeAssistant, setup_hunch, freezer
+):
+    await _home(hass)  # Spots is on, Kücheninsel off
+    r1 = {**R1_TURN_ON_FOR_DURATION, "flag:collective": NoulA(0.9)}
+    client, calls = scripted(r1, {"duration:0": ChoiceA(MINUTES, 0.95, {})})
+    entry, _ = await setup_hunch(client, calls)
+    on = async_mock_service(hass, "homeassistant", "turn_on")
+    off = async_mock_service(hass, "homeassistant", "turn_off")
+    result = await _say(hass, "Licht in der Küche für 10 Minuten an")
+    assert len(on) == 1
+    assert sorted(on[0].data["entity_id"]) == ["light.kuche_kucheninsel", "light.kuche_spots"]
+    assert (
+        _speech(result) == "Erledigt: Kücheninsel (Küche) eingeschaltet, in 10 Minuten wieder aus."
+    )
+    (timer,) = entry.runtime_data.timers.active()
+    assert timer.actions == (StoredAction("turn_off", ("light.kuche_kucheninsel",), {}),)
+    freezer.tick(timedelta(seconds=601))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len(off) == 1 and off[0].data["entity_id"] == ["light.kuche_kucheninsel"]
+
+
+async def test_a_clarified_timed_pick_without_confirmation_is_scheduled(
+    hass: HomeAssistant, setup_hunch
+):
+    ids = await _home(hass)
+    client, calls = scripted(
+        R1_TURN_ON_ONE, reply={"reply_pick": ChoiceA("Spots (Küche)", 0.9, {})}
+    )
+    entry, _ = await setup_hunch(client, calls)
+    rt = entry.runtime_data
+    off = async_mock_service(hass, "homeassistant", "turn_off")
+    plain = _clarification(rt.builder.build(), [ids[0], ids[1]], verb_name="turn_off")
+    timed = NeedsClarification(
+        plain.question_key, plain.candidates, plain.trace, plain.verb, {}, Timing("delayed", 600)
+    )
+    with patch.object(rt.engine, "decide", AsyncMock(return_value=timed)):
+        first = await _say(hass, "in 10 Minuten die Lampe aus", conversation_id="c31")
+    assert _speech(first) == "Welches meinst du: Spots (Küche), Kücheninsel (Küche)?"
+    second = await _say(hass, "die Spots", conversation_id="c31")
+    assert off == []
+    assert _speech(second) == "In 10 Minuten: Spots (Küche) ausschalten."
+    assert rt.traces[-1]["outcome"] == "Clarified"
+    (timer,) = rt.timers.active()
+    assert timer.kind == "delayed" and timer.duration_seconds == 600
+    assert timer.actions == (StoredAction("turn_off", ("light.kuche_spots",), {}),)
+    assert rt.last_turns.get("c31") is None
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_timers_gone_before_the_answer_are_not_claimed(hass: HomeAssistant, setup_hunch):
+    await _home(hass)
+    client, calls = scripted({})
+    entry, _ = await setup_hunch(client, calls)
+    rt = entry.runtime_data
+    gone = ActiveTimer("gone", "Nudeln", 200, "timer")
+    ask = NeedsClarification("which_timer", (), Trace(), timers=(gone,), timer_kind="cancel")
+    with patch.object(rt.engine, "decide", AsyncMock(return_value=ask)):
+        result = await _say(hass, "Timer abbrechen", conversation_id="g1")
+    assert _speech(result) == "Es läuft kein Timer."
+    assert result.continue_conversation is False and rt.pending.take("g1") is None
+    for kind in ("remaining", "cancel"):
+        done = Resolved((), None, 0.9, Trace(), timer=TimerCommand(kind, timers=(gone,)))
+        with patch.object(rt.engine, "decide", AsyncMock(return_value=done)):
+            result = await _say(hass, "Timer Nudeln", conversation_id="g1")
+        assert _speech(result) == "Es läuft kein Timer.", kind
+
+
+async def test_a_timer_that_fired_before_the_pick_is_not_claimed_as_cancelled(
+    hass: HomeAssistant, setup_hunch, freezer
+):
+    await _home(hass)
+    client, calls = scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA("Nudeln (0:30 left)", 0.5, {})},
+        reply={"reply_pick": ChoiceA("Timer für Nudeln (30 Sekunden)", 0.9, {})},
+    )
+    entry, _ = await setup_hunch(client, calls)
+    timers = entry.runtime_data.timers
+    events = async_capture_events(hass, EVENT_TIMER_FINISHED)
+    await timers.async_add(_stored_timer("a", "Nudeln", 30))
+    await timers.async_add(_stored_timer("b", "Reis", 600))
+    first = await _say(hass, "Timer abbrechen", conversation_id="g2")
+    assert _speech(first) == (
+        "Welchen Timer meinst du: Timer für Nudeln (30 Sekunden), Timer für Reis (10 Minuten)?"
+    )
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len(events) == 1 and events[0].data["label"] == "Nudeln"
+    second = await _say(hass, "den für die Nudeln", conversation_id="g2")
+    assert _speech(second) == "Es läuft kein Timer."
+    assert [t.label for t in timers.active()] == ["Reis"]
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_failed_timer_pick_judgment_answers_locally(
+    hass: HomeAssistant, setup_hunch, freezer
+):
+    await _home(hass)
+    client, calls = scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA("Nudeln (3:20 left)", 0.5, {})},
+    )
+    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    rt = entry.runtime_data
+    await rt.timers.async_add(_stored_timer("a", "Nudeln", 200))
+    await rt.timers.async_add(_stored_timer("b", "Reis", 600))
+    first = await _say(hass, "Timer abbrechen", conversation_id="w3")
+    assert first.continue_conversation is True
+
+    async def boom(*args, **kwargs):
+        raise DecisionBackendError("timeout")
+
+    fake = AsyncMock(return_value=_fallback_result("w3"))
+    with (
+        patch.object(client, "ask", boom),
+        patch("custom_components.hunch.conversation.conversation.async_converse", fake),
+    ):
+        second = await _say(hass, "den für die Nudeln", conversation_id="w3")
+    assert _speech(second) == "Okay, ich habe nichts geändert."
+    assert fake.await_count == 0
+    assert rt.traces[-1]["outcome"] == "TimerPickJudgmentFailed"
+    assert [t.label for t in rt.timers.active()] == ["Nudeln", "Reis"]
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_a_timed_clarification_hands_off_with_its_timing(hass: HomeAssistant, setup_hunch):
+    ids = await _home(hass)
+    client, calls = scripted(R1_TURN_ON_ONE, reply={"reply_pick": ChoiceA(NO_MATCH, 0.9, {})})
+    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    rt = entry.runtime_data
+    off = async_mock_service(hass, "homeassistant", "turn_off")
+    plain = _clarification(rt.builder.build(), [ids[0], ids[1]], verb_name="turn_off")
+    timed = NeedsClarification(
+        plain.question_key, plain.candidates, plain.trace, plain.verb, {}, Timing("delayed", 900)
+    )
+    with patch.object(rt.engine, "decide", AsyncMock(return_value=timed)):
+        first = await _say(hass, "in 15 Minuten die Lampe aus", conversation_id="c32")
+    fake = AsyncMock(return_value=_fallback_result("c32"))
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _say(hass, "die im Flur", conversation_id="c32")
+    assert fake.await_count == 1
+    assert fake.await_args.kwargs["extra_system_prompt"] == pending_context(
+        _speech(first), "turn off one of: Spots (Küche), Kücheninsel (Küche) in 15 minutes"
+    )
+    assert off == [] and rt.timers.active() == ()
+
+
+async def test_a_timed_pick_whose_value_is_missing_hands_off_with_its_timing(
+    hass: HomeAssistant, setup_hunch
+):
+    ids = await _home(hass)
+    client, calls = scripted(
+        R1_TURN_ON_ONE, reply={"reply_pick": ChoiceA("Spots (Küche)", 0.9, {})}
+    )
+    entry, _ = await setup_hunch(client, calls, options={"fallback_agent": "conversation.other"})
+    rt = entry.runtime_data
+    plain = _clarification(rt.builder.build(), [ids[0], ids[1]], verb_name="set_brightness")
+    timed = NeedsClarification(
+        plain.question_key, plain.candidates, plain.trace, plain.verb, {}, Timing("delayed", 900)
+    )
+    with patch.object(rt.engine, "decide", AsyncMock(return_value=timed)):
+        first = await _say(hass, "in 15 Minuten die Lampe dunkler", conversation_id="c33")
+    fake = AsyncMock(return_value=_fallback_result("c33"))
+    with patch("custom_components.hunch.conversation.conversation.async_converse", fake):
+        await _say(hass, "die Spots", conversation_id="c33")
+    assert fake.await_count == 1
+    assert fake.await_args.kwargs["extra_system_prompt"] == pending_context(
+        _speech(first), "set the brightness of Spots (Küche) in 15 minutes"
+    )
+    assert rt.timers.active() == ()
+
+
+async def test_a_timed_turn_or_timer_command_clears_the_turn_before_it(
+    hass: HomeAssistant, setup_hunch
+):
+    await _home(hass)
+    answers: dict = dict(R1_TURN_OFF_KITCHEN)
+    round2: dict = {}
+    client, calls = scripted(answers, round2)  # both dicts are read by reference per call
+    entry, _ = await setup_hunch(client, calls)
+    rt = entry.runtime_data
+    async_mock_service(hass, "homeassistant", "turn_off")
+
+    async def plain_turn():
+        answers.clear()
+        answers.update(R1_TURN_OFF_KITCHEN)
+        await _say(hass, "Licht in der Küche aus", conversation_id="m1")
+        assert rt.last_turns.get("m1").prompt == "Licht in der Küche aus"
+
+    await plain_turn()
+    answers["timing_kind"] = ChoiceA(DELAYED, 0.95, {})
+    round2["duration:0"] = ChoiceA(MINUTES, 0.95, {})
+    await _say(hass, "Licht in der Küche in 10 Minuten aus", conversation_id="m1")
+    assert rt.last_turns.get("m1") is None  # "und im Esszimmer" cannot lean on the first turn
+
+    await plain_turn()
+    answers.clear()
+    answers["timing_kind"] = ChoiceA(TIMER_START, 0.9, {})
+    await _say(hass, "Timer 8 Minuten", conversation_id="m1")
+    assert rt.last_turns.get("m1") is None
+
+    await plain_turn()
+    answers.clear()
+    answers["timing_kind"] = ChoiceA(TIMER_CANCEL, 0.9, {})
+    round2["timer_pick"] = ChoiceA(NO_MATCH, 0.5, {})
+    asked = await _say(hass, "Timer abbrechen", conversation_id="m1")
+    assert asked.continue_conversation is True  # which timer? (two are running)
+    assert rt.last_turns.get("m1") is None
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_english_timer_start_and_remaining_lines_are_capitalised(
+    hass: HomeAssistant, setup_hunch, freezer
+):
+    await _home(hass)
+    answers = {"timing_kind": ChoiceA(TIMER_START, 0.9, {})}
+    round2 = {"duration:0": ChoiceA(MINUTES, 0.9, {}), "timer_label": ChoiceA("pasta", 0.9, {})}
+    client, calls = scripted(answers, round2)
+    entry, _ = await setup_hunch(client, calls)
+    started = await _say(hass, "timer for the pasta 8 minutes", language="en")
+    assert _speech(started) == "Timer for pasta set, 8 minutes."
+    await entry.runtime_data.timers.async_add(_stored_timer("b", None, 600))
+    answers["timing_kind"] = ChoiceA(TIMER_REMAINING, 0.9, {})
+    round2["timer_pick"] = ChoiceA(NO_MATCH, 0.9, {})  # none singled out: read them all
+    left = await _say(hass, "how long is left?", language="en")
+    assert _speech(left) == "Timer for pasta: 8 minutes left.\n10-minute timer: 10 minutes left."
+    await hass.config_entries.async_unload(entry.entry_id)

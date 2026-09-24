@@ -2,10 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 from hunch import DEFAULT_VOCABULARY as V
-from hunch import Entity, Timing
+from hunch import INVERSES, Entity, Timing
 
 from custom_components.hunch.responder import (
     OUTCOMES,
+    REVERT_WORDS,
     action_clause,
     compact_duration,
     condition_clause,
@@ -344,6 +345,8 @@ def test_format_duration_in_both_languages():
     assert format_duration(60, "en") == "1 minute"
     assert format_duration(3661, "en") == "1 hour 1 minute 1 second"
     assert compact_duration(480, "de") == "8-Minuten" and compact_duration(480, "en") == "8-minute"
+    assert format_duration(0, "de") == "0 Sekunden" and format_duration(0, "en") == "0 seconds"
+    assert format_duration(59.6, "de") == "1 Minute"  # rounded to whole seconds first
 
 
 def test_timer_name():
@@ -352,6 +355,15 @@ def test_timer_name():
     assert timer_name(None, None, 480, "de") == "8-Minuten-Timer"
     assert timer_name(None, None, 480, "en") == "8-minute timer"
     assert timer_name("pasta", None, 480, "en") == "timer for pasta"
+    assert timer_name(None, None, 4800, "de") == "1-Stunde-20-Minuten-Timer"
+
+
+def test_every_inverse_has_a_revert_word_in_both_languages():
+    # revert_words looks the inverse up directly: a missing word would be a KeyError mid-reply
+    for lang in ("en", "de"):
+        for verb, inverse in INVERSES.items():
+            assert REVERT_WORDS[lang][inverse], (lang, verb, inverse)
+            assert revert_words([verb], lang) == REVERT_WORDS[lang][inverse]
 
 
 def test_timer_templates_render():
@@ -373,9 +385,19 @@ def test_timer_templates_render():
         render("timer_cancelled", "de", names=["Timer für Nudeln", "Timer für Reis"])
         == "Abgebrochen: Timer für Nudeln, Timer für Reis."
     )
-    assert render(
-        "which_timer", "de", options=["Nudeln (3:20 left)", "Reis (10:00 left)"]
-    ).startswith("Welchen Timer meinst du: ")
+    assert (
+        render(
+            "which_timer",
+            "de",
+            options=["Timer für Nudeln (3 Minuten 20 Sekunden)", "Timer für Reis (10 Minuten)"],
+        )
+        == "Welchen Timer meinst du: Timer für Nudeln (3 Minuten 20 Sekunden), "
+        "Timer für Reis (10 Minuten)?"
+    )
+    assert (
+        render("which_timer", "en", options=["timer for pasta (8 minutes)", "10-minute timer"])
+        == "Which timer do you mean: timer for pasta (8 minutes), 10-minute timer?"
+    )
     assert (
         render(
             "delayed_scheduled",
@@ -410,13 +432,30 @@ def test_timer_templates_render():
         and revert_words(["turn_on"], "en") == "off"
     )
     assert timing_clause(Timing("delayed", 900), "de") == ", in 15 Minuten"
+    assert timing_clause(Timing("for_duration", 900), "de") == ", für 15 Minuten"
+    assert timing_clause(Timing("delayed", 900), "en") == " in 15 minutes"
     assert timing_clause(Timing("for_duration", 900), "en") == " for 15 minutes"
     assert timing_clause(None, "de") == ""
-    assert render(
-        "confirm",
-        "de",
-        phrase="",
-        targets="Wandlampe (Vorzimmer) einschalten",
-        reason="confidence",
-        condition=", für 15 Minuten",
-    ).startswith("Soll ich Wandlampe (Vorzimmer) einschalten, für 15 Minuten?")
+    assert (
+        render(
+            "confirm",
+            "de",
+            phrase="",
+            targets="Wandlampe (Vorzimmer) einschalten",
+            reason="confidence",
+            condition=timing_clause(Timing("for_duration", 900), "de"),
+        )
+        == "Soll ich Wandlampe (Vorzimmer) einschalten, für 15 Minuten? "
+        "Ich bin nicht ganz sicher, ob du das meinst."
+    )
+    assert (
+        render(
+            "confirm",
+            "en",
+            phrase="",
+            targets="turn off Wall lamp (Hall)",
+            reason="risk:confirm",
+            condition=timing_clause(Timing("delayed", 600), "en"),
+        )
+        == "Shall I turn off Wall lamp (Hall) in 10 minutes? This needs a confirmation."
+    )
