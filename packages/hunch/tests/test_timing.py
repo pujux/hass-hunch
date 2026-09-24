@@ -62,6 +62,22 @@ def test_articles_count_only_with_a_unit():
     assert _texts("set a timer for the pasta") == []
 
 
+def test_spoken_units_are_looked_up_bare_numbers_are_not():
+    from hunch.timing import HOURS, MINUTES, SECONDS
+
+    lits = duration_literals("Timer 1 Stunde 20")
+    assert [lit.unit for lit in lits] == [HOURS, None]
+    assert duration_literals("Eine Viertelstunde Timer")[0].unit == HOURS
+    assert duration_literals("Timer eine halbe Stunde")[0].unit == HOURS
+    assert duration_literals("Timer 8 Minuten")[0].unit == MINUTES
+    assert duration_literals("Timer 90 Sekunden")[0].unit == SECONDS
+    assert (
+        duration_literals("in 2 h")[0].unit == HOURS
+        and duration_literals("15min")[0].unit == MINUTES
+    )
+    assert duration_literals("Rollo auf 20%")[0].unit is None
+
+
 def test_two_literals_for_hour_and_minutes():
     assert _texts("Timer 1 Stunde 20") == ["1 Stunde", "20"]
 

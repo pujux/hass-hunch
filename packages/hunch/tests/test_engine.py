@@ -24,6 +24,7 @@ from hunch.timing import (
     TIMER_CANCEL,
     TIMER_REMAINING,
     TIMER_START,
+    timer_questions,
 )
 
 
@@ -1022,6 +1023,53 @@ async def test_timer_start_with_label_and_minutes(home, vocab, config):
     assert r.timer.kind == "start" and r.timer.duration_seconds == 480 and r.timer.label == "Nudeln"
     assert calls["n"] == 2
     assert "timing:seconds:480" in r.trace.notes
+
+
+async def test_spoken_unit_wins_over_jevs_unit_answer(home, vocab, config):
+    # "Viertelstunde": Jev says "minutes" (fifteen of them) — the spoken unit is the hour
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {})},
+        {"duration:0": ChoiceA(MINUTES, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Eine Viertelstunde Timer")
+    assert isinstance(r, Resolved) and r.timer.duration_seconds == 900
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 0.9, {})},
+        {"duration:0": ChoiceA(NOT_DURATION, 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Eine Viertelstunde Timer")
+    assert isinstance(r, Escalate) and r.reason == "timing"
+
+
+async def test_a_split_unit_answer_on_a_spoken_unit_does_not_sink_the_timer(home, vocab, config):
+    # live Jev on "halbe Stunde": minutes 0.51 / hours 0.49 — sure it is a duration
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 1.0, {})},
+        {"duration:0": ChoiceA(MINUTES, 0.34, {MINUTES: 0.51, HOURS: 0.49})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer eine halbe Stunde")
+    assert isinstance(r, Resolved) and r.timer.duration_seconds == 1800 and r.confidence == 1.0
+    # a bare number keeps Jev's unit confidence: nothing else settles the unit
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_START, 1.0, {})},
+        {"duration:0": ChoiceA(MINUTES, 0.34, {MINUTES: 0.51, HOURS: 0.49})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer 30")
+    assert isinstance(r, Escalate) and r.reason == "low_confidence"
+
+
+async def test_cancel_with_one_timer_offers_no_all_timers_option(home, vocab, config):
+    t = ActiveTimer("a", "Nudeln", 200, "timer")
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA("Nudeln (3:20 left)", 0.9, {})},
+    )
+    r = await Engine(client, vocab, config).decide(home, "Timer abbrechen", timers=(t,))
+    assert isinstance(r, Resolved) and r.timer.timers == (t,)
+    # with one timer "all timers" is the same set as that timer: not offered (it split the mass)
+    assert ALL_TIMERS not in timer_questions("cancel", (), (), (t,))["timer_pick"].options
+    two = (t, ActiveTimer("b", "Reis", 600, "timer"))
+    assert ALL_TIMERS in timer_questions("cancel", (), (), two)["timer_pick"].options
 
 
 async def test_timer_start_sums_hours_and_minutes_and_drops_hesitant_label(home, vocab, config):

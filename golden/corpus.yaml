@@ -38,7 +38,8 @@
 - prompt: are the blinds open
   expect: {kind: resolved, verb: query_state, targets: [cover.living_blinds]}
 - prompt: turn off the lights in ten minutes
-  expect: {kind: escalate, reason: timing}
+  # whole-home sweep: confirm, pick or clarify are all fine — the delay must be understood
+  expect: {kinds: [resolved, confirm, clarify], timing: {kind: delayed, seconds: [600, 600]}}
 - prompt: turn off the lights after the movie finishes
   expect: {kind: escalate, reason: timing}
 - prompt: tell me a joke

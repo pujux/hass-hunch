@@ -103,7 +103,12 @@ NO_MATCH = "none of these"
 @dataclass(frozen=True)
 class DurationLiteral:
     text: str  # verbatim from the prompt, unit word included when one follows ("8 Minuten")
-    value: float  # the number it stands for; the unit is Jev's call
+    value: float  # the number it stands for
+    # the unit word that followed the number, looked up ("Minuten" -> minutes); None for a bare
+    # number, whose unit is Jev's call. A spoken unit is a fact, not a judgment: asked for the
+    # unit of "halbe Stunde", Jev answered "30 minutes" half the time and "half an hour" the
+    # other half — both right, and only one of them is the arithmetic we need.
+    unit: str | None = None
 
 
 _DE_ONES = {
@@ -147,6 +152,19 @@ _UNIT = (
     r"(?:sekunden?|sekunde|sek\.?|seconds?|secs?|minuten?|minute|min\.?|minutes?|mins?|"
     r"stunden?|stunde|std\.?|hours?|hrs?|h|s)"
 )
+_UNIT_LOOKUP = (
+    (re.compile(r"^(?:stunden?|std\.?|hours?|hrs?|h)$", re.I), HOURS),
+    (re.compile(r"^(?:minuten?|minute|min\.?|minutes?|mins?)$", re.I), MINUTES),
+    (re.compile(r"^(?:sekunden?|sekunde|sek\.?|seconds?|secs?|s)$", re.I), SECONDS),
+)
+
+
+def unit_of(token: str | None) -> str | None:
+    if token is None:
+        return None
+    return next((u for rx, u in _UNIT_LOOKUP if rx.match(token)), None)
+
+
 _LITERAL = re.compile(
     rf"(?<![\w.,])(\d{{1,4}}(?:[.,]\d+)?|{_COMPOUND_DE}|{_COMPOUND_EN}|{_alt(NUMBER_WORDS)})"
     rf"(?:\s*(?:-\s*)?({_UNIT}))?(?![\w])",
@@ -181,7 +199,7 @@ def duration_literals(prompt: str) -> tuple[DurationLiteral, ...]:
         if value is None:
             continue
         text = re.sub(r"\s+", " ", m.group(0).strip())
-        out.append(DurationLiteral(text, value))
+        out.append(DurationLiteral(text, value, unit_of(m.group(2))))
     return tuple(out)
 
 
@@ -252,12 +270,14 @@ def timer_questions(kind, literals, labels, timers, pb: Phrasebook = EN) -> dict
             )
     elif timers and (kind == "cancel" or len(timers) > 1):
         # cancelling always asks, even with one timer: a bare "Timer abbrechen" while only a
-        # pending "Wandlampe aus" runs must not cancel it blindly
+        # pending "Wandlampe aus" runs must not cancel it blindly. With one timer "all timers"
+        # and that timer are the same set, so the option is not offered (it split Jev's mass).
+        several = len(timers) > 1
         qs["timer_pick"] = ChoiceQ(
             pb.timer_pick_question,
-            (*timer_options(timers), ALL_TIMERS, NO_MATCH),
+            (*timer_options(timers), *((ALL_TIMERS,) if several else ()), NO_MATCH),
             {
-                ALL_TIMERS: pb.special_descriptions["all_timers"],
+                **({ALL_TIMERS: pb.special_descriptions["all_timers"]} if several else {}),
                 NO_MATCH: pb.special_descriptions["no_timer_match"],
             },
         )
@@ -278,8 +298,9 @@ def timer_state(prompt, timers, literals, labels) -> JSON:
 def sum_duration(
     answers: Answers | None, literals, trace: Trace
 ) -> tuple[float | None, list[float]]:
-    """Code multiplies: every literal Jev called a duration, times its unit. None when nothing
-    was a duration or the total is implausible (< 5 s, > 24 h)."""
+    """Code multiplies: every literal Jev called a duration, times its unit (the spoken unit
+    word when there is one, else the unit Jev chose). None when nothing was a duration or the
+    total is implausible (< 5 s, > 24 h)."""
     total = 0.0
     confs: list[float] = []
     if answers is None:
@@ -289,9 +310,16 @@ def sum_duration(
         if qid not in answers.answers:
             continue
         c = answers.choice(qid)
-        confs.append(c.confidence)
+        if lit.unit is not None and c.probabilities:
+            # A spoken unit is looked up, so the only judgment taken from Jev here is
+            # "duration or not": its confidence is the mass on the three units together.
+            # (Asked for the unit of "halbe Stunde", Jev split minutes/hours 0.51/0.49 — sure it
+            # is a duration, unsure how to name it; that split must not sink the turn.)
+            confs.append(1.0 - c.probabilities.get(NOT_DURATION, 0.0))
+        else:
+            confs.append(c.confidence)
         if c.choice in UNIT_FACTORS:
-            total += lit.value * UNIT_FACTORS[c.choice]
+            total += lit.value * UNIT_FACTORS[lit.unit or c.choice]
     if total <= 0:
         trace.note("timing:no_duration")
         return None, confs

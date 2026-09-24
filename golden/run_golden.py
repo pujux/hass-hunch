@@ -19,6 +19,7 @@ import yaml
 from dotenv import load_dotenv
 from hunch import (
     DEFAULT_VOCABULARY,
+    ActiveTimer,
     Engine,
     EngineConfig,
     Escalate,
@@ -84,6 +85,25 @@ def check(row, r) -> list[str]:
             or c.expected_state != exp["condition"]["state"]
         ):
             problems.append(f"condition {c} != {exp['condition']}")
+    if "timing" in exp:
+        t = getattr(r, "timing", None)
+        lo, hi = exp["timing"].get("seconds", (0, float("inf")))
+        if t is None or t.kind != exp["timing"]["kind"] or not lo <= t.seconds <= hi:
+            problems.append(f"timing {t} != {exp['timing']}")
+    if "timer" in exp:
+        t = getattr(r, "timer", None)
+        want = exp["timer"]
+        if t is None or t.kind != want["kind"]:
+            problems.append(f"timer {t} != {want}")
+        else:
+            if "seconds" in want and not (
+                want["seconds"][0] <= (t.duration_seconds or -1) <= want["seconds"][1]
+            ):
+                problems.append(f"timer seconds {t.duration_seconds} not in {want['seconds']}")
+            if "label" in want and t.label != want["label"]:
+                problems.append(f"timer label {t.label!r} != {want['label']!r}")
+            if "count" in want and len(t.timers) != want["count"]:
+                problems.append(f"timer count {len(t.timers)} != {want['count']}")
     return problems
 
 
@@ -133,8 +153,18 @@ async def main() -> int:
                 first = await engine.decide(home, earlier, previous)
                 if isinstance(first, Resolved | NeedsConfirmation):
                     previous = PreviousTurn(earlier, first.actions)
+            timers = tuple(
+                ActiveTimer(
+                    f"t{i}",
+                    t.get("label"),
+                    float(t["remaining_seconds"]),
+                    t.get("kind", "timer"),
+                    t.get("description"),
+                )
+                for i, t in enumerate(row.get("timers", []))
+            )
             t0 = time.perf_counter()
-            r = await engine.decide(home, row["prompt"], previous)
+            r = await engine.decide(home, row["prompt"], previous, timers)
             ms = (time.perf_counter() - t0) * 1000
             latencies.append(ms)
             toks = sum(t or 0 for t in r.trace.input_tokens)

@@ -41,7 +41,8 @@
   # no vacuum verbs in the vocabulary yet: hand off, whichever way Jev gets there
   expect: {kind: escalate}
 - prompt: Mach das Licht in zehn Minuten aus
-  expect: {kind: escalate, reason: timing}
+  # "Licht" over the whole home: a sweep confirm, a pick or a clarification are all fine — the delay must be understood
+  expect: {kinds: [resolved, confirm, clarify], timing: {kind: delayed, seconds: [600, 600]}}
 - prompt: Wie spät ist es?
   # either no verb fires (no_intent) or query_state fires and finds nothing (low_confidence)
   expect: {kind: escalate}
@@ -65,7 +66,8 @@
   # exposed since 2026-09-21 (before: not exposed -> the engine had to ask or hand off)
   expect: {kind: resolved, verb: turn_on, targets: [light.wohnzimmer_stehlampe]}
 - prompt: Wandlicht im Schlafzimmer für 15 Minuten an
-  expect: {kind: escalate, reason: timing}
+  # since 2026-09-24 Hunch does "für" itself: on now, off again after 15 minutes
+  expect: {kind: resolved, verb: turn_on, targets: [light.schlafzimmer_wandlicht], timing: {kind: for_duration, seconds: [900, 900]}}
 - prompt: Welche Fenster sind offen?
   # a question about a set: summarising state is the fallback agent's job (Julian, 2026-09-21)
   expect: {kind: escalate, reason: query_collective}
@@ -158,3 +160,47 @@
 - prompt: Rollos runter
   # no place said: every blind, and the count asks for a confirmation — never a silent floor
   expect: {kind: confirm, verb: close, targets: [cover.arbeitszimmer_couch_fenster_rollo, cover.arbeitszimmer_schreibtisch_fenster_rollo_links, cover.arbeitszimmer_schreibtisch_fenster_rollo_rechts, cover.badezimmer_oben_fenster_rollo_links, cover.badezimmer_oben_fenster_rollo_mitte, cover.badezimmer_oben_fenster_rollo_rechts, cover.esszimmer_fenster_rollo, cover.esszimmer_loggia_rollo, cover.galerie_dachterrasse_rollo, cover.galerie_fenster_rollo_links, cover.galerie_fenster_rollo_mitte, cover.galerie_fenster_rollo_rechts, cover.galerie_stiege_fenster_rollo, cover.kuche_fenster_rollo, cover.schlafzimmer_dachterrasse_rollo, cover.schlafzimmer_fenster_rollo, cover.vorzimmer_fenster_rollo_links, cover.vorzimmer_fenster_rollo_rechts, cover.wohnzimmer_loggia_rollo]}
+
+# ---- timers and timed actions (2026-09-24) ----
+- prompt: Timer 8 Minuten
+  expect: {kind: resolved, timer: {kind: start, seconds: [480, 480], label: null}}
+- prompt: Stell einen Timer für die Nudeln auf 8 Minuten
+  expect: {kind: resolved, timer: {kind: start, seconds: [480, 480], label: Nudeln}}
+- prompt: Timer für die Nudeln, 8 Minuten
+  expect: {kind: resolved, timer: {kind: start, seconds: [480, 480], label: Nudeln}}
+- prompt: Eine Viertelstunde Timer
+  expect: {kind: resolved, timer: {kind: start, seconds: [900, 900]}}
+- prompt: Timer eine halbe Stunde
+  expect: {kind: resolved, timer: {kind: start, seconds: [1800, 1800]}}
+- prompt: Timer 1 Stunde 20
+  # "20" alone may be read as minutes (4800) or rejected (3600); both are honest
+  expect: {kind: resolved, timer: {kind: start, seconds: [3600, 4800]}}
+- prompt: Wie lange läuft der Timer für die Nudeln noch?
+  timers: [{label: Nudeln, remaining_seconds: 200}, {label: Reis, remaining_seconds: 600}]
+  expect: {kind: resolved, timer: {kind: remaining, count: 1}}
+- prompt: Wie lange noch?
+  timers: [{label: Nudeln, remaining_seconds: 200}]
+  expect: {kind: resolved, timer: {kind: remaining, count: 1}}
+- prompt: Timer abbrechen
+  timers: [{label: Nudeln, remaining_seconds: 200}]
+  # one timer: Jev is still asked which (a pending "Wandlampe aus" must not be cancelled blindly)
+  expect: {kind: resolved, timer: {kind: cancel, count: 1}}
+- prompt: Timer abbrechen
+  timers: [{label: Nudeln, remaining_seconds: 200}, {label: Reis, remaining_seconds: 600}]
+  # two timers, none named: ask which — or, if Jev reads "abbrechen" as all, cancel both
+  expect: {kinds: [clarify, resolved]}
+- prompt: Alle Timer abbrechen
+  timers: [{label: Nudeln, remaining_seconds: 200}, {label: Reis, remaining_seconds: 600}]
+  expect: {kind: resolved, timer: {kind: cancel, count: 2}}
+- prompt: Wandlampe im Vorzimmer für 15 Minuten an
+  expect: {kind: resolved, verb: turn_on, targets: [light.vorzimmer_wandlampe], timing: {kind: for_duration, seconds: [900, 900]}}
+- prompt: Wandlampe im Vorzimmer in 15 Minuten aus
+  expect: {kind: resolved, verb: turn_off, targets: [light.vorzimmer_wandlampe], timing: {kind: delayed, seconds: [900, 900]}}
+- prompt: Rollo in der Küche für 10 Minuten runter
+  expect: {kind: resolved, verb: close, targets: [cover.kuche_fenster_rollo], timing: {kind: for_duration, seconds: [600, 600]}}
+- prompt: Rollo in der Küche auf 20% für 10 Minuten
+  expect: {kind: escalate, reason: timing}
+- prompt: Mach das Licht um 18 Uhr aus
+  expect: {kind: escalate, reason: timing}
+- prompt: Wie warm ist es in 10 Minuten?
+  expect: {kind: escalate, reason: timing}
