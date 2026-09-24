@@ -9,7 +9,8 @@ from hunch.config import Thresholds
 from hunch.model import Area, Entity, HomeModel
 from hunch.phrasing import EN, PHRASEBOOKS, Phrasebook
 from hunch.questions import JSON, Answers, ChoiceQ, NoulQ, Question
-from hunch.resolution import PreviousTurn, Trace
+from hunch.resolution import ActiveTimer, PreviousTurn, Trace
+from hunch.timing import TIMING_KIND_OPTIONS, TIMING_NONE
 from hunch.vocabulary import Verb, Vocabulary
 
 FLAGS = (
@@ -54,7 +55,12 @@ def previous_turn_state(home: HomeModel, previous: PreviousTurn) -> JSON:
     }
 
 
-def build_round1_state(home: HomeModel, prompt: str, previous: PreviousTurn | None = None) -> JSON:
+def build_round1_state(
+    home: HomeModel,
+    prompt: str,
+    previous: PreviousTurn | None = None,
+    timers: tuple[ActiveTimer, ...] = (),
+) -> JSON:
     from hunch.scope import verbatim_matches  # local import: scope imports this module's Shape
 
     # Code fetches, Jev decides: the exposed devices whose name, alias or device name appears in
@@ -93,6 +99,15 @@ def build_round1_state(home: HomeModel, prompt: str, previous: PreviousTurn | No
     }
     if previous is not None:
         state["previous"] = previous_turn_state(home, previous)
+    if timers:
+        state["timers"] = [
+            {
+                "label": t.label,
+                "description": t.description,
+                "remaining_seconds": int(round(t.remaining_seconds)),
+            }
+            for t in timers
+        ]
     return state
 
 
@@ -148,6 +163,9 @@ def build_round1_questions(
         qs[f"domain:{d}"] = NoulQ(pb.domain_question.format(domain=label))
     for flag in FLAGS:
         qs[f"flag:{flag}"] = NoulQ(pb.flags[flag])
+    qs["timing_kind"] = ChoiceQ(
+        pb.timing_kind_question, TIMING_KIND_OPTIONS, dict(pb.timing_kind_descriptions)
+    )
     if home.scenes:
         qs["scene"] = ChoiceQ(
             pb.scene_question,
@@ -216,6 +234,8 @@ class Shape:
     # numeric conditions: every device type Jev found plausible for the condition, best first
     # ("unter 20 Grad" may be the room thermometer or the weather); the subject Choice decides
     condition_domains: tuple[str, ...] = ()
+    timing_kind: str | None = None
+    timing_conf: float = 0.0
 
     def flag(self, name: str) -> float:
         return self.flags.get(name, 0.0)
@@ -393,6 +413,14 @@ def interpret_round1(
             follow_up, follow_up_conf = fu.choice, fu.confidence
             trace.note(f"follow_up:{fu.choice}")
 
+    timing_kind: str | None = None
+    timing_conf = 0.0
+    if "timing_kind" in answers.answers:
+        tk = answers.choice("timing_kind")
+        if tk.choice in TIMING_KIND_OPTIONS and tk.choice != TIMING_NONE:
+            timing_kind, timing_conf = tk.choice, tk.confidence
+            trace.note(f"timing_kind:{tk.choice}")
+
     return Shape(
         fired_verbs=fired_verbs,
         scope_areas=tuple(scope_areas),
@@ -411,4 +439,6 @@ def interpret_round1(
         condition_numeric=condition_numeric,
         condition_domains=condition_domains,
         exception_areas=exception_areas,
+        timing_kind=timing_kind,
+        timing_conf=timing_conf,
     )

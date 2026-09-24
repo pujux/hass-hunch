@@ -1,6 +1,7 @@
 from hunch.questions import Answers, ChoiceA, ChoiceQ, NoulA, NoulQ
-from hunch.resolution import Trace
+from hunch.resolution import ActiveTimer, Trace
 from hunch.round1 import FLAGS, build_round1_questions, build_round1_state, interpret_round1
+from hunch.timing import TIMER_START, TIMING_KIND_OPTIONS
 
 
 def test_state_is_small_and_names_only(home):
@@ -60,6 +61,7 @@ def test_interpret_tolerates_a_missing_condition_domain_answer(home, vocab, thre
     base["flag:has_condition"] = NoulA(0.9)
     base["verb_primary"] = ChoiceA("several", 0.9, {})
     base["area_primary"] = ChoiceA("several", 0.9, {})
+    base["timing_kind"] = ChoiceA("none", 0.9, {})
     shape = interpret_round1(bare, vocab, Answers("m", base, None), thresholds, Trace())
     assert shape.condition_domain is None
 
@@ -185,6 +187,7 @@ def test_a_hesitant_domain_still_carries_a_numeric_condition(home, vocab, thresh
             "condition_domain": ChoiceA(
                 "climate", 0.62, {"climate": 0.65, "lock": 0.3, "none": 0.05}
             ),
+            "timing_kind": ChoiceA("none", 0.9, {}),
         }
     )
     trace = Trace()
@@ -193,3 +196,28 @@ def test_a_hesitant_domain_still_carries_a_numeric_condition(home, vocab, thresh
     assert shape.condition_domains == ("climate", "lock")
     assert shape.condition_domain == "climate"
     assert "condition_domain:hesitant_numeric" in trace.notes
+
+
+def test_timing_kind_is_a_described_choice_and_timers_enter_the_state(home, vocab):
+    qs = build_round1_questions(home, vocab)
+    q = qs["timing_kind"]
+    assert isinstance(q, ChoiceQ) and q.options == TIMING_KIND_OPTIONS
+    assert set(q.descriptions) == set(TIMING_KIND_OPTIONS)
+    assert "timers" not in build_round1_state(home, "Timer 8 Minuten")
+    state = build_round1_state(
+        home, "wie lange noch?", timers=(ActiveTimer("a", "Nudeln", 200.4, "timer"),)
+    )
+    assert state["timers"] == [{"label": "Nudeln", "description": None, "remaining_seconds": 200}]
+
+
+def test_shape_carries_the_timing_kind(home, vocab, thresholds):
+    qs = build_round1_questions(home, vocab)
+    answers = {qid: NoulA(0.05) for qid in qs}
+    for qid, q in qs.items():
+        if isinstance(q, ChoiceQ):
+            answers[qid] = ChoiceA("none" if "none" in q.options else q.options[0], 0.9, {})
+    answers["timing_kind"] = ChoiceA(TIMER_START, 0.88, {})
+    trace = Trace()
+    shape = interpret_round1(home, vocab, Answers("m", answers, None), thresholds, trace)
+    assert shape.timing_kind == TIMER_START and shape.timing_conf == 0.88
+    assert "timing_kind:start a timer" in trace.notes
