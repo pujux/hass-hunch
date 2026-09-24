@@ -33,7 +33,9 @@ class PendingClarify:
 @dataclass(frozen=True)
 class PendingTimerPick:
     timers: tuple[ActiveTimer, ...]
-    labels: tuple[str, ...]  # timer_option(t) per timer, plus ALL_TIMERS last
+    # the spoken label per timer ("Timer für Nudeln (3 Minuten 20 Sekunden)"), parallel to
+    # timers; ALL_TIMERS is appended last only when there are two or more timers
+    labels: tuple[str, ...]
     question: str
     created: float
 
@@ -102,3 +104,8 @@ class LastTurnStore:
             self._turns.pop(conversation_id, None)
             return None
         return entry[0]
+
+    def forget(self, conversation_id: str) -> None:
+        """A timed turn or a timer command completed: nothing may lean on the turn before it
+        ("und im Esszimmer" after "in 10 Minuten aus" must not run at once, spec §3)."""
+        self._turns.pop(conversation_id, None)

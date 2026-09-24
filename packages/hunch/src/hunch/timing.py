@@ -372,6 +372,10 @@ def resolve_timer(
             elif kind == "remaining":
                 trace.note("timer_pick:all")
                 chosen = tuple(timers)
+            elif not config.supports_clarification:
+                # a caller that cannot ask back gets a hand-off, never a blind cancel
+                trace.note("timer:low_confidence")
+                return Escalate("low_confidence", (), trace)
             else:
                 return NeedsClarification(
                     "which_timer", (), trace, timers=tuple(timers), timer_kind="cancel"

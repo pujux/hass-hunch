@@ -1146,6 +1146,18 @@ async def test_two_timers_ask_jev_and_a_hesitant_cancel_clarifies(home, vocab, c
     assert calls["n"] == 2
 
 
+async def test_hesitant_cancel_hands_off_when_the_caller_cannot_ask_back(home, vocab):
+    a, b = ActiveTimer("a", "Nudeln", 200, "timer"), ActiveTimer("b", "Reis", 600, "timer")
+    client, _ = _scripted(
+        {"timing_kind": ChoiceA(TIMER_CANCEL, 0.9, {})},
+        {"timer_pick": ChoiceA("Nudeln (3:20 left)", 0.5, {})},
+    )
+    config = EngineConfig(model="jev-1.13.0", supports_clarification=False)
+    r = await Engine(client, vocab, config).decide(home, "Timer abbrechen", timers=(a, b))
+    assert isinstance(r, Escalate) and r.reason == "low_confidence"
+    assert "timer:low_confidence" in r.trace.notes
+
+
 async def test_two_timers_sure_pick_and_all_timers(home, vocab, config):
     a, b = (
         ActiveTimer("a", "Nudeln", 200, "timer"),

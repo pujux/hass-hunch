@@ -287,6 +287,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 turn.chat_log.conversation_id, PreviousTurn(turn.user_input.text, actions)
             )
 
+    def _forget(self, turn: _Turn) -> None:
+        """A timed turn or a timer command is never context, and neither is what came before
+        it: "und im Esszimmer" may not lean on a turn older than the timed one (spec §3)."""
+        self._rt.last_turns.forget(turn.chat_log.conversation_id)
+
     async def _run(
         self,
         turn: _Turn,
@@ -299,9 +304,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
     ) -> conversation.ConversationResult:
         """Step 3: check the condition, then execute or read — or, with `timing`, schedule
         ("in 10 Minuten") or execute and schedule the undo ("für 15 Minuten"). A timed turn is
-        never remembered for follow-ups: "und im Esszimmer" after "in 10 Minuten aus" must not
-        run at once (spec §3)."""
+        never remembered for follow-ups, and it clears the turn before it: "und im Esszimmer"
+        after "in 10 Minuten aus" must not run at once (spec §3)."""
         lang = turn.lang
+        if timing is not None:
+            self._forget(turn)
         areas = self._area_names(home)
         executor = Executor(self.hass)
         if condition is not None:
@@ -442,9 +449,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
     async def _run_timer(
         self, turn: _Turn, command: TimerCommand, trace: Trace | None
     ) -> conversation.ConversationResult:
-        """A timer command the engine resolved. Never remembered for follow-ups (spec §3)."""
+        """A timer command the engine resolved. Never remembered for follow-ups, and it clears
+        the turn before it (spec §3)."""
         rt = self._rt
         lang = turn.lang
+        self._forget(turn)
         if command.kind == "start":
             duration = float(command.duration_seconds or 0.0)
             timer = self._make_timer(turn, "timer", (), label=command.label, duration=duration)
@@ -563,6 +572,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
             return self._result(turn, question, result.trace, "NeedsConfirmation", cont=True)
 
         if isinstance(result, NeedsClarification) and result.question_key == "which_timer":
+            self._forget(turn)  # a timer command, whatever the reply picks
             pick = self._timer_pick(result.timers, lang, rt.pending.now())
             if pick is None:  # every timer asked about is gone already
                 return self._result(turn, render("timer_none", lang), result.trace, "Resolved")
@@ -665,6 +675,12 @@ class HunchConversationEntity(conversation.ConversationEntity):
             question_id = CLARIFY_QID
             question = ChoiceQ(CLARIFY_INSTRUCTIONS, (*pending.labels, NO_MATCH))
         answer, trace = await self._judge(state, question_id, question)
+        if answer is None and isinstance(pending, PendingTimerPick):
+            # The fallback agent cannot cancel Hunch timers and might cancel something of its
+            # own; a timer pick is never handed to it, not even when the judgment failed.
+            return self._result(
+                turn, render("cancelled", turn.lang), trace, "TimerPickJudgmentFailed"
+            )
         if answer is None:
             return await self._escalate(
                 turn,
@@ -687,7 +703,8 @@ class HunchConversationEntity(conversation.ConversationEntity):
         if isinstance(pending, PendingTimerPick):
             return "cancel one of the timers: " + ", ".join(pending.labels)
         phrase = verb_phrase(pending.verb.name, "en", done=False)
-        return f"{phrase} one of: {', '.join(pending.labels)}"
+        # the timing travels with the hand-off, or the fallback would act now on "in 15 Minuten"
+        return f"{phrase} one of: {', '.join(pending.labels)}" + timing_clause(pending.timing, "en")
 
     async def _handle_confirm_reply(
         self,
@@ -735,7 +752,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
                     turn,
                     trace,
                     "ClarifyNeedsParam",
-                    pending_context(pending.question, f"{phrase} {self._label(target, areas)}"),
+                    pending_context(
+                        pending.question,
+                        f"{phrase} {self._label(target, areas)}"
+                        + timing_clause(pending.timing, "en"),
+                    ),
                 )
             action = Action(pending.verb, (target,), pending.params)
             if pending.verb.risk is Risk.CONFIRM:
