@@ -94,9 +94,35 @@ def stored_actions(actions: Sequence[Action]) -> tuple[StoredAction, ...]:
     )
 
 
+# The state a device is in after each invertible verb. A "für" target that was already in it
+# before the request is left alone afterwards: "Licht im Bad für 10 Minuten aus" on a light that
+# is already off must not switch it on 10 minutes later. A code table, read against hass.states.
+COMMANDED_STATE = {
+    "turn_on": "on",
+    "turn_off": "off",
+    "open": "open",
+    "close": "closed",
+    "unlock": "unlocked",
+    "media_play": "playing",
+    "media_pause": "paused",
+}
+
+
+def already_in_state(actions: Sequence[Action], states: Mapping[str, str | None]) -> set[str]:
+    """The targets whose state before the request (`states`: entity id -> state) already was the
+    one their action commands. A verb missing from the table counts as a change."""
+    return {
+        e.entity_id
+        for a in actions
+        if (want := COMMANDED_STATE.get(a.verb.name)) is not None
+        for e in a.targets
+        if states.get(e.entity_id) == want
+    }
+
+
 def inverse_actions(actions: Sequence[Action], ok_ids: set[str]) -> tuple[Action, ...]:
     """The undo of "für": each action's inverse verb on the targets that were actually
-    changed, without values (an inverse has none)."""
+    changed (`ok_ids`), without values (an inverse has none)."""
     out = []
     for a in actions:
         inverse = INVERSES.get(a.verb.name)

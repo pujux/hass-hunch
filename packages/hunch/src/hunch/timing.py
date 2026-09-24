@@ -131,9 +131,12 @@ _TEENS = {
 }  # fmt: skip
 _DE_TENS = {
     "zwanzig": 20, "dreißig": 30, "dreissig": 30, "vierzig": 40, "fünfzig": 50,
-    "fuenfzig": 50, "sechzig": 60,
+    "fuenfzig": 50, "sechzig": 60, "siebzig": 70, "achtzig": 80, "neunzig": 90,
 }  # fmt: skip
-_EN_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60}
+_EN_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90,
+}  # fmt: skip
 _TENS = {**_DE_TENS, **_EN_TENS}
 _FRACTIONS = {
     "halbe": 0.5, "halben": 0.5, "halb": 0.5, "half": 0.5, "viertel": 0.25, "quarter": 0.25,
@@ -148,6 +151,12 @@ def _alt(words) -> str:
 
 _COMPOUND_DE = rf"(?:{_alt(_DE_ONES)})und(?:{_alt(_DE_TENS)})"  # fünfundzwanzig
 _COMPOUND_EN = rf"(?:{_alt(_EN_TENS)})[- ](?:{_alt(_EN_ONES)})"  # twenty-five
+# "zweieinhalb" … "neuneinhalb" (n + 0.5); "eineinhalb" is a plain fraction word
+_EINHALB_ONES = {k: v for k, v in _DE_ONES.items() if v > 1}
+_EINHALB = rf"(?:{_alt(_EINHALB_ONES)})einhalb"
+# a fraction with an article before its unit is one literal: "half an hour", "a quarter of an
+# hour" (the leading "a" is a bare article and no literal of its own)
+_FRACTION_ARTICLE = r"(?:half|quarter)\s+(?:of\s+)?(?:an|a)"
 _UNIT = (
     r"(?:sekunden?|sekunde|sek\.?|seconds?|secs?|minuten?|minute|min\.?|minutes?|mins?|"
     r"stunden?|stunde|std\.?|hours?|hrs?|h|s)"
@@ -166,10 +175,12 @@ def unit_of(token: str | None) -> str | None:
 
 
 _LITERAL = re.compile(
-    rf"(?<![\w.,])(\d{{1,4}}(?:[.,]\d+)?|{_COMPOUND_DE}|{_COMPOUND_EN}|{_alt(NUMBER_WORDS)})"
-    rf"(?:\s*(?:-\s*)?({_UNIT}))?(?![\w])",
+    rf"(?<![\w.,])(?:(?P<frac>{_FRACTION_ARTICLE})\s+(?P<frac_unit>{_UNIT})|"
+    rf"(?P<num>\d{{1,4}}(?:[.,]\d+)?|{_EINHALB}|{_COMPOUND_DE}|{_COMPOUND_EN}|"
+    rf"{_alt(NUMBER_WORDS)})(?:\s*(?:-\s*)?(?P<unit>{_UNIT}))?)(?![\w])",
     re.I,
 )
+_AFTER_ARTICLE = re.compile(rf"(?:^|\W)(?:{_alt(ARTICLES)})\s+$", re.I)
 _UNIT_WORD = re.compile(rf"^{_UNIT}$", re.I)
 
 
@@ -179,6 +190,12 @@ def _number_value(token: str) -> float | None:
         return float(low.replace(",", "."))
     if low in NUMBER_WORDS:
         return float(NUMBER_WORDS[low])
+    m = re.fullmatch(rf"({_alt(_EINHALB_ONES)})einhalb", low)
+    if m:
+        return _EINHALB_ONES[m.group(1)] + 0.5
+    m = re.fullmatch(r"(half|quarter)\b.*", low)
+    if m:  # "half an hour", "quarter of an hour": the fraction, the unit comes separately
+        return float(_FRACTIONS[m.group(1)])
     m = re.fullmatch(rf"({_alt(_DE_ONES)})und({_alt(_DE_TENS)})", low)
     if m:
         return float(_DE_ONES[m.group(1)] + _DE_TENS[m.group(2)])
@@ -193,13 +210,23 @@ def duration_literals(prompt: str) -> tuple[DurationLiteral, ...]:
     that follows it, verbatim. Which of them is a duration and in which unit is Jev's call."""
     out: list[DurationLiteral] = []
     for m in _LITERAL.finditer(prompt):
-        if m.group(1).lower() in ARTICLES and m.group(2) is None:
+        number = m.group("frac") or m.group("num")
+        unit = m.group("frac_unit") or m.group("unit")
+        if number.lower() in ARTICLES and unit is None:
             continue  # "einen Timer", "a timer": an article, not a number
-        value = _number_value(m.group(1))
+        if (
+            number.lower() in _FRACTIONS
+            and unit is None
+            and _AFTER_ARTICLE.search(prompt[: m.start()])
+        ):
+            # "an hour and a half": a fraction after an article with no unit of its own is not
+            # a number code can place (known gap: this reads as 1 h, never as a wrong 1.5 h)
+            continue
+        value = _number_value(number)
         if value is None:
             continue
         text = re.sub(r"\s+", " ", m.group(0).strip())
-        out.append(DurationLiteral(text, value, unit_of(m.group(2))))
+        out.append(DurationLiteral(text, value, unit_of(unit)))
     return tuple(out)
 
 

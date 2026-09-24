@@ -74,6 +74,7 @@ def test_every_outcome_renders_in_both_languages(language):
         "which_timer": dict(options=["x"]),
         "delayed_scheduled": dict(duration="y", body="x"),
         "for_duration_done": dict(body="x", duration="y", revert="z"),
+        "for_duration_rest": dict(body="x", duration="y", revert="z"),
     }
     for outcome in OUTCOMES:
         text = render(outcome, language, **slots[outcome])

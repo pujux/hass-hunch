@@ -25,6 +25,7 @@ OUTCOMES = (
     "which_timer",
     "delayed_scheduled",
     "for_duration_done",
+    "for_duration_rest",
 )
 
 # verb -> (past participle / done form, infinitive / question form)
@@ -89,6 +90,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "which_timer": "Which timer do you mean: {options}?",
         "delayed_scheduled": "In {duration}: {body}.",
         "for_duration_done": "Done: {body}, {revert} again in {duration}.",
+        "for_duration_rest": "{body}, {revert} again in {duration}.",
     },
     "de": {
         "action_done": "Erledigt: {body}.",
@@ -113,6 +115,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "which_timer": "Welchen Timer meinst du: {options}?",
         "delayed_scheduled": "In {duration}: {body}.",
         "for_duration_done": "Erledigt: {body}, in {duration} wieder {revert}.",
+        "for_duration_rest": "{body}, in {duration} wieder {revert}.",
     },
 }
 
@@ -399,6 +402,12 @@ def timing_clause(timing: Any, language: str) -> str:
     return words[timing.kind].format(d=format_duration(timing.seconds, language))
 
 
+# Templates that open with a slot holding a name or a clause ("8-minute timer set, …", "turned
+# off Spots, on again …"): their first letter is capitalised. Nothing else is — a query answer
+# opens with a device name as the user wrote it ("iPhone Julian: …").
+CAPITALISED = frozenset({"timer_started", "timer_remaining_line", "for_duration_rest"})
+
+
 def render(outcome: str, language: str, **slots: Any) -> str:
     lang = language if language in TEMPLATES else "en"
     tpl = TEMPLATES[lang][outcome]
@@ -432,7 +441,7 @@ def render(outcome: str, language: str, **slots: Any) -> str:
         text = tpl.format(options=", ".join(slots["options"]))
     else:
         text = tpl.format(**slots)
-    return text[:1].upper() + text[1:]
+    return text[:1].upper() + text[1:] if outcome in CAPITALISED else text
 
 
 def condition_context() -> str:

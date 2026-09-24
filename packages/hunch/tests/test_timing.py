@@ -55,6 +55,27 @@ def test_number_words_and_compounds():
     assert _values("anderthalb Stunden") == [1.5]
 
 
+def test_fraction_with_an_article_before_its_unit_is_one_literal():
+    lits = duration_literals("Set a timer for half an hour")
+    assert [(lit.text, lit.value, lit.unit) for lit in lits] == [("half an hour", 0.5, "hours")]
+    lits = duration_literals("Set a timer for a quarter of an hour")
+    assert [(lit.value, lit.unit) for lit in lits] == [(0.25, "hours")]
+    # a bare fraction after an article is no number code can place: 1 h, never a wrong 1.5 h
+    assert _texts("turn it off in an hour and a half") == ["an hour"]
+    assert _texts("Timer eine halbe Stunde") == ["halbe Stunde"]
+
+
+def test_tens_to_ninety_and_n_einhalb():
+    assert _values("Timer siebzig Minuten") == [70.0]
+    assert _values("Timer fünfundachtzig Sekunden") == [85.0]
+    assert _values("Timer neunzig Sekunden") == [90.0]
+    assert _values("timer for seventy-five minutes") == [75.0]
+    assert _values("timer for ninety seconds") == [90.0]
+    assert _values("Timer dreieinhalb Minuten") == [3.5]
+    assert _values("zweieinhalb Stunden") == [2.5]
+    assert _values("eineinhalb Stunden") == [1.5]
+
+
 def test_articles_count_only_with_a_unit():
     assert _texts("Stell einen Timer für die Nudeln") == []
     assert _texts("Timer eine Stunde") == ["eine Stunde"] and _values("Timer eine Stunde") == [1.0]

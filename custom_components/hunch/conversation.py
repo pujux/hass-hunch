@@ -56,7 +56,14 @@ from .responder import (
     timing_clause,
     verb_phrase,
 )
-from .timers import HunchTimer, StoredAction, inverse_actions, new_timer_id, stored_actions
+from .timers import (
+    HunchTimer,
+    StoredAction,
+    already_in_state,
+    inverse_actions,
+    new_timer_id,
+    stored_actions,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -355,6 +362,14 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 body=body,
             )
             return self._result(turn, "\n".join([*lines, text]), trace, outcome)
+        before: dict[str, str | None] = {}
+        if timing is not None and timing.kind == "for_duration":
+            # read, not judged: which targets are already where the command takes them
+            before = {
+                e.entity_id: (s.state if (s := self.hass.states.get(e.entity_id)) else None)
+                for a in commands
+                for e in a.targets
+            }
         results = await executor.execute(commands, turn.user_input.context)
         failed = [r.entity_id for r in results if not r.ok]
         if timing is None:
@@ -374,9 +389,11 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 targets=self._action_clauses(commands, areas, lang, done=True),
             )
         if timing is not None and timing.kind == "for_duration":
-            ok_ids = {r.entity_id for r in results if r.ok}
+            # only what succeeded *and* was not already in the commanded state is changed back;
+            # when nothing changed, no revert is stored and the reply is the plain one
+            ok_ids = {r.entity_id for r in results if r.ok} - already_in_state(commands, before)
             revert = inverse_actions(commands, ok_ids)
-            if revert:  # only what actually changed is changed back
+            if revert:
                 await self._rt.timers.async_add(
                     self._make_timer(
                         turn,
@@ -392,7 +409,8 @@ class HunchConversationEntity(conversation.ConversationEntity):
                     if (ok := tuple(e for e in a.targets if e.entity_id in ok_ids))
                 )
                 sentence = render(
-                    "for_duration_done",
+                    # after "Erledigt, außer: …" a second "Erledigt:" would repeat itself
+                    "for_duration_rest" if failed else "for_duration_done",
                     lang,
                     body=self._action_clauses(done, areas, lang, done=True),
                     duration=format_duration(timing.seconds, lang),

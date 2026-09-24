@@ -200,6 +200,9 @@
   expect: {kind: resolved, verb: close, targets: [cover.kuche_fenster_rollo], timing: {kind: for_duration, seconds: [600, 600]}}
 - prompt: Rollo in der Küche auf 20% für 10 Minuten
   expect: {kind: escalate, reason: timing}
+- prompt: In 5 Minuten das Licht in der Küche für 10 Minuten an
+  # a delay and a duration together: code would add them into one span; Hunch hands it off
+  expect: {kind: escalate, reason: timing}
 - prompt: Mach das Licht um 18 Uhr aus
   expect: {kind: escalate, reason: timing}
 - prompt: Wie warm ist es in 10 Minuten?

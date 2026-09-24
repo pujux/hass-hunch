@@ -152,7 +152,8 @@ class Phrasebook:
                 "at a clock time or on a date: 'um 18 Uhr', 'morgen früh', 'at 7'"
             ),
             "other timing": (
-                "any other time binding: sequences ('erst …, dann …'), 'später', 'danach'"
+                "any other time binding: sequences ('erst …, dann …'), 'später', 'danach', or "
+                "a delay AND a duration together ('in 5 Minuten für 10 Minuten')"
             ),
         }
     )
@@ -872,7 +873,8 @@ DE = Phrasebook(
             "zu einer Uhrzeit oder an einem Datum: 'um 18 Uhr', 'morgen früh', 'at 7'"
         ),
         "other timing": (
-            "jede andere zeitliche Bindung: Abfolgen ('erst …, dann …'), 'später', 'danach'"
+            "jede andere zeitliche Bindung: Abfolgen ('erst …, dann …'), 'später', 'danach', "
+            "oder eine Verzögerung UND eine Dauer zugleich ('in 5 Minuten für 10 Minuten')"
         ),
     },
     duration_question=(
