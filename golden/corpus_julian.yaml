@@ -177,7 +177,7 @@
   expect: {kind: resolved, timer: {kind: start, seconds: [3600, 4800]}}
 - prompt: Wie lange läuft der Timer für die Nudeln noch?
   timers: [{label: Nudeln, remaining_seconds: 200}, {label: Reis, remaining_seconds: 600}]
-  expect: {kind: resolved, timer: {kind: remaining, count: 1}}
+  expect: {kind: resolved, timer: {kind: remaining, count: 1, labels: [Nudeln]}}
 - prompt: Wie lange noch?
   timers: [{label: Nudeln, remaining_seconds: 200}]
   expect: {kind: resolved, timer: {kind: remaining, count: 1}}
@@ -188,7 +188,8 @@
 - prompt: Timer abbrechen
   timers: [{label: Nudeln, remaining_seconds: 200}, {label: Reis, remaining_seconds: 600}]
   # two timers, none named: ask which — or, if Jev reads "abbrechen" as all, cancel both
-  expect: {kinds: [clarify, resolved]}
+  # (never one of them blindly: `timer` is checked on a resolved result only)
+  expect: {kinds: [clarify, resolved], question_key: which_timer, timer: {kind: cancel, count: 2}}
 - prompt: Alle Timer abbrechen
   timers: [{label: Nudeln, remaining_seconds: 200}, {label: Reis, remaining_seconds: 600}]
   expect: {kind: resolved, timer: {kind: cancel, count: 2}}

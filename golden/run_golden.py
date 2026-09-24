@@ -73,6 +73,14 @@ def check(row, r) -> list[str]:
             problems.append(f"targets {sorted(got)} != {sorted(exp['targets'])}")
     if "reason" in exp and getattr(r, "reason", None) != exp["reason"]:
         problems.append(f"reason {getattr(r, 'reason', None)} != {exp['reason']}")
+    # `question_key` is checked on a clarification only: a row may also allow another kind
+    # (`kinds: [clarify, resolved]`), which has no question to check
+    if (
+        "question_key" in exp
+        and isinstance(r, NeedsClarification)
+        and r.question_key != exp["question_key"]
+    ):
+        problems.append(f"question_key {r.question_key!r} != {exp['question_key']!r}")
     for key, (lo, hi) in exp.get("params", {}).items():
         vals = [a.params.get(key) for a in actions if key in a.params]
         if not vals or not (lo <= vals[0] <= hi):
@@ -90,8 +98,8 @@ def check(row, r) -> list[str]:
         lo, hi = exp["timing"].get("seconds", (0, float("inf")))
         if t is None or t.kind != exp["timing"]["kind"] or not lo <= t.seconds <= hi:
             problems.append(f"timing {t} != {exp['timing']}")
-    if "timer" in exp:
-        t = getattr(r, "timer", None)
+    if "timer" in exp and isinstance(r, Resolved):  # only a Resolved carries a timer command
+        t = r.timer
         want = exp["timer"]
         if t is None or t.kind != want["kind"]:
             problems.append(f"timer {t} != {want}")
@@ -104,6 +112,10 @@ def check(row, r) -> list[str]:
                 problems.append(f"timer label {t.label!r} != {want['label']!r}")
             if "count" in want and len(t.timers) != want["count"]:
                 problems.append(f"timer count {len(t.timers)} != {want['count']}")
+            if "labels" in want:  # which running timers were meant, by label
+                got_labels = sorted(str(x.label) for x in t.timers)
+                if got_labels != sorted(want["labels"]):
+                    problems.append(f"timer labels {got_labels} != {sorted(want['labels'])}")
     return problems
 
 
