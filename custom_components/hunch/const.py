@@ -24,6 +24,12 @@ OPT_MAX_ROUNDS = "max_rounds"
 PENDING_TTL_SECONDS = 120
 TRACE_BUFFER = 50
 
+OPT_TIMER_SCRIPT = "timer_script"
+EVENT_TIMER_FINISHED = "hunch_timer_finished"
+TIMER_STORE_KEY = f"{DOMAIN}.timers"
+TIMER_STORE_VERSION = 1
+MAX_OVERDUE_SECONDS = 3600  # a stored device action later than this is not carried out
+
 # Thresholds are stored flat in a config entry's options as `threshold_<name>` keys
 # (not a nested dict), one per Thresholds field. Derived, not hand-typed, so it can
 # never drift from hunch.config.Thresholds.
