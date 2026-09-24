@@ -2,17 +2,22 @@ from types import SimpleNamespace
 
 import pytest
 from hunch import DEFAULT_VOCABULARY as V
-from hunch import Entity
+from hunch import Entity, Timing
 
 from custom_components.hunch.responder import (
     OUTCOMES,
     action_clause,
+    compact_duration,
     condition_clause,
     describe_state,
     describe_targets,
+    format_duration,
     pending_context,
     render,
     resolve_language,
+    revert_words,
+    timer_name,
+    timing_clause,
     verb_phrase,
 )
 
@@ -61,6 +66,14 @@ def test_every_outcome_renders_in_both_languages(language):
         "expired": {},
         "fallback_unavailable": {},
         "execution_failed": dict(failed=["Spots (Küche)"]),
+        "timer_started": dict(name="x", duration="y"),
+        "timer_none": {},
+        "timer_remaining_line": dict(name="x", remaining="y"),
+        "timer_remaining": dict(lines=["x"]),
+        "timer_cancelled": dict(names=["x"]),
+        "which_timer": dict(options=["x"]),
+        "delayed_scheduled": dict(duration="y", body="x"),
+        "for_duration_done": dict(body="x", duration="y", revert="z"),
     }
     for outcome in OUTCOMES:
         text = render(outcome, language, **slots[outcome])
@@ -320,3 +333,89 @@ def test_parametrised_actions_say_the_value_in_the_right_word_order():
         describe_action("turn_off", "Spots (Küche)", {}, "en", done=True)
         == "turned off Spots (Küche)"
     )
+
+
+def test_format_duration_in_both_languages():
+    assert format_duration(480, "de") == "8 Minuten"
+    assert format_duration(4800, "de") == "1 Stunde 20 Minuten"
+    assert format_duration(200, "de") == "3 Minuten 20 Sekunden"
+    assert format_duration(1, "de") == "1 Sekunde"
+    assert format_duration(60, "en") == "1 minute"
+    assert format_duration(3661, "en") == "1 hour 1 minute 1 second"
+    assert compact_duration(480, "de") == "8-Minuten" and compact_duration(480, "en") == "8-minute"
+
+
+def test_timer_name():
+    assert timer_name("Nudeln", None, 480, "de") == "Timer für Nudeln"
+    assert timer_name(None, "Wandlampe aus", 900, "de") == "Wandlampe aus"
+    assert timer_name(None, None, 480, "de") == "8-Minuten-Timer"
+    assert timer_name(None, None, 480, "en") == "8-minute timer"
+    assert timer_name("pasta", None, 480, "en") == "timer for pasta"
+
+
+def test_timer_templates_render():
+    assert (
+        render("timer_started", "de", name="Timer für Nudeln", duration="8 Minuten")
+        == "Timer für Nudeln gestellt, 8 Minuten."
+    )
+    assert (
+        render("timer_started", "en", name="timer for pasta", duration="8 minutes")
+        == "Timer for pasta set, 8 minutes."
+    )
+    assert render("timer_none", "de") == "Es läuft kein Timer."
+    line = render(
+        "timer_remaining_line", "de", name="Timer für Nudeln", remaining="3 Minuten 20 Sekunden"
+    )
+    assert line == "Timer für Nudeln: noch 3 Minuten 20 Sekunden."
+    assert render("timer_remaining", "de", lines=[line, line]) == line + "\n" + line
+    assert (
+        render("timer_cancelled", "de", names=["Timer für Nudeln", "Timer für Reis"])
+        == "Abgebrochen: Timer für Nudeln, Timer für Reis."
+    )
+    assert render(
+        "which_timer", "de", options=["Nudeln (3:20 left)", "Reis (10:00 left)"]
+    ).startswith("Welchen Timer meinst du: ")
+    assert (
+        render(
+            "delayed_scheduled",
+            "de",
+            duration="15 Minuten",
+            body="Wandlampe (Vorzimmer) ausschalten",
+        )
+        == "In 15 Minuten: Wandlampe (Vorzimmer) ausschalten."
+    )
+    assert (
+        render(
+            "for_duration_done",
+            "de",
+            body="Wandlampe (Vorzimmer) eingeschaltet",
+            duration="15 Minuten",
+            revert="aus",
+        )
+        == "Erledigt: Wandlampe (Vorzimmer) eingeschaltet, in 15 Minuten wieder aus."
+    )
+    assert (
+        render(
+            "for_duration_done",
+            "en",
+            body="turned on Wall lamp",
+            duration="15 minutes",
+            revert="off",
+        )
+        == "Done: turned on Wall lamp, off again in 15 minutes."
+    )
+    assert (
+        revert_words(["turn_on", "close"], "de") == "aus, auf"
+        and revert_words(["turn_on"], "en") == "off"
+    )
+    assert timing_clause(Timing("delayed", 900), "de") == ", in 15 Minuten"
+    assert timing_clause(Timing("for_duration", 900), "en") == " for 15 minutes"
+    assert timing_clause(None, "de") == ""
+    assert render(
+        "confirm",
+        "de",
+        phrase="",
+        targets="Wandlampe (Vorzimmer) einschalten",
+        reason="confidence",
+        condition=", für 15 Minuten",
+    ).startswith("Soll ich Wandlampe (Vorzimmer) einschalten, für 15 Minuten?")

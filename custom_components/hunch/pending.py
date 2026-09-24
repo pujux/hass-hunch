@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from hunch import Action, Condition, Entity, PreviousTurn
+from hunch import Action, ActiveTimer, Condition, Entity, PreviousTurn, Timing
 from hunch.vocabulary import Verb
 
 
@@ -16,6 +16,7 @@ class PendingConfirm:
     condition: Condition | None
     question: str
     created: float
+    timing: Timing | None = None
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,18 @@ class PendingClarify:
     labels: tuple[str, ...]  # offered to the user and to Jev, parallel to candidates
     question: str
     created: float
+    timing: Timing | None = None
+
+
+@dataclass(frozen=True)
+class PendingTimerPick:
+    timers: tuple[ActiveTimer, ...]
+    labels: tuple[str, ...]  # timer_option(t) per timer, plus ALL_TIMERS last
+    question: str
+    created: float
+
+
+PendingTurn = PendingConfirm | PendingClarify | PendingTimerPick
 
 
 class PendingStore:
@@ -34,12 +47,12 @@ class PendingStore:
     ) -> None:
         self._ttl = ttl_seconds
         self._clock = clock
-        self._turns: dict[str, PendingConfirm | PendingClarify] = {}
+        self._turns: dict[str, PendingTurn] = {}
 
     def now(self) -> float:
         return self._clock()
 
-    def put(self, conversation_id: str, turn: PendingConfirm | PendingClarify) -> None:
+    def put(self, conversation_id: str, turn: PendingTurn) -> None:
         self._sweep()
         self._turns[conversation_id] = turn
 
@@ -50,7 +63,7 @@ class PendingStore:
         for cid in [c for c, t in self._turns.items() if t.created < cutoff]:
             del self._turns[cid]
 
-    def take(self, conversation_id: str) -> PendingConfirm | PendingClarify | None:
+    def take(self, conversation_id: str) -> PendingTurn | None:
         turn = self._turns.pop(conversation_id, None)
         if turn is None or self._clock() - turn.created > self._ttl:
             return None

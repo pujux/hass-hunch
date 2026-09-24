@@ -1,4 +1,6 @@
-from custom_components.hunch.pending import PendingConfirm, PendingStore
+from hunch import ActiveTimer, Timing
+
+from custom_components.hunch.pending import PendingConfirm, PendingStore, PendingTimerPick
 
 
 def test_take_is_single_use_and_expires():
@@ -72,3 +74,25 @@ def test_last_turn_store_keeps_the_latest_and_expires():
     assert store.get("c") is b
     t[0] = 301.0
     assert store.get("c") is None
+
+
+def test_pending_confirm_timing_defaults_to_none():
+    turn = PendingConfirm((), None, "q", 0.0)
+    assert turn.timing is None
+    timed = PendingConfirm((), None, "q", 0.0, timing=Timing("delayed", 900))
+    assert timed.timing == Timing("delayed", 900)
+
+
+def test_pending_timer_pick_stored_and_taken_back():
+    t = [100.0]
+    store = PendingStore(ttl_seconds=120, clock=lambda: t[0])
+    timers = (ActiveTimer("1", "Nudeln", 200.0, "timer"),)
+    turn = PendingTimerPick(
+        timers=timers,
+        labels=("Nudeln (3:20 left)", "alle Timer"),
+        question="q",
+        created=store.now(),
+    )
+    store.put("c1", turn)
+    assert store.take("c1") is turn
+    assert store.take("c1") is None

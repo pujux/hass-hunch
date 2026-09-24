@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from hunch import Entity
+from hunch import INVERSES, Entity
 
 OUTCOMES = (
     "action_done",
@@ -17,6 +17,14 @@ OUTCOMES = (
     "expired",
     "fallback_unavailable",
     "execution_failed",
+    "timer_started",
+    "timer_none",
+    "timer_remaining_line",
+    "timer_remaining",
+    "timer_cancelled",
+    "which_timer",
+    "delayed_scheduled",
+    "for_duration_done",
 )
 
 # verb -> (past participle / done form, infinitive / question form)
@@ -73,6 +81,14 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "expired": "That question has expired; I'm treating this as a new request.",
         "fallback_unavailable": "I can't do that myself, and no other assistant is available.",
         "execution_failed": "Done, except: {failed}.",
+        "timer_started": "{name} set, {duration}.",
+        "timer_none": "No timer is running.",
+        "timer_remaining_line": "{name}: {remaining} left.",
+        "timer_remaining": "{lines}",
+        "timer_cancelled": "Cancelled: {names}.",
+        "which_timer": "Which timer do you mean: {options}?",
+        "delayed_scheduled": "In {duration}: {body}.",
+        "for_duration_done": "Done: {body}, {revert} again in {duration}.",
     },
     "de": {
         "action_done": "Erledigt: {body}.",
@@ -89,6 +105,14 @@ TEMPLATES: dict[str, dict[str, str]] = {
             "Das kann ich selbst nicht, und kein anderer Assistent ist verfügbar."
         ),
         "execution_failed": "Erledigt, außer: {failed}.",
+        "timer_started": "{name} gestellt, {duration}.",
+        "timer_none": "Es läuft kein Timer.",
+        "timer_remaining_line": "{name}: noch {remaining}.",
+        "timer_remaining": "{lines}",
+        "timer_cancelled": "Abgebrochen: {names}.",
+        "which_timer": "Welchen Timer meinst du: {options}?",
+        "delayed_scheduled": "In {duration}: {body}.",
+        "for_duration_done": "Erledigt: {body}, in {duration} wieder {revert}.",
     },
 }
 
@@ -284,31 +308,131 @@ def condition_clause(subject: str, state: str, language: str) -> str:
     return CONDITION_WORD.get(language, CONDITION_WORD["en"]).format(subject=subject, state=state)
 
 
+DURATION_UNITS = {
+    "en": (("hour", "hours"), ("minute", "minutes"), ("second", "seconds")),
+    "de": (("Stunde", "Stunden"), ("Minute", "Minuten"), ("Sekunde", "Sekunden")),
+}
+
+
+def _duration_parts(seconds: float) -> list[tuple[int, int]]:
+    total = int(round(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return [(i, n) for i, n in enumerate((h, m, s)) if n]
+
+
+def format_duration(seconds: float, language: str) -> str:
+    units = DURATION_UNITS.get(language, DURATION_UNITS["en"])
+    parts = _duration_parts(seconds) or [(2, 0)]
+    return " ".join(f"{n} {units[i][0] if n == 1 else units[i][1]}" for i, n in parts)
+
+
+def compact_duration(seconds: float, language: str) -> str:
+    """For names: '8-Minuten' / '8-minute'; several parts joined with hyphens."""
+    units = DURATION_UNITS.get(language, DURATION_UNITS["en"])
+    parts = _duration_parts(seconds) or [(2, 0)]
+    if language == "de":
+        return "-".join(f"{n}-{units[i][0] if n == 1 else units[i][1]}" for i, n in parts)
+    return "-".join(f"{n}-{units[i][0]}" for i, n in parts)
+
+
+TIMER_NAME = {
+    "en": ("timer for {label}", "{compact} timer"),
+    "de": ("Timer für {label}", "{compact}-Timer"),
+}
+
+
+def timer_name(
+    label: str | None, description: str | None, duration_seconds: float, language: str
+) -> str:
+    tpl = TIMER_NAME.get(language, TIMER_NAME["en"])
+    if label:
+        return tpl[0].format(label=label)
+    if description:
+        return description
+    return tpl[1].format(compact=compact_duration(duration_seconds, language))
+
+
+REVERT_WORDS = {
+    "en": {
+        "turn_off": "off",
+        "turn_on": "on",
+        "close": "closed",
+        "open": "open",
+        "unlock": "unlocked",
+        "lock": "locked",
+        "media_pause": "paused",
+        "media_play": "playing",
+    },
+    "de": {
+        "turn_off": "aus",
+        "turn_on": "an",
+        "close": "zu",
+        "open": "auf",
+        "unlock": "aufgesperrt",
+        "lock": "abgesperrt",
+        "media_pause": "pausiert",
+        "media_play": "weiter",
+    },
+}
+
+
+def revert_words(verb_names: Sequence[str], language: str) -> str:
+    """What the devices will be again after 'für': the word for each action's INVERSE."""
+    words = REVERT_WORDS.get(language, REVERT_WORDS["en"])
+    seen = list(dict.fromkeys(words[INVERSES[v]] for v in verb_names if v in INVERSES))
+    return ", ".join(seen)
+
+
+TIMING_CLAUSE = {
+    "en": {"delayed": " in {d}", "for_duration": " for {d}"},
+    "de": {"delayed": ", in {d}", "for_duration": ", für {d}"},
+}
+
+
+def timing_clause(timing: Any, language: str) -> str:
+    """A trailing ", in 15 Minuten" / ", für 15 Minuten" for confirm questions. Reads `.kind`
+    and `.seconds`; empty for None."""
+    if timing is None:
+        return ""
+    words = TIMING_CLAUSE.get(language, TIMING_CLAUSE["en"])
+    return words[timing.kind].format(d=format_duration(timing.seconds, language))
+
+
 def render(outcome: str, language: str, **slots: Any) -> str:
     lang = language if language in TEMPLATES else "en"
     tpl = TEMPLATES[lang][outcome]
     if outcome == "query_answer":
-        return "\n".join(slots["lines"])
-    if outcome == "clarify":
-        return tpl.format(options=", ".join(slots["options"]))
-    if outcome == "execution_failed":
-        return tpl.format(failed=", ".join(slots["failed"]))
-    if outcome == "condition_not_met" and slots.get("value"):
-        return TEMPLATES[lang]["condition_not_met_value"].format(**slots)
-    if outcome == "condition_not_met":
-        return tpl.format(subject=slots["subject"], expected=slots["expected"])
-    if outcome in ("action_done", "confirm"):
+        text = "\n".join(slots["lines"])
+    elif outcome == "clarify":
+        text = tpl.format(options=", ".join(slots["options"]))
+    elif outcome == "execution_failed":
+        text = tpl.format(failed=", ".join(slots["failed"]))
+    elif outcome == "condition_not_met" and slots.get("value"):
+        text = TEMPLATES[lang]["condition_not_met_value"].format(**slots)
+    elif outcome == "condition_not_met":
+        text = tpl.format(subject=slots["subject"], expected=slots["expected"])
+    elif outcome in ("action_done", "confirm"):
         # `phrase`/`targets` are one clause; a multi-verb plan arrives pre-joined in
         # `targets` with an empty `phrase` (spec §9).
         body = action_clause(slots.get("phrase") or "", slots.get("targets") or "", lang)
         if outcome == "action_done":
-            return tpl.format(body=body)
-        return tpl.format(
-            body=body,
-            condition=slots.get("condition") or "",
-            why=REASONS[lang].get(slots.get("reason") or "", ""),
-        )
-    return tpl.format(**slots)
+            text = tpl.format(body=body)
+        else:
+            text = tpl.format(
+                body=body,
+                condition=slots.get("condition") or "",
+                why=REASONS[lang].get(slots.get("reason") or "", ""),
+            )
+    elif outcome == "timer_remaining":
+        text = "\n".join(slots["lines"])
+    elif outcome == "timer_cancelled":
+        text = tpl.format(names=", ".join(slots["names"]))
+    elif outcome == "which_timer":
+        text = tpl.format(options=", ".join(slots["options"]))
+    else:
+        text = tpl.format(**slots)
+    return text[:1].upper() + text[1:]
 
 
 def condition_context() -> str:
