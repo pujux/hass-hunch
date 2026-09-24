@@ -145,11 +145,18 @@ class TimerStore:
         self._store: Store[dict[str, Any]] = Store(hass, TIMER_STORE_VERSION, TIMER_STORE_KEY)
         self._timers: dict[str, HunchTimer] = {}
         self._unsub: dict[str, CALLBACK_TYPE] = {}
+        self._unsub_started: CALLBACK_TYPE | None = None
 
     async def async_load(self) -> None:
-        data = await self._store.async_load() or {}
+        data = await self._store.async_load()
+        if not isinstance(data, dict):  # an empty or foreign store file: start empty
+            data = {}
+        rows = data.get("timers")
         overdue: list[HunchTimer] = []
-        for raw in data.get("timers", []):
+        for raw in rows if isinstance(rows, list) else []:
+            if not isinstance(raw, dict):
+                _LOGGER.warning("Dropping unreadable timer %r", raw)
+                continue
             try:
                 timer = HunchTimer.from_dict(raw)
             except (KeyError, ValueError, TypeError):
@@ -164,10 +171,13 @@ class TimerStore:
             # Fire once HA has started: the services a revert needs may not exist yet.
             @callback
             def _started(_hass: HomeAssistant) -> None:
+                self._unsub_started = None
                 for timer in overdue:
                     self._schedule(self._fire(timer.timer_id, True))
 
-            async_at_started(self._hass, _started)
+            # kept, so an unload before HA has started does not leave this store able to fire
+            # its overdue timers alongside the next one's
+            self._unsub_started = async_at_started(self._hass, _started)
 
     def _schedule(self, coro: Coroutine[Any, Any, None]) -> None:
         if self._entry is not None:
@@ -202,6 +212,9 @@ class TimerStore:
         return timer
 
     async def async_stop(self) -> None:
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
         for unsub in self._unsub.values():
             unsub()
         self._unsub.clear()
@@ -224,10 +237,13 @@ class TimerStore:
             await self._on_fire(timer, overdue)
         except Exception:  # noqa: BLE001 - a broken announcement must not kill the store
             _LOGGER.exception("Timer %s failed to fire", timer_id)
-        try:
-            await self._save()
-        except Exception:  # noqa: BLE001 - a failed save must not stop the next timer
-            _LOGGER.exception("Timer store could not be saved")
+        finally:
+            # also when the fire task is cancelled (unload): an unsaved fired timer would fire a
+            # second time as overdue on the next load
+            try:
+                await self._save()
+            except Exception:  # noqa: BLE001 - a failed save must not stop the next timer
+                _LOGGER.exception("Timer store could not be saved")
 
     async def _save(self) -> None:
         await self._store.async_save({"timers": [t.to_dict() for t in self.active()]})
@@ -250,20 +266,25 @@ async def async_fire_timer(
             "Timer %s is %.0f s overdue; not carrying out its actions", timer.timer_id, late
         )
     if timer.actions and not skipped:
-        home = rt.builder.build()
-        actions = []
-        for sa in timer.actions:
-            targets = tuple(e for i in sa.entity_ids if (e := home.entity_by_id(i)) is not None)
-            missing = set(sa.entity_ids) - {e.entity_id for e in targets}
-            if missing:
-                _LOGGER.warning("Timer %s: entities gone: %s", timer.timer_id, sorted(missing))
-            if targets:
-                actions.append(
-                    Action(DEFAULT_VOCABULARY.by_name(sa.verb), targets, dict(sa.params))
-                )
-        results = await Executor(hass).execute(actions, Context(user_id=timer.user_id))
-        executed = [r.entity_id for r in results if r.ok]
-        failed = [r.entity_id for r in results if not r.ok]
+        try:
+            home = rt.builder.build()
+            actions = []
+            for sa in timer.actions:
+                targets = tuple(e for i in sa.entity_ids if (e := home.entity_by_id(i)) is not None)
+                missing = set(sa.entity_ids) - {e.entity_id for e in targets}
+                if missing:
+                    _LOGGER.warning("Timer %s: entities gone: %s", timer.timer_id, sorted(missing))
+                if targets:
+                    actions.append(
+                        Action(DEFAULT_VOCABULARY.by_name(sa.verb), targets, dict(sa.params))
+                    )
+            results = await Executor(hass).execute(actions, Context(user_id=timer.user_id))
+            executed = [r.entity_id for r in results if r.ok]
+            failed = [r.entity_id for r in results if not r.ok]
+        except Exception:  # noqa: BLE001 - an unknown stored verb, a rejected call: still announce
+            _LOGGER.exception("Timer %s: its actions could not be carried out", timer.timer_id)
+            executed = []
+            failed = list(dict.fromkeys(i for sa in timer.actions for i in sa.entity_ids))
     data = {
         **{k: v for k, v in timer.to_dict().items() if k != "actions"},
         "overdue": overdue,
