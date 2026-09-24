@@ -5,15 +5,19 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, Literal
 
 from homeassistant.components import conversation
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 from hunch import (
     Action,
+    ActiveTimer,
     Condition,
     DecisionBackendError,
     Entity,
@@ -24,14 +28,17 @@ from hunch import (
     PreviousTurn,
     Resolved,
     Risk,
+    TimerCommand,
+    Timing,
     Trace,
 )
 from hunch.questions import ChoiceA, ChoiceQ
 from hunch.round2 import NO_MATCH
+from hunch.timing import ALL_TIMERS
 
 from . import HunchConfigEntry, HunchRuntime
 from .executor import Executor
-from .pending import PendingClarify, PendingConfirm
+from .pending import PendingClarify, PendingConfirm, PendingTimerPick, PendingTurn
 from .responder import (
     condition_clause,
     condition_context,
@@ -39,12 +46,17 @@ from .responder import (
     describe_expected,
     describe_state,
     describe_targets,
+    format_duration,
     format_value,
     pending_context,
     render,
     resolve_language,
+    revert_words,
+    timer_name,
+    timing_clause,
     verb_phrase,
 )
+from .timers import HunchTimer, StoredAction, inverse_actions, new_timer_id, stored_actions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -283,8 +295,12 @@ class HunchConversationEntity(conversation.ConversationEntity):
         condition: Condition | None,
         trace: Trace | None,
         outcome: str,
+        timing: Timing | None = None,
     ) -> conversation.ConversationResult:
-        """Step 3: check the condition, then execute or read."""
+        """Step 3: check the condition, then execute or read — or, with `timing`, schedule
+        ("in 10 Minuten") or execute and schedule the undo ("für 15 Minuten"). A timed turn is
+        never remembered for follow-ups: "und im Esszimmer" after "in 10 Minuten aus" must not
+        run at once (spec §3)."""
         lang = turn.lang
         areas = self._area_names(home)
         executor = Executor(self.hass)
@@ -310,11 +326,32 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 label = f"{reading.name} ({room})" if room else reading.name
                 lines.append(f"{label}: {describe_state(reading, lang)}")
         if not commands:  # an empty plan reads nothing, safely
-            self._remember(turn, actions)
+            if timing is None:
+                self._remember(turn, actions)
             return self._result(turn, render("query_answer", lang, lines=lines), trace, outcome)
+        if timing is not None and timing.kind == "delayed":
+            # Nothing runs now; the plan is stored and carried out when the timer is due.
+            body = self._action_clauses(commands, areas, lang, done=False)
+            await self._rt.timers.async_add(
+                self._make_timer(
+                    turn,
+                    "delayed",
+                    stored_actions(commands),
+                    description=body,
+                    duration=timing.seconds,
+                )
+            )
+            text = render(
+                "delayed_scheduled",
+                lang,
+                duration=format_duration(timing.seconds, lang),
+                body=body,
+            )
+            return self._result(turn, "\n".join([*lines, text]), trace, outcome)
         results = await executor.execute(commands, turn.user_input.context)
         failed = [r.entity_id for r in results if not r.ok]
-        self._remember(turn, actions)
+        if timing is None:
+            self._remember(turn, actions)
         if failed:
             by_id = {e.entity_id: e for a in commands for e in a.targets}
             text = render(
@@ -329,9 +366,153 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 phrase="",
                 targets=self._action_clauses(commands, areas, lang, done=True),
             )
+        if timing is not None and timing.kind == "for_duration":
+            ok_ids = {r.entity_id for r in results if r.ok}
+            revert = inverse_actions(commands, ok_ids)
+            if revert:  # only what actually changed is changed back
+                await self._rt.timers.async_add(
+                    self._make_timer(
+                        turn,
+                        "revert",
+                        stored_actions(revert),
+                        description=self._action_clauses(revert, areas, lang, done=False),
+                        duration=timing.seconds,
+                    )
+                )
+                done = tuple(
+                    Action(a.verb, ok, a.params)
+                    for a in commands
+                    if (ok := tuple(e for e in a.targets if e.entity_id in ok_ids))
+                )
+                sentence = render(
+                    "for_duration_done",
+                    lang,
+                    body=self._action_clauses(done, areas, lang, done=True),
+                    duration=format_duration(timing.seconds, lang),
+                    revert=revert_words([a.verb.name for a in done], lang),
+                )
+                text = f"{text}\n{sentence}" if failed else sentence
         if lines:
             text = "\n".join([*lines, text])
         return self._result(turn, text, trace, outcome)
+
+    # ---- timers ----------------------------------------------------------------------
+
+    def _make_timer(
+        self,
+        turn: _Turn,
+        kind: str,
+        actions: tuple[StoredAction, ...],
+        *,
+        label: str | None = None,
+        description: str | None = None,
+        duration: float,
+    ) -> HunchTimer:
+        """A timer for this turn: who asked, from where, and — for stored actions — as whom
+        they run later (HA's permission checks apply as they did to the immediate half)."""
+        user_input = turn.user_input
+        device_id = user_input.device_id
+        device = dr.async_get(self.hass).async_get(device_id) if device_id else None
+        return HunchTimer(
+            timer_id=new_timer_id(),
+            kind=kind,
+            label=label,
+            description=description,
+            duration_seconds=duration,
+            due_at=dt_util.utcnow() + timedelta(seconds=duration),
+            actions=actions,
+            language=turn.lang,
+            conversation_id=turn.chat_log.conversation_id,
+            device_id=device_id,
+            satellite_id=user_input.satellite_id,
+            area_id=device.area_id if device is not None else None,
+            user_id=user_input.context.user_id,
+        )
+
+    def _live(self, timers: Sequence[ActiveTimer]) -> list[HunchTimer]:
+        """The engine's `ActiveTimer`s are a snapshot; re-read each from the store. One that
+        fired or was cancelled meanwhile is skipped."""
+        live = {t.timer_id: t for t in self._rt.timers.active()}
+        return [live[t.timer_id] for t in timers if t.timer_id in live]
+
+    @staticmethod
+    def _timer_name(timer: HunchTimer, lang: str) -> str:
+        return timer_name(timer.label, timer.description, timer.duration_seconds, lang)
+
+    async def _run_timer(
+        self, turn: _Turn, command: TimerCommand, trace: Trace | None
+    ) -> conversation.ConversationResult:
+        """A timer command the engine resolved. Never remembered for follow-ups (spec §3)."""
+        rt = self._rt
+        lang = turn.lang
+        if command.kind == "start":
+            duration = float(command.duration_seconds or 0.0)
+            timer = self._make_timer(turn, "timer", (), label=command.label, duration=duration)
+            await rt.timers.async_add(timer)
+            text = render(
+                "timer_started",
+                lang,
+                name=self._timer_name(timer, lang),
+                duration=format_duration(duration, lang),
+            )
+            return self._result(turn, text, trace, "Resolved")
+        if command.kind == "cancel":
+            return await self._cancel_timers(turn, command.timers, trace, "Resolved")
+        lines = [
+            render(
+                "timer_remaining_line",
+                lang,
+                name=self._timer_name(t, lang),
+                remaining=format_duration(rt.timers.remaining(t), lang),
+            )
+            for t in self._live(command.timers)
+        ]
+        if not lines:
+            return self._result(turn, render("timer_none", lang), trace, "Resolved")
+        return self._result(turn, render("timer_remaining", lang, lines=lines), trace, "Resolved")
+
+    async def _cancel_timers(
+        self, turn: _Turn, timers: Sequence[ActiveTimer], trace: Trace | None, outcome: str
+    ) -> conversation.ConversationResult:
+        names = []
+        for t in timers:
+            cancelled = await self._rt.timers.async_cancel(t.timer_id)
+            if cancelled is not None:  # one that fired meanwhile is not claimed as cancelled
+                names.append(self._timer_name(cancelled, turn.lang))
+        if not names:
+            return self._result(turn, render("timer_none", turn.lang), trace, outcome)
+        return self._result(turn, render("timer_cancelled", turn.lang, names=names), trace, outcome)
+
+    def _timer_pick(
+        self, timers: Sequence[ActiveTimer], lang: str, created: float
+    ) -> PendingTimerPick | None:
+        """The "which timer?" question: one spoken label per timer still running ("Timer für
+        Nudeln (3 Minuten 20 Sekunden)"), plus "all timers" when there are several — with one
+        timer the two options are the same set and would only split the reply's judgment (the
+        engine leaves it out for the same reason). None when no timer is left."""
+        rt = self._rt
+        live = {t.timer_id: t for t in rt.timers.active()}
+        kept: list[ActiveTimer] = []
+        spoken: list[str] = []
+        for t in timers:
+            timer = live.get(t.timer_id)
+            if timer is None:
+                continue
+            base = (
+                f"{self._timer_name(timer, lang)} "
+                f"({format_duration(rt.timers.remaining(timer), lang)})"
+            )
+            label, n = base, 2
+            while label in spoken:
+                label = f"{base} #{n}"
+                n += 1
+            kept.append(t)
+            spoken.append(label)
+        if not kept:
+            return None
+        labels = (*spoken, ALL_TIMERS) if len(kept) > 1 else tuple(spoken)
+        question = render("which_timer", lang, options=spoken)
+        return PendingTimerPick(tuple(kept), labels, question, created)
 
     # ---- the turn --------------------------------------------------------------------
 
@@ -351,23 +532,42 @@ class HunchConversationEntity(conversation.ConversationEntity):
 
         # Step 2: decide — with the last completed turn as context for follow-ups.
         previous = rt.last_turns.get(chat_log.conversation_id)
-        result = await rt.engine.decide(home, user_input.text, previous)
+        result = await rt.engine.decide(
+            home, user_input.text, previous, rt.timers.as_active_timers()
+        )
         areas = self._area_names(home)
 
         if isinstance(result, Resolved):  # step 3
+            if result.timer is not None:
+                return await self._run_timer(turn, result.timer, result.trace)
             return await self._run(
-                turn, home, result.actions, result.condition, result.trace, "Resolved"
+                turn,
+                home,
+                result.actions,
+                result.condition,
+                result.trace,
+                "Resolved",
+                timing=result.timing,
             )
 
         if isinstance(result, NeedsConfirmation):  # step 4
             question = self._confirm_question(
-                result.actions, result.condition, result.reason, areas, lang
+                result.actions, result.condition, result.reason, areas, lang, result.timing
             )
             rt.pending.put(
                 conversation_id,
-                PendingConfirm(result.actions, result.condition, question, rt.pending.now()),
+                PendingConfirm(
+                    result.actions, result.condition, question, rt.pending.now(), result.timing
+                ),
             )
             return self._result(turn, question, result.trace, "NeedsConfirmation", cont=True)
+
+        if isinstance(result, NeedsClarification) and result.question_key == "which_timer":
+            pick = self._timer_pick(result.timers, lang, rt.pending.now())
+            if pick is None:  # every timer asked about is gone already
+                return self._result(turn, render("timer_none", lang), result.trace, "Resolved")
+            rt.pending.put(conversation_id, pick)
+            return self._result(turn, pick.question, result.trace, "NeedsClarification", cont=True)
 
         if isinstance(result, NeedsClarification):  # step 5
             if (
@@ -391,6 +591,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
                     labels,
                     question,
                     rt.pending.now(),
+                    result.timing,
                 ),
             )
             return self._result(turn, question, result.trace, "NeedsClarification", cont=True)
@@ -406,12 +607,14 @@ class HunchConversationEntity(conversation.ConversationEntity):
         reason: str,
         areas: Mapping[str, str],
         lang: str,
+        timing: Timing | None = None,
     ) -> str:
         clause = ""
         if condition is not None:
             clause = condition_clause(
                 self._label(condition.subject, areas), describe_expected(condition, lang), lang
             )
+        clause += timing_clause(timing, lang)
         return render(
             "confirm",
             lang,
@@ -447,7 +650,7 @@ class HunchConversationEntity(conversation.ConversationEntity):
         return choice, trace
 
     async def _handle_reply(
-        self, turn: _Turn, home: HomeModel, pending: PendingConfirm | PendingClarify
+        self, turn: _Turn, home: HomeModel, pending: PendingTurn
     ) -> conversation.ConversationResult:
         state = {"question": pending.question, "reply": turn.user_input.text}
         confirming = isinstance(pending, PendingConfirm)
@@ -469,16 +672,20 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 "ReplyJudgmentFailed",
                 pending_context(pending.question, self._pending_description(home, pending)),
             )
-        if confirming:
+        if isinstance(pending, PendingConfirm):
             return await self._handle_confirm_reply(turn, home, pending, answer, trace)
+        if isinstance(pending, PendingTimerPick):
+            return await self._handle_timer_pick_reply(turn, pending, answer, trace)
         return await self._handle_clarify_reply(turn, home, pending, answer, trace)
 
-    def _pending_description(
-        self, home: HomeModel, pending: PendingConfirm | PendingClarify
-    ) -> str:
+    def _pending_description(self, home: HomeModel, pending: PendingTurn) -> str:
         areas = self._area_names(home)
         if isinstance(pending, PendingConfirm):
-            return self._action_clauses(pending.actions, areas, "en", done=False, params=True)
+            return self._action_clauses(
+                pending.actions, areas, "en", done=False, params=True
+            ) + timing_clause(pending.timing, "en")
+        if isinstance(pending, PendingTimerPick):
+            return "cancel one of the timers: " + ", ".join(pending.labels)
         phrase = verb_phrase(pending.verb.name, "en", done=False)
         return f"{phrase} one of: {', '.join(pending.labels)}"
 
@@ -493,7 +700,13 @@ class HunchConversationEntity(conversation.ConversationEntity):
         if answer.confidence >= REPLY_CONF and answer.choice == "affirmative":
             # Exactly the stored actions; the reply text is never re-parsed into actions.
             return await self._run(
-                turn, home, pending.actions, pending.condition, trace, "Confirmed"
+                turn,
+                home,
+                pending.actions,
+                pending.condition,
+                trace,
+                "Confirmed",
+                timing=pending.timing,
             )
         if answer.confidence >= REPLY_CONF and answer.choice == "negative":
             return self._result(turn, render("cancelled", turn.lang), trace, "Cancelled")
@@ -526,16 +739,39 @@ class HunchConversationEntity(conversation.ConversationEntity):
                 )
             action = Action(pending.verb, (target,), pending.params)
             if pending.verb.risk is Risk.CONFIRM:
-                question = self._confirm_question((action,), None, "risk:confirm", areas, turn.lang)
+                question = self._confirm_question(
+                    (action,), None, "risk:confirm", areas, turn.lang, pending.timing
+                )
                 self._rt.pending.put(
                     turn.chat_log.conversation_id,
-                    PendingConfirm((action,), None, question, self._rt.pending.now()),
+                    PendingConfirm(
+                        (action,), None, question, self._rt.pending.now(), pending.timing
+                    ),
                 )
                 return self._result(turn, question, trace, "NeedsConfirmation", cont=True)
-            return await self._run(turn, home, (action,), None, trace, "Clarified")
+            return await self._run(
+                turn, home, (action,), None, trace, "Clarified", timing=pending.timing
+            )
         return await self._escalate(
             turn,
             trace,
             "ClarifyOther",
             pending_context(pending.question, self._pending_description(home, pending)),
         )
+
+    async def _handle_timer_pick_reply(
+        self,
+        turn: _Turn,
+        pending: PendingTimerPick,
+        answer: ChoiceA,
+        trace: Trace | None,
+    ) -> conversation.ConversationResult:
+        """A sure pick cancels that timer ("all timers": every one asked about). Anything else
+        changes nothing — the fallback agent cannot cancel Hunch timers, so this turn is never
+        handed to it."""
+        if answer.confidence >= REPLY_CONF and answer.choice == ALL_TIMERS:
+            return await self._cancel_timers(turn, pending.timers, trace, "TimerPicked")
+        if answer.confidence >= REPLY_CONF and answer.choice in pending.labels:
+            timer = pending.timers[pending.labels.index(answer.choice)]
+            return await self._cancel_timers(turn, (timer,), trace, "TimerPicked")
+        return self._result(turn, render("cancelled", turn.lang), trace, "TimerPickOther")

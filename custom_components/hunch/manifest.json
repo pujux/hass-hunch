@@ -8,6 +8,6 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/pujux/hass-hunch/issues",
-  "requirements": ["hunch-engine==0.5.3"],
-  "version": "0.3.4"
+  "requirements": ["hunch-engine==0.6.0"],
+  "version": "0.4.0"
 }
