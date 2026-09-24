@@ -26,11 +26,13 @@ from .const import (
     OPT_MODEL,
     OPT_RESPONSE_LANGUAGE,
     OPT_TIMEOUT_MS,
+    OPT_TIMER_SCRIPT,
     THRESHOLD_FIELDS,
     TRACE_BUFFER,
 )
 from .home_model import HomeModelBuilder
 from .pending import LastTurnStore, PendingStore
+from .timers import HunchTimer, TimerStore, async_fire_timer
 
 PLATFORMS = [Platform.CONVERSATION]
 
@@ -46,6 +48,8 @@ class HunchRuntime:
     fallback_agent_id: str | None
     response_language: str
     clarify_max_candidates: int
+    timers: TimerStore
+    timer_script: str | None
 
 
 type HunchConfigEntry = ConfigEntry[HunchRuntime]
@@ -92,6 +96,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HunchConfigEntry) -> boo
     builder.async_start()
     entry.async_on_unload(builder.async_stop)
     engine_config = build_engine_config(entry.options)
+
+    async def _on_fire(timer: HunchTimer, overdue: bool) -> None:
+        await async_fire_timer(hass, entry, timer, overdue)
+
+    timers = TimerStore(hass, _on_fire, entry)
     entry.runtime_data = HunchRuntime(
         client=client,
         engine=Engine(client, DEFAULT_VOCABULARY, engine_config),
@@ -102,7 +111,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HunchConfigEntry) -> boo
         fallback_agent_id=entry.options.get(OPT_FALLBACK_AGENT) or None,
         response_language=entry.options.get(OPT_RESPONSE_LANGUAGE, DEFAULT_RESPONSE_LANGUAGE),
         clarify_max_candidates=engine_config.clarify_max_candidates,
+        timers=timers,
+        timer_script=entry.options.get(OPT_TIMER_SCRIPT) or None,
     )
+    await timers.async_load()
+    entry.async_on_unload(timers.async_stop)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

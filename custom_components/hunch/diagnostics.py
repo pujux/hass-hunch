@@ -25,4 +25,13 @@ async def async_get_config_entry_diagnostics(
             "scenes": len(home.scenes),
         },
         "traces": list(rt.traces),
+        "timers": [
+            {
+                "kind": t.kind,
+                "label": t.label,
+                "description": t.description,
+                "remaining_seconds": round(rt.timers.remaining(t)),
+            }
+            for t in rt.timers.active()
+        ],
     }

@@ -14,6 +14,7 @@
         "title": "Hunch-Optionen",
         "data": {
           "fallback_agent": "Fallback-Gesprächsagent",
+          "timer_script": "Skript beim Ablauf eines Timers (bekommt Name, Dauer, Gerät als Variablen)",
           "model": "Jev-Modell",
           "response_language": "Antwortsprache",
           "timeout_ms": "Jev-Timeout (ms)",

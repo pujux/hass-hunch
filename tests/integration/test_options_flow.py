@@ -40,6 +40,7 @@ async def test_options_reload_the_engine_and_reject_self_as_fallback(
                 "device_round": True,
                 "max_rounds": 2,
                 "threshold_auto_execute": 0.8,
+                "timer_script": "script.timer_ansage",
             },
         )
         await hass.async_block_till_done()
@@ -47,6 +48,8 @@ async def test_options_reload_the_engine_and_reject_self_as_fallback(
     rt = entry.runtime_data
     assert rt.response_language == "de"
     assert entry.options["max_rounds"] == 2 and entry.options["device_round"] is True
+    assert entry.options["timer_script"] == "script.timer_ansage"
+    assert rt.timer_script == "script.timer_ansage"
     # build_engine_config forces max_rounds to 3 with device_round on
     from custom_components.hunch import build_engine_config
 

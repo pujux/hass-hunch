@@ -16,6 +16,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
     BooleanSelector,
     ConversationAgentSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -41,6 +43,7 @@ from .const import (
     OPT_MODEL,
     OPT_RESPONSE_LANGUAGE,
     OPT_TIMEOUT_MS,
+    OPT_TIMER_SCRIPT,
     THRESHOLD_FIELDS,
 )
 
@@ -133,6 +136,7 @@ def _options_schema() -> vol.Schema:
     defaults = Thresholds()
     fields: dict[Any, Any] = {
         vol.Optional(OPT_FALLBACK_AGENT): ConversationAgentSelector(),
+        vol.Optional(OPT_TIMER_SCRIPT): EntitySelector(EntitySelectorConfig(domain="script")),
         vol.Optional(OPT_MODEL, default=DEFAULT_MODEL): TextSelector(),
         vol.Optional(OPT_RESPONSE_LANGUAGE, default=DEFAULT_RESPONSE_LANGUAGE): SelectSelector(
             SelectSelectorConfig(
