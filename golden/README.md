@@ -6,10 +6,10 @@ when the pinned `jev-*` model changes, re-run this corpus before rolling it out.
 ## Latest result
 
 - **Model:** `jev-1.13.0`
-- **Date:** 2026-09-25 (export with 153 exposed entities; timers and timed device actions)
-- **Agreement:** fixture 23/24 — "what's the weather like tomorrow" now hands off as `timing`
+- **Date:** 2026-09-25 (export with 114 exposed entities; timers and timed device actions)
+- **Agreement:** fixture 24/24 — "what's the weather like tomorrow" hands off as `timing`
   (Jev: `timing_kind` "at a clock time or date" 0.91) instead of `no_intent`; a hand-off either
-  way, already so on the branch before the fix wave. Real German home (`corpus_julian.yaml`, 77
+  way, so the row now accepts any hand-off. Real German home (`corpus_julian.yaml`, 77
   rows incl. 8 multi-turn rows) 76–77/77 — the one row that flips is the follow-up "was genau
   steht drauf" (see the 2026-09-21 (evening) entry)
 - **Latency:** p50 ≈ 520 ms (fixture) / 615 ms (real home), p95 ≈ 690 ms
@@ -78,7 +78,7 @@ Summary line:
 - `timer_pick_question` names 'all timers' only when the option is offered (two or more
   timers). The cancel/remaining rows re-ran green (5/5).
 - Full corpus after the fix wave: real home 76/77 (the one miss is "was genau steht drauf"
-  again, 1 of 3 re-runs passes), fixture 23/24 (the weather row, see "Latest result").
+  again, 1 of 3 re-runs passes), fixture 24/24 (the weather row accepts any hand-off, see "Latest result").
 
 ### 2026-09-24 — timers and timed device actions
 
