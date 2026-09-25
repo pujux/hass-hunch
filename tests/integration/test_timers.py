@@ -292,7 +292,7 @@ async def test_missing_timer_script_is_logged_not_raised(
     await hass.config_entries.async_unload(entry.entry_id)
 
 
-async def test_actions_that_cannot_be_carried_out_still_fire_the_event_and_script(
+async def test_actions_that_cannot_be_carried_out_still_fire_the_event(
     hass: HomeAssistant, setup_hunch, freezer, caplog
 ):
     spots = await _spots(hass)
@@ -315,6 +315,7 @@ async def test_actions_that_cannot_be_carried_out_still_fire_the_event_and_scrip
     assert len(events) == 1
     assert events[0].data["executed"] == []
     assert events[0].data["failed"] == [spots, "light.other"]
-    assert len(script_calls) == 1 and script_calls[0].data["variables"] == events[0].data
+    # a delayed action is never announced through the timer script, failed or not
+    assert script_calls == [] and events[0].data["kind"] == "delayed"
     assert "Timer d1: its actions could not be carried out" in caplog.text
     await hass.config_entries.async_unload(entry.entry_id)

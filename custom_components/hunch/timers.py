@@ -328,7 +328,10 @@ async def async_fire_timer(
         "failed": failed,
     }
     hass.bus.async_fire(EVENT_TIMER_FINISHED, data)
-    if rt.timer_script:
+    # The script is the announcement for kitchen timers. The undo half of "für 10 Minuten" and
+    # a delayed "in 10 Minuten" are not something to announce; automations on the event still
+    # see every kind.
+    if rt.timer_script and timer.kind == "timer":
         try:
             await hass.services.async_call(
                 "script",

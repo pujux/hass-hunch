@@ -101,8 +101,9 @@ itself never picks a speaker):
 
 Optionally, set a **Timer script** in the options flow to have Hunch also call
 `script.turn_on` on it (with the same fields passed as `variables`) — handy for making it
-speak the result. For example, a script that announces a finished timer through a media
-player's TTS:
+speak the result. The script runs for kitchen timers only (`kind: timer`); the undo half of a
+"für 10 Minuten" and a delayed "in 10 Minuten" fire the event but are not announced. For
+example, a script that announces a finished timer through a media player's TTS:
 
 ```yaml
 alias: Timer finished

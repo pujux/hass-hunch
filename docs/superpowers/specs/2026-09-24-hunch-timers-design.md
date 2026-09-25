@@ -324,8 +324,10 @@ data beyond labels and entity ids.
    executed: [entity_id…], failed: [entity_id…]}`. `duration_text` and `name` are the spoken
    forms from the responder in the request's language (added 2026-09-25: a 10-second timer
    announced as "0 Minuten" by a Jinja `// 60` template).
-3. if option `timer_script` is set: `script.turn_on` on that entity with `variables` = the same
-   dict, `blocking=False`. A missing script is logged, never raised.
+3. if option `timer_script` is set and `kind == "timer"`: `script.turn_on` on that entity with
+   `variables` = the same dict, `blocking=False`. A missing script is logged, never raised.
+   Reverts and delayed actions are not announced (2026-09-25, Julian: "nur das echte Timer");
+   automations on the event see every kind.
 
 ### 5.3 Runtime and options
 

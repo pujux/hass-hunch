@@ -1070,9 +1070,10 @@ async def test_for_duration_turns_on_now_and_off_later(hass: HomeAssistant, setu
             "duration:0": ChoiceA(MINUTES, 0.95, {}),
         },
     )
-    entry, _ = await setup_hunch(client, calls)
+    entry, _ = await setup_hunch(client, calls, options={"timer_script": "script.ansage"})
     on = async_mock_service(hass, "homeassistant", "turn_on")
     off = async_mock_service(hass, "homeassistant", "turn_off")
+    script_calls = async_mock_service(hass, "script", "turn_on")
     events = async_capture_events(hass, EVENT_TIMER_FINISHED)
     result = await _say(hass, "Kücheninsel für 15 Minuten an", conversation_id="d1")
     assert len(on) == 1 and on[0].data["entity_id"] == ["light.kuche_kucheninsel"]
@@ -1092,6 +1093,8 @@ async def test_for_duration_turns_on_now_and_off_later(hass: HomeAssistant, setu
     assert off[0].context.user_id == "u"
     assert len(events) == 1 and events[0].data["executed"] == ["light.kuche_kucheninsel"]
     assert len(on) == 1
+    # the undo of a "für" is not announced: the timer script runs for kitchen timers only
+    assert script_calls == [] and events[0].data["kind"] == "revert"
 
 
 async def test_for_duration_reverts_only_what_succeeded(hass: HomeAssistant, setup_hunch):
