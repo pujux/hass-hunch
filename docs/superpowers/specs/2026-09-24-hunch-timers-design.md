@@ -319,9 +319,11 @@ data beyond labels and entity ids.
    An action more than `MAX_OVERDUE_SECONDS` (3600) overdue is **skipped** (a blind must not
    open hours late at night); the event then carries `skipped: true` and `executed: []`.
 2. fire `hunch_timer_finished` with
-   `{timer_id, kind, label, description, duration_seconds, due_at, overdue, skipped, language,
-   conversation_id, device_id, satellite_id, area_id, user_id, executed: [entity_id…],
-   failed: [entity_id…]}`.
+   `{timer_id, kind, label, description, duration_seconds, duration_text, name, due_at, overdue,
+   skipped, language, conversation_id, device_id, satellite_id, area_id, user_id,
+   executed: [entity_id…], failed: [entity_id…]}`. `duration_text` and `name` are the spoken
+   forms from the responder in the request's language (added 2026-09-25: a 10-second timer
+   announced as "0 Minuten" by a Jinja `// 60` template).
 3. if option `timer_script` is set: `script.turn_on` on that entity with `variables` = the same
    dict, `blocking=False`. A missing script is logged, never raised.
 

@@ -897,6 +897,8 @@ async def test_timer_fires_event_and_script(hass: HomeAssistant, setup_hunch, fr
         "label",
         "description",
         "duration_seconds",
+        "duration_text",
+        "name",
         "due_at",
         "overdue",
         "skipped",
@@ -910,6 +912,9 @@ async def test_timer_fires_event_and_script(hass: HomeAssistant, setup_hunch, fr
         "failed",
     }
     assert events[0].data["language"] == "de" and events[0].data["user_id"] == "u"
+    # a 10-second timer must never be announced as "0 Minuten": the spoken texts are ready-made
+    assert events[0].data["duration_text"] == "2 Minuten"
+    assert events[0].data["name"] == "2-Minuten-Timer"
     assert events[0].data["skipped"] is False
     assert events[0].data["executed"] == [] and events[0].data["failed"] == []
     assert script_calls[0].data["variables"] == events[0].data
@@ -1381,6 +1386,7 @@ async def test_a_timer_that_fired_before_the_pick_is_not_claimed_as_cancelled(
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert len(events) == 1 and events[0].data["label"] == "Nudeln"
+    assert events[0].data["name"] == "Timer für Nudeln"
     second = await _say(hass, "den für die Nudeln", conversation_id="g2")
     assert _speech(second) == "Es läuft kein Timer."
     assert [t.label for t in timers.active()] == ["Reis"]

@@ -90,6 +90,8 @@ itself never picks a speaker):
 | `label` | what the timer is for ("Nudeln"), or `None` when unnamed |
 | `description` | for `revert`/`delayed`: what happens, rendered at creation ("Wandlampe (Vorzimmer) ausschalten") |
 | `duration_seconds` | the timer's original duration |
+| `duration_text` | the duration ready to speak, in the request's language ("10 Sekunden", "1 Stunde 20 Minuten") |
+| `name` | what Hunch calls the timer: "Timer für Nudeln", the action clause of a `revert`/`delayed`, or "10-Sekunden-Timer" |
 | `due_at` | when it was due, ISO 8601 |
 | `overdue` | `true` if it fired late, on Home Assistant startup after a restart |
 | `skipped` | `true` if a `revert`/`delayed` action was more than an hour overdue and was **not** carried out (a blind must not open hours late at night); the event still fires so you know it was skipped |
@@ -110,8 +112,7 @@ sequence:
       entity_id: tts.piper
     data:
       media_player_entity_id: media_player.kueche_lautsprecher
-      message: >-
-        {{ label or description or (duration_seconds // 60) | int ~ ' Minuten' }} ist fertig.
+      message: "{{ name }} ist fertig."
 ```
 
 Without a timer script set, only the event fires — write a plain automation on

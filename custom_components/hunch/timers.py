@@ -20,6 +20,7 @@ from homeassistant.util import dt as dt_util
 from hunch import DEFAULT_VOCABULARY, INVERSES, Action, ActiveTimer
 
 from .const import EVENT_TIMER_FINISHED, MAX_OVERDUE_SECONDS, TIMER_STORE_KEY, TIMER_STORE_VERSION
+from .responder import format_duration, timer_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -317,6 +318,10 @@ async def async_fire_timer(
             failed = list(dict.fromkeys(i for sa in timer.actions for i in sa.entity_ids))
     data = {
         **{k: v for k, v in timer.to_dict().items() if k != "actions"},
+        # ready to speak, in the language of the request: "10 Sekunden", "10-Sekunden-Timer" /
+        # "Timer für Nudeln" / the action clause — so a script needs no Jinja arithmetic
+        "duration_text": format_duration(timer.duration_seconds, timer.language),
+        "name": timer_name(timer.label, timer.description, timer.duration_seconds, timer.language),
         "overdue": overdue,
         "skipped": skipped,
         "executed": executed,
