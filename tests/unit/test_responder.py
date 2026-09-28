@@ -349,6 +349,19 @@ def test_format_duration_in_both_languages():
     assert format_duration(59.6, "de") == "1 Minute"  # rounded to whole seconds first
 
 
+def test_a_label_that_is_already_a_timer_word_is_the_name():
+    assert timer_name("Nudeltimer", None, 600, "de") == "Nudeltimer"
+    assert timer_name("pasta timer", None, 600, "en") == "pasta timer"
+    assert (
+        render("timer_started", "de", name="Nudeltimer", duration="10 Minuten")
+        == "Nudeltimer gestellt, 10 Minuten."
+    )
+    assert (
+        render("timer_started", "en", name="pasta timer", duration="10 minutes")
+        == "Pasta timer set, 10 minutes."
+    )
+
+
 def test_timer_name():
     assert timer_name("Nudeln", None, 480, "de") == "Timer für Nudeln"
     assert timer_name(None, "Wandlampe aus", 900, "de") == "Wandlampe aus"

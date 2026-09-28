@@ -350,6 +350,8 @@ def timer_name(
 ) -> str:
     tpl = TIMER_NAME.get(language, TIMER_NAME["en"])
     if label:
+        if "timer" in label.lower():
+            return label  # "Nudeltimer", "pasta timer": already a name, not "Timer für Nudeltimer"
         return tpl[0].format(label=label)
     if description:
         return description
