@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 import voluptuous as vol
@@ -74,7 +75,10 @@ async def async_validate_api_key(hass: HomeAssistant, api_key: str, model: str) 
     """
     from typesafe_sdk import AsyncTypeSafeClient, Noul, TypeSafeError
 
-    client = AsyncTypeSafeClient(api_key=api_key, model=model, timeout=PROBE_TIMEOUT_S)
+    # constructed in the executor: the SDK reads package metadata from disk on construction
+    client = await hass.async_add_executor_job(
+        partial(AsyncTypeSafeClient, api_key=api_key, model=model, timeout=PROBE_TIMEOUT_S)
+    )
     try:
         await client.system_one(
             state={"probe": True},

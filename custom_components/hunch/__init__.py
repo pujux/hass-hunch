@@ -91,7 +91,9 @@ def build_client(entry: ConfigEntry) -> DecisionClient:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HunchConfigEntry) -> bool:
-    client = build_client(entry)
+    # Constructing the SDK client reads package metadata from disk (importlib.metadata via
+    # httpx); HA flags that as a blocking call in the event loop, so it runs in the executor.
+    client = await hass.async_add_executor_job(build_client, entry)
     builder = HomeModelBuilder(hass, DEFAULT_VOCABULARY)
     builder.async_start()
     entry.async_on_unload(builder.async_stop)
